@@ -20,7 +20,7 @@ class AudioManager:
         self.filename = "temp_recording.wav"
         print("🎤 Audio Manager Pronto.")
 
-    def record_audio(self, duration=10):
+    def record_audio(self, duration=15):
         """Registra l'audio dal microfono per 'duration' secondi"""
         fs = 44100  # Frequenza di campionamento (standard CD)
         print(f"🔴 Registrazione in corso per {duration} secondi...")
@@ -38,7 +38,7 @@ class AudioManager:
         """Chiama l'API di ACRCloud"""
         
         # 1. Registra l'audio
-        file_path = self.record_audio(duration=10)
+        file_path = self.record_audio(duration=15)
 
         # 2. Prepara i dati per l'API
         http_method = "POST"
