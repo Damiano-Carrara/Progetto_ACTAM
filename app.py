@@ -1,42 +1,51 @@
-from flask import Flask, render_template, jsonify
+from flask import Flask, render_template, jsonify, request
 from audio_manager import AudioManager
+from session_manager import SessionManager # <--- Importiamo il nuovo modulo
 import atexit # Per fermare il monitoraggio all'uscita
 
 app = Flask(__name__)
-# Creiamo l'istanza globale
+
+# Inizializziamo i nostri "robot"
 audio_bot = AudioManager()
+session_bot = SessionManager()
 
 @app.route('/')
 def home():
     # Il file index.html non è stato modificato
     return render_template('index.html')
 
-@app.route('/api/start_monitoring', methods=['POST'])
-def start_monitoring():
-    """
-    AVVIA il processo di monitoraggio in background.
-    Usa 8 secondi di registrazione e 5 di cooldown.
-    """
-    # Passiamo 8 (durata registrazione) e 5 (cooldown)
-    result = audio_bot.start_monitoring(duration=8, cooldown=5)
-    return jsonify(result)
+# --- API 1: Riconoscimento e Aggiunta Automatica ---
+@app.route('/api/start_recognition', methods=['POST'])
+def start_recognition():
+    # 1. Riconosci il brano (ACRCloud)
+    api_result = audio_bot.recognize_song()
+    
+    # 2. Passa il risultato al Session Manager (che gestisce i duplicati)
+    session_result = session_bot.add_song(api_result)
+    
+    # 3. Restituisci al frontend sia il risultato dell'API sia se è stato aggiunto
+    return jsonify({
+        "recognition": api_result,
+        "session_update": session_result
+    })
 
-@app.route('/api/stop_monitoring', methods=['POST'])
-def stop_monitoring():
-    """
-    FERMA il processo di monitoraggio e restituisce l'elenco COMPLETO
-    dei brani unici rilevati.
-    """
-    result = audio_bot.stop_monitoring()
-    return jsonify(result)
+# --- API 2: Ottieni tutta la lista (per aggiornare la tabella) ---
+@app.route('/api/get_playlist', methods=['GET'])
+def get_playlist():
+    playlist = session_bot.get_playlist()
+    return jsonify({"playlist": playlist})
 
-@app.route('/api/get_results', methods=['GET'])
-def get_results():
-    """
-    Controlla i risultati PARZIALI mentre il monitoraggio è attivo.
-    """
-    result = audio_bot.get_current_results()
-    return jsonify(result)
+# --- API 3: Cancella un brano (per il tasto "Cestino") ---
+@app.route('/api/delete_song', methods=['POST'])
+def delete_song():
+    # Il frontend ci manda un JSON tipo {"id": 3}
+    data = request.get_json()
+    song_id = data.get('id')
+    
+    if song_id:
+        session_bot.delete_song(song_id)
+        return jsonify({"status": "deleted", "id": song_id})
+    return jsonify({"status": "error", "message": "ID mancante"})
 
 # Funzione di pulizia:
 # Se chiudiamo l'app (es. Ctrl+C), ferma il thread

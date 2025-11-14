@@ -28,7 +28,7 @@ class AudioManager:
         
         print("🎤 Audio Manager Pronto.")
 
-    def record_audio(self, duration=10):
+    def record_audio(self, duration=15):
         """Registra l'audio dal microfono per 'duration' secondi"""
         fs = 44100
         print(f"🔴 Registrazione in corso per {duration} secondi...")
