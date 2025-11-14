@@ -68,7 +68,7 @@ function addSongToTable(song) {
             <td>${song.timestamp}</td>
             <td><strong>${song.title}</strong></td>
             <td>${song.artist}</td>
-            <td>${durationStr}</td>
+            <td><em>${song.composer}</em></td> <td>${durationStr}</td>
             <td><span class="badge">${song.type}</span></td>
             <td>
                 <button onclick="deleteSong(${song.id})" class="btn-delete">🗑️</button>
