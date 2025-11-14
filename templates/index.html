@@ -2,10 +2,46 @@
 <html lang="it">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SIAE Auto-Borderò</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
-    <h1>Test Backend Python</h1>
-    <p>Se vedi questo, Flask funziona.</p>
+
+    <div class="container">
+        <header>
+            <h1>🎧 Live Tracker SIAE</h1>
+            <div id="status-indicator" class="status-box idle">
+                <span id="status-text">Pronto</span>
+            </div>
+        </header>
+
+        <div class="controls">
+            <button id="btn-start" onclick="startSession()">▶️ Avvia Concerto</button>
+            <button id="btn-stop" onclick="stopSession()" disabled>⏹️ Stop</button>
+        </div>
+
+        <main>
+            <h2>Playlist Rilevata</h2>
+            <div class="table-wrapper">
+                <table id="playlist-table">
+                    <thead>
+                        <tr>
+                            <th>Ora</th>
+                            <th>Titolo</th>
+                            <th>Artista</th>
+                            <th>Durata</th>
+                            <th>Tipo</th>
+                            <th>Azioni</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        </tbody>
+                </table>
+            </div>
+        </main>
+    </div>
+
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
 </body>
 </html>
