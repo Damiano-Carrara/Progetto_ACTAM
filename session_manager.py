@@ -35,6 +35,7 @@ class SessionManager:
             "album": song_data['album'],
             "timestamp": datetime.now().strftime("%H:%M:%S"),
             "duration_ms": song_data.get('duration_ms', 0),
+            "score": song_data.get('score', 0),
             "type": song_data.get('type', 'Original')
         }
 
