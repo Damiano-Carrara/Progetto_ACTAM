@@ -8,7 +8,8 @@ import requests
 import sounddevice as sd
 import scipy.io.wavfile as wav
 from dotenv import load_dotenv
-import threading # Importiamo il threading
+import threading
+import io  # <--- 1. Importiamo il modulo per gestire i file in memoria
 
 # Carica le variabili dal file .env
 load_dotenv()
@@ -18,38 +19,43 @@ class AudioManager:
         self.host = os.getenv('ACR_HOST')
         self.access_key = os.getenv('ACR_ACCESS_KEY')
         self.access_secret = os.getenv('ACR_ACCESS_SECRET')
-        self.filename = "temp_recording.wav"
+        
+        # self.filename = "temp_recording.wav" <--- NON SERVE PIÙ
         
         # --- STATO DI MONITORAGGIO ---
         self.is_monitoring = False
         self.monitoring_thread = None
-        # Usiamo un SET per salvare i brani (gestisce i duplicati automaticamente)
         self.detected_songs = set()
         
-        print("🎤 Audio Manager Pronto.")
+        print("🎤 Audio Manager Pronto (Modalità RAM).")
 
     def record_audio(self, duration=15):
-        """Registra l'audio dal microfono per 'duration' secondi"""
+        """
+        Registra l'audio dal microfono e lo salva in un buffer in MEMORIA RAM.
+        Non crea nessun file su disco.
+        """
         fs = 44100
         print(f"🔴 Registrazione in corso per {duration} secondi...")
         
+        # Registrazione
         recording = sd.rec(int(duration * fs), samplerate=fs, channels=1)
         sd.wait()
         
-        wav.write(self.filename, fs, recording)
-        print("✅ Registrazione completata.")
-        return self.filename
+        # --- MODIFICA RAM: Scrittura su buffer invece che su file ---
+        wav_buffer = io.BytesIO()           # Crea un file virtuale in memoria
+        wav.write(wav_buffer, fs, recording)
+        wav_buffer.seek(0)                  # Riavvolge il "nastro" all'inizio per poterlo leggere
+        
+        print("✅ Registrazione completata (in memoria).")
+        return wav_buffer  # Restituisce l'oggetto buffer, non una stringa filename
 
-    def _call_acr_api(self, file_path):
+    def _call_acr_api(self, audio_buffer):
         """
-        Funzione interna che chiama l'API di ACRCloud con un file audio.
-        MODIFICATA: Restituisce una LISTA di tutti i brani sopra la soglia.
+        Chiama l'API usando il buffer audio in memoria.
         """
         
         # --- IMPOSTIAMO LA SOGLIA MINIMA DI SCORE ---
         MIN_SCORE_THRESHOLD = 65 
-        
-        # ... (tutta la logica di 'http_method', 'string_to_sign', 'files', 'data' rimane invariata) ...
         
         http_method = "POST"
         http_uri = "/v1/identify"
@@ -70,12 +76,19 @@ class AudioManager:
                      digestmod=hashlib.sha1).digest()
         ).decode('ascii')
 
+        # --- MODIFICA RAM: Calcolo dimensione e preparazione file ---
+        # Otteniamo la dimensione del file direttamente dal buffer
+        file_size = audio_buffer.getbuffer().nbytes 
+
         files = [
-            ('sample', (os.path.basename(file_path), open(file_path, 'rb'), 'audio/wav'))
+            # 'temp.wav' è un nome finto che diamo all'API per fargli capire che è un wav,
+            # ma il contenuto vero viene letto da audio_buffer
+            ('sample', ('temp.wav', audio_buffer, 'audio/wav'))
         ]
+        
         data = {
             'access_key': self.access_key,
-            'sample_bytes': os.path.getsize(file_path),
+            'sample_bytes': file_size, # Usiamo la dimensione calcolata dal buffer
             'timestamp': timestamp,
             'signature': sign,
             'data_type': data_type,
@@ -88,22 +101,17 @@ class AudioManager:
             response = requests.post(url, files=files, data=data)
             result = response.json()
             
-            # --- ECCO LE RIGHE DI DEBUG CHE HO AGGIUNTO ---
-            # Stampiamo l'intera risposta JSON per l'analisi
-            print("--- RISPOSTA COMPLETA DA ACRCLOUD (DEBUG) ---")
-            print(json.dumps(result, indent=2))
-            print("---------------------------------------------")
-            # --- FINE MODIFICA DI DEBUG ---
+            # DEBUG (Opzionale)
+            # print("--- RISPOSTA ACRCLOUD ---")
+            # print(json.dumps(result, indent=2))
             
             status_code = result.get('status', {}).get('code')
-            
-            # --- NUOVA LOGICA PER RISULTATI MULTIPLI ---
             all_tracks_found = []
 
             if status_code == 0: # Successo!
                 metadata = result.get('metadata', {})
                 
-                # 1. Cerca in 'music' (fingerprint)
+                # 1. Cerca in 'music'
                 if 'music' in metadata:
                     for track_data in metadata['music']:
                         current_score = track_data.get('score', 0)
@@ -119,7 +127,7 @@ class AudioManager:
                                 "score": current_score
                             })
 
-                # 2. Cerca in 'humming' (melodia)
+                # 2. Cerca in 'humming'
                 if 'humming' in metadata:
                     for track_data in metadata['humming']:
                         current_score = track_data.get('score', 0)
@@ -135,11 +143,9 @@ class AudioManager:
                                 "score": current_score
                             })
                 
-                # Se non abbiamo trovato nulla SOPRA SOGLIA
                 if not all_tracks_found:
                     return {"status": "not_found", "message": f"Nessun brano sopra soglia {MIN_SCORE_THRESHOLD}"}
                 
-                # Restituisce una LISTA di brani validi
                 return {"status": "multiple_results", "tracks": all_tracks_found}
 
             elif status_code == 1001:
@@ -153,31 +159,25 @@ class AudioManager:
             return {"status": "error", "message": str(e)}
 
     def _monitoring_loop(self, record_duration, cooldown):
-        """
-        Il loop che gira nel thread.
-        MODIFICATO: Gestisce una lista di risultati per i mashup.
-        """
-        print("🎧 Avvio del loop di monitoraggio (modalità Mashup)...")
+        print("🎧 Avvio del loop di monitoraggio (modalità Mashup - RAM)...")
         while self.is_monitoring:
-            # 1. Registra
-            file_path = self.record_audio(duration=record_duration)
+            # 1. Registra (Ottiene un buffer, non un path)
+            audio_buffer = self.record_audio(duration=record_duration)
             
-            # 2. Riconosci (ora 'response' contiene una lista di brani)
-            response = self._call_acr_api(file_path)
+            # 2. Riconosci
+            response = self._call_acr_api(audio_buffer)
             
-            # 3. Salva (Nuova logica di iterazione)
+            # 3. Salva i risultati
             if response.get('status') == 'multiple_results':
                 tracks_list = response.get('tracks', [])
                 
                 if not tracks_list:
-                     print(f"🔍 Nessun brano riconosciuto sopra la soglia in questo campione.")
+                     print(f"🔍 Nessun brano riconosciuto sopra la soglia.")
                 
-                # Itera su TUTTI i brani che hanno superato la soglia
                 for track in tracks_list:
                     track_identifier = f"{track.get('artist')} - {track.get('title')}"
                     current_score = track.get('score')
                     
-                    # Aggiungiamo solo se è nuovo
                     if track_identifier not in self.detected_songs:
                         self.detected_songs.add(track_identifier)
                         print(f"🎶 BRANO RILEVATO (Score: {current_score}): {track_identifier}")
@@ -185,10 +185,12 @@ class AudioManager:
                         print(f"... (brano già rilevato: {track_identifier})")
             
             else:
-                # Errore o Codice 1001 (Non trovato)
-                print(f"🔍 Nessun brano riconosciuto in questo campione ({response.get('message')}).")
+                print(f"🔍 Nessun brano riconosciuto ({response.get('message')}).")
             
-            # 4. Cooldown (se stiamo ancora monitorando)
+            # Chiudiamo il buffer per liberare memoria RAM
+            audio_buffer.close()
+
+            # 4. Cooldown
             if self.is_monitoring:
                 print(f"❄️ Cooldown di {cooldown} secondi...")
                 time.sleep(cooldown)
@@ -196,40 +198,32 @@ class AudioManager:
         print("🛑 Loop di monitoraggio fermato.")
 
     def start_monitoring(self, duration=8, cooldown=5):
-        """Avvia il monitoraggio in un thread separato."""
         if self.is_monitoring:
             return {"status": "error", "message": "Il monitoraggio è già attivo."}
             
         self.is_monitoring = True
-        self.detected_songs = set() # Resetta l'elenco
+        self.detected_songs = set()
         
-        # Avviamo il thread
         self.monitoring_thread = threading.Thread(
             target=self._monitoring_loop,
             args=(duration, cooldown)
         )
-        self.monitoring_thread.daemon = True # Il thread muore se muore l'app
+        self.monitoring_thread.daemon = True
         self.monitoring_thread.start()
         
         return {"status": "success", "message": "Monitoraggio avviato."}
 
     def stop_monitoring(self):
-        """Ferma il monitoraggio e restituisce i risultati."""
         if not self.is_monitoring:
             return {"status": "error", "message": "Il monitoraggio non era attivo."}
         
         self.is_monitoring = False
         
-        # Aspettiamo che il thread finisca (max 5 secondi)
         if self.monitoring_thread:
             self.monitoring_thread.join(timeout=5.0)
             
-        print("✅ Monitoraggio fermato. Risultati finali:")
-        print(self.detected_songs)
-        
-        # Restituiamo i risultati come lista
+        print("✅ Monitoraggio fermato.")
         return {"status": "success", "songs": list(self.detected_songs)}
 
     def get_current_results(self):
-        """Restituisce i risultati correnti senza fermare il monitoraggio."""
         return {"status": "in_progress", "songs": list(self.detected_songs)}
