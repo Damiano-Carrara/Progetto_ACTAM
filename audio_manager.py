@@ -48,6 +48,32 @@ class AudioManager:
         
         print("✅ Registrazione completata (in memoria).")
         return wav_buffer  # Restituisce l'oggetto buffer, non una stringa filename
+    
+    def recognize_song(self):
+        """
+        Metodo wrapper sincrono per compatibilità con app.py.
+        Registra -> Chiama API -> Restituisce il risultato migliore.
+        """
+        # 1. Registra in RAM (usa il default di 15s o quello che preferisci)
+        audio_buffer = self.record_audio(duration=15)
+        
+        # 2. Chiama API interna
+        api_result = self._call_acr_api(audio_buffer)
+        
+        # 3. IMPORTANTE: Chiudi il buffer per liberare la RAM
+        audio_buffer.close()
+        
+        # 4. Adatta il risultato per app.py
+        # La nuova _call_acr_api restituisce una lista di tracce ('multiple_results')
+        # ma il tuo app.py si aspetta un singolo oggetto brano.
+        
+        if api_result.get('status') == 'multiple_results':
+            # Prendiamo il primo risultato della lista (solitamente quello con score più alto)
+            best_match = api_result['tracks'][0]
+            return best_match
+        
+        # Se è 'not_found' o 'error', restituiamo il risultato così com'è
+        return api_result
 
     def _call_acr_api(self, audio_buffer):
         """
@@ -124,7 +150,8 @@ class AudioManager:
                                 "title": track_data.get('title', 'Titolo Sconosciuto'),
                                 "artist": artist_name,
                                 "album": track_data.get('album', {}).get('name', 'Album Sconosciuto'),
-                                "score": current_score
+                                "score": current_score,
+                                "duration_ms": track_data.get('duration_ms', 0) # <--- RIGA AGGIUNTA QUI
                             })
 
                 # 2. Cerca in 'humming'
@@ -140,7 +167,8 @@ class AudioManager:
                                 "title": track_data.get('title', 'Titolo Sconosciuto'),
                                 "artist": artist_name,
                                 "album": track_data.get('album', {}).get('name', 'Album Sconosciuto'),
-                                "score": current_score
+                                "score": current_score,
+                                "duration_ms": track_data.get('duration_ms', 0) # <--- RIGA AGGIUNTA QUI
                             })
                 
                 if not all_tracks_found:

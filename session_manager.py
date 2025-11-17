@@ -34,7 +34,7 @@ class SessionManager:
             "composer": composer_name,     # <--- NUOVO CAMPO (es. Dolly Parton)
             "album": song_data['album'],
             "timestamp": datetime.now().strftime("%H:%M:%S"),
-            "duration_ms": song_data['duration_ms'],
+            "duration_ms": song_data.get('duration_ms', 0),
             "type": song_data.get('type', 'Original')
         }
 
