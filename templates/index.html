@@ -1,47 +1,158 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="it">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SIAE Auto-Borderò</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <meta charset="utf-8">
+  <title>Live Borderò Assistant</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- CSS -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <!-- JS -->
+  <script defer src="{{ url_for('static', filename='script.js') }}"></script>
 </head>
-<body>
+<body class="app-body">
+  <main class="app">
 
-    <div class="container">
-        <header>
-            <h1>🎧 Live Tracker SIAE</h1>
-            <div id="status-indicator" class="status-box idle">
-                <span id="status-text">Pronto</span>
+    <!-- VIEW 1: WELCOME / SETUP EVENTO -->
+    <section id="view-welcome" class="view view--active">
+      <div class="card card--center">
+        <h1>Live Borderò Assistant</h1>
+        <p>Riconoscimento automatico dei brani per compilare il borderò SIAE.</p>
+
+        <form id="event-form" class="event-form">
+          <div class="form-row">
+            <label>Modalità</label>
+            <div class="mode-options">
+              <label class="mode-card">
+                <input type="radio" name="mode" value="dj" checked>
+                <span>DJ Set</span>
+              </label>
+              <label class="mode-card">
+                <input type="radio" name="mode" value="band">
+                <span>Live band</span>
+              </label>
             </div>
-        </header>
+          </div>
 
-        <div class="controls">
-            <button id="btn-start" onclick="startSession()">▶️ Avvia Concerto</button>
-            <button id="btn-stop" onclick="stopSession()" disabled>⏹️ Stop</button>
+          <div class="form-row">
+            <label for="event-name">Nome evento</label>
+            <input id="event-name" name="eventName" type="text" placeholder="Es. Friday Night Party">
+          </div>
+
+          <div class="form-row">
+            <label for="event-venue">Luogo</label>
+            <input id="event-venue" name="eventVenue" type="text" placeholder="Es. Club XYZ">
+          </div>
+
+          <div class="form-row">
+            <label for="event-date">Data</label>
+            <input id="event-date" name="eventDate" type="date">
+          </div>
+
+          <button type="submit" class="btn btn-primary">Avvia programma</button>
+        </form>
+      </div>
+    </section>
+
+    <!-- VIEW 2: SESSIONE LIVE -->
+    <section id="view-session" class="view" hidden>
+      <header class="session-header">
+        <div class="session-info">
+          <h2 id="session-title">Sessione live</h2>
+          <p id="session-meta"></p>
         </div>
 
-        <main>
-            <h2>Playlist Rilevata</h2>
-            <div class="table-wrapper">
-                <table id="playlist-table">
-                    <thead>
-                        <tr>
-                            <th>Ora</th>
-                            <th>Titolo</th>
-                            <th>Artista</th>
-                            <th>Compositore</th> <th>Durata</th>
-                            <th>Tipo</th>
-                            <th>Azioni</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        </tbody>
-                </table>
-            </div>
-        </main>
-    </div>
+        <!-- Indicatore di stato (mantenendo id e classi della UI brutta) -->
+        <div id="status-indicator" class="status-box idle">
+          <span id="status-text">Pronto</span>
+        </div>
 
-    <script src="{{ url_for('static', filename='script.js') }}"></script>
+        <div class="session-controls">
+          <button id="btn-start" class="btn btn-primary">▶️ Avvia riconoscimento</button>
+          <button id="btn-stop" class="btn btn-danger" disabled>⏹️ Stop</button>
+          <button id="btn-go-review" class="btn" disabled>Vai alla review</button>
+        </div>
+      </header>
+
+      <section class="session-content">
+        <!-- NOW PLAYING -->
+        <div class="card now-playing">
+          <h3>Now playing</h3>
+          <p class="np-title" id="now-playing-title">In ascolto...</p>
+          <p class="np-artist" id="now-playing-artist"></p>
+          <p class="np-extra">
+            <span id="now-playing-album"></span>
+            <span id="now-playing-type" class="badge"></span>
+          </p>
+          <p class="np-meta">
+            <span id="now-playing-timestamp"></span>
+            <span id="now-playing-duration"></span>
+            <span id="now-playing-score"></span>
+          </p>
+        </div>
+
+        <!-- LOG LIVE -->
+        <div class="card live-log">
+          <div class="live-log__header">
+            <h3>Log live</h3>
+            <button id="btn-refresh" class="btn btn-small">Aggiorna lista</button>
+          </div>
+          <div class="table-wrapper">
+            <table class="table" id="live-log-table">
+              <thead>
+                <tr>
+                  <th>Ora</th>
+                  <th>Brano</th>
+                  <th>Artista</th>
+                  <th>Compositori</th>
+                  <th>Durata</th>
+                  <th>Score</th>
+                  <th>Tipo</th>
+                  <th>Azioni</th>
+                </tr>
+              </thead>
+              <tbody id="live-log-body">
+                <!-- Righe generate da JS -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </section>
+
+    <!-- VIEW 3: REVIEW / BORDERÒ -->
+    <section id="view-review" class="view" hidden>
+      <header class="review-header">
+        <h2>Review borderò</h2>
+        <p>Modifica i dati se necessario, poi esporta il borderò.</p>
+
+        <div class="review-controls">
+          <button id="btn-back-session" class="btn">⬅️ Torna alla sessione</button>
+          <button id="btn-export" class="btn btn-primary" disabled>💾 Esporta borderò (CSV)</button>
+        </div>
+      </header>
+
+      <section class="card">
+        <div class="table-wrapper">
+          <table class="table" id="review-table">
+            <thead>
+              <tr>
+                <th>Ora</th>
+                <th>Titolo</th>
+                <th>Artista</th>
+                <th>Compositore</th> <th>Album</th>
+                <th>Durata</th>
+                <th>Tipo</th>
+                <th>Azioni</th>
+              </tr>
+            </thead>
+            <tbody id="review-table-body">
+              <!-- Righe generate da JS -->
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </section>
+
+  </main>
 </body>
 </html>
