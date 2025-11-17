@@ -1,6 +1,7 @@
 from flask import Flask, render_template, jsonify, request
 from audio_manager import AudioManager
 from session_manager import SessionManager # <--- Importiamo il nuovo modulo
+import atexit # Per fermare il monitoraggio all'uscita
 
 app = Flask(__name__)
 
@@ -10,6 +11,7 @@ session_bot = SessionManager()
 
 @app.route('/')
 def home():
+    # Il file index.html non è stato modificato
     return render_template('index.html')
 
 # --- API 1: Riconoscimento e Aggiunta Automatica ---
@@ -45,5 +47,16 @@ def delete_song():
         return jsonify({"status": "deleted", "id": song_id})
     return jsonify({"status": "error", "message": "ID mancante"})
 
+# Funzione di pulizia:
+# Se chiudiamo l'app (es. Ctrl+C), ferma il thread
+def cleanup_on_exit():
+    print("Uscita dall'app... Fermo il monitoraggio se attivo.")
+    if audio_bot.is_monitoring:
+        audio_bot.stop_monitoring()
+
+atexit.register(cleanup_on_exit)
+
 if __name__ == '__main__':
-    app.run(debug=True)
+    # Disabilitiamo il reloader di debug
+    # (il reloader può causare problemi con i thread)
+    app.run(debug=False, use_reloader=False)
