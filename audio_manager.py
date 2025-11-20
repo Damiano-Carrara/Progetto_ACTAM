@@ -10,6 +10,7 @@ import scipy.io.wavfile as wav
 from dotenv import load_dotenv
 import threading
 import io  # <--- 1. Importiamo il modulo per gestire i file in memoria
+import numpy as np
 
 # Carica le variabili dal file .env
 load_dotenv()
@@ -40,10 +41,13 @@ class AudioManager:
         # Registrazione
         recording = sd.rec(int(duration * fs), samplerate=fs, channels=1)
         sd.wait()
+        # OTTIMIZZAZIONE: Convertiamo in int16 per dimezzare la dimensione del file
+        # Moltiplichiamo per 32767 (range int16) e castiamo
+        recording_int16 = (recording * 32767).astype(np.int16)
         
         # --- MODIFICA RAM: Scrittura su buffer invece che su file ---
         wav_buffer = io.BytesIO()           # Crea un file virtuale in memoria
-        wav.write(wav_buffer, fs, recording)
+        wav.write(wav_buffer, fs, recording_int16)
         wav_buffer.seek(0)                  # Riavvolge il "nastro" all'inizio per poterlo leggere
         
         print("✅ Registrazione completata (in memoria).")
@@ -127,49 +131,54 @@ class AudioManager:
             response = requests.post(url, files=files, data=data)
             result = response.json()
             
-            # DEBUG (Opzionale)
-            # print("--- RISPOSTA ACRCLOUD ---")
-            # print(json.dumps(result, indent=2))
-            
             status_code = result.get('status', {}).get('code')
             all_tracks_found = []
 
             if status_code == 0: # Successo!
                 metadata = result.get('metadata', {})
                 
+                # Funzione helper interna per estrarre i dati comuni
+                def extract_track_data(track_data, type_label):
+                    current_score = track_data.get('score', 0)
+                    if current_score >= MIN_SCORE_THRESHOLD:
+                        artists_list = track_data.get('artists', [])
+                        artist_name = artists_list[0]['name'] if artists_list else "Sconosciuto"
+                        
+                        # --- NEW: Estrazione ISRC e UPC ---
+                        external_ids = track_data.get('external_ids', {})
+                        isrc_code = external_ids.get('isrc', None)
+                        
+                        external_meta = track_data.get('external_metadata', {})
+                        upc_code = external_meta.get('upc', None)
+                        # A volte l'UPC è direttamente nell'album
+                        if not upc_code:
+                            upc_code = track_data.get('album', {}).get('upc', None)
+                        # ----------------------------------
+
+                        return {
+                            "status": "success",
+                            "type": type_label,
+                            "title": track_data.get('title', 'Titolo Sconosciuto'),
+                            "artist": artist_name,
+                            "album": track_data.get('album', {}).get('name', 'Album Sconosciuto'),
+                            "score": current_score,
+                            "duration_ms": track_data.get('duration_ms', 0),
+                            "isrc": isrc_code,  # <--- NEW
+                            "upc": upc_code     # <--- NEW
+                        }
+                    return None
+
                 # 1. Cerca in 'music'
                 if 'music' in metadata:
-                    for track_data in metadata['music']:
-                        current_score = track_data.get('score', 0)
-                        if current_score >= MIN_SCORE_THRESHOLD:
-                            artists_list = track_data.get('artists', [])
-                            artist_name = artists_list[0]['name'] if artists_list else "Sconosciuto"
-                            all_tracks_found.append({
-                                "status": "success",
-                                "type": "Original",
-                                "title": track_data.get('title', 'Titolo Sconosciuto'),
-                                "artist": artist_name,
-                                "album": track_data.get('album', {}).get('name', 'Album Sconosciuto'),
-                                "score": current_score,
-                                "duration_ms": track_data.get('duration_ms', 0) # <--- RIGA AGGIUNTA QUI
-                            })
+                    for t in metadata['music']:
+                        data = extract_track_data(t, "Original")
+                        if data: all_tracks_found.append(data)
 
                 # 2. Cerca in 'humming'
                 if 'humming' in metadata:
-                    for track_data in metadata['humming']:
-                        current_score = track_data.get('score', 0)
-                        if current_score >= MIN_SCORE_THRESHOLD:
-                            artists_list = track_data.get('artists', [])
-                            artist_name = artists_list[0]['name'] if artists_list else "Sconosciuto"
-                            all_tracks_found.append({
-                                "status": "success",
-                                "type": "Cover/Humming",
-                                "title": track_data.get('title', 'Titolo Sconosciuto'),
-                                "artist": artist_name,
-                                "album": track_data.get('album', {}).get('name', 'Album Sconosciuto'),
-                                "score": current_score,
-                                "duration_ms": track_data.get('duration_ms', 0) # <--- RIGA AGGIUNTA QUI
-                            })
+                    for t in metadata['humming']:
+                        data = extract_track_data(t, "Cover/Humming")
+                        if data: all_tracks_found.append(data)
                 
                 if not all_tracks_found:
                     return {"status": "not_found", "message": f"Nessun brano sopra soglia {MIN_SCORE_THRESHOLD}"}
