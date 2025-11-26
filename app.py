@@ -1,7 +1,7 @@
 from flask import Flask, render_template, jsonify, request
 from audio_manager import AudioManager
-from session_manager import SessionManager # <--- Importiamo il nuovo modulo
-import atexit # Per fermare il monitoraggio all'uscita
+from session_manager import SessionManager 
+import atexit 
 
 app = Flask(__name__)
 
@@ -11,52 +11,54 @@ session_bot = SessionManager()
 
 @app.route('/')
 def home():
-    # Il file index.html non è stato modificato
     return render_template('index.html')
 
-# --- API 1: Riconoscimento e Aggiunta Automatica ---
+# --- API 1: AVVIA IL MONITORAGGIO CONTINUO ---
 @app.route('/api/start_recognition', methods=['POST'])
 def start_recognition():
-    # 1. Riconosci il brano (ACRCloud)
-    api_result = audio_bot.recognize_song()
+    # Riceviamo il target artist (Bias)
+    data = request.get_json() or {}
+    target_artist = data.get('targetArtist')
     
-    # 2. Passa il risultato al Session Manager (che gestisce i duplicati)
-    session_result = session_bot.add_song(api_result)
+    print(f"🚀 Richiesta avvio monitoraggio. Bias: {target_artist}")
     
-    # 3. Restituisci al frontend sia il risultato dell'API sia se è stato aggiunto
-    return jsonify({
-        "recognition": api_result,
-        "session_update": session_result
-    })
+    # Passiamo a AudioBot la funzione add_song del SessionBot come "Callback"
+    # Così quando AudioBot trova qualcosa, lo passa direttamente a SessionBot
+    started = audio_bot.start_continuous_recognition(
+        callback_function=session_bot.add_song,
+        target_artist=target_artist
+    )
+    
+    if started:
+        return jsonify({"status": "started", "message": "Monitoraggio continuo avviato."})
+    else:
+        return jsonify({"status": "error", "message": "Già in esecuzione."})
 
-# --- API 2: Ottieni tutta la lista (per aggiornare la tabella) ---
+# --- API 2: FERMA IL MONITORAGGIO ---
+@app.route('/api/stop_recognition', methods=['POST'])
+def stop_recognition():
+    audio_bot.stop_continuous_recognition()
+    return jsonify({"status": "stopped"})
+
+# --- API 3: OTTIENI LA LISTA (Per il Frontend che deve fare polling) ---
 @app.route('/api/get_playlist', methods=['GET'])
 def get_playlist():
+    # Restituisce la lista accumulata dal SessionManager
     playlist = session_bot.get_playlist()
     return jsonify({"playlist": playlist})
 
-# --- API 3: Cancella un brano (per il tasto "Cestino") ---
+# --- API 4: CANCELLA ---
 @app.route('/api/delete_song', methods=['POST'])
 def delete_song():
-    # Il frontend ci manda un JSON tipo {"id": 3}
     data = request.get_json()
-    song_id = data.get('id')
-    
-    if song_id:
-        session_bot.delete_song(song_id)
-        return jsonify({"status": "deleted", "id": song_id})
-    return jsonify({"status": "error", "message": "ID mancante"})
+    if session_bot.delete_song(data.get('id')):
+        return jsonify({"status": "deleted"})
+    return jsonify({"status": "error"})
 
-# Funzione di pulizia:
-# Se chiudiamo l'app (es. Ctrl+C), ferma il thread
 def cleanup_on_exit():
-    print("Uscita dall'app... Fermo il monitoraggio se attivo.")
-    if audio_bot.is_monitoring:
-        audio_bot.stop_monitoring()
+    audio_bot.stop_continuous_recognition()
 
 atexit.register(cleanup_on_exit)
 
 if __name__ == '__main__':
-    # Disabilitiamo il reloader di debug
-    # (il reloader può causare problemi con i thread)
     app.run(debug=False, use_reloader=False)
