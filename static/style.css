@@ -1,66 +1,387 @@
+:root {
+  --bg: #0b0c10;
+  --panel: #12151a;
+  --text: #e6eef8;
+  --muted: #9fb0c2;
+  --border: #1f242d;
+  --primary: #7c3aed;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
 body {
-    background-color: #121212;
-    color: #e0e0e0;
-    font-family: sans-serif;
-    margin: 0;
-    padding: 20px;
+  height: 100%;
 }
 
-.container {
-    max-width: 800px;
-    margin: 0 auto;
+body {
+  margin: 0;
+  font-family: "Arial", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  background: linear-gradient(180deg, #0b0c10, #0e1116);
+  color: var(--text);
 }
 
-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    border-bottom: 1px solid #333;
-    padding-bottom: 20px;
+#app {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 24px 16px 40px;
 }
 
-.status-box {
-    padding: 10px 20px;
-    border-radius: 5px;
-    font-weight: bold;
+/* UTILITY */
+
+.hidden {
+  display: none !important; /* così vince su qualsiasi display successivo */
 }
-.recording { background-color: #d32f2f; color: white; animation: pulse 2s infinite;}
-.idle { background-color: #333; color: #aaa; }
-.error { background-color: #f57c00; color: black; }
 
-.controls { margin: 20px 0; display: flex; gap: 10px; }
+/* VIEWS */
 
-button {
-    padding: 15px 30px;
-    font-size: 16px;
-    cursor: pointer;
-    border: none;
-    border-radius: 5px;
-    background-color: #1976d2;
-    color: white;
+.view {
+  display: none;
 }
-button:disabled { background-color: #444; cursor: not-allowed; }
-#btn-stop { background-color: #d32f2f; }
 
-table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-th, td { padding: 12px; text-align: left; border-bottom: 1px solid #333; }
-th { background-color: #1e1e1e; color: #888; }
+.view.view--active {
+  display: block;
+}
+
+.hero {
+  margin-bottom: 24px;
+}
+
+.hero--small {
+  margin-bottom: 12px;
+}
+
+.hero h1,
+.hero h2 {
+  margin: 0 0 4px;
+}
+
+.subtitle {
+  margin: 0;
+  color: var(--muted);
+}
+
+/* CARDS */
+
+.card {
+  background: var(--panel);
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  padding: 16px 18px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.4);
+}
+
+/* FORM WELCOME */
+
+.mode-group {
+  border: none;
+  margin: 0 0 16px;
+  padding: 0;
+}
+
+.mode-group legend {
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  cursor: pointer;
+  color: var(--muted);
+}
+
+.option input {
+  accent-color: var(--primary);
+}
+
+/* campo artista concerto */
+
+.concert-artist-group {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.concert-artist-group label {
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.concert-artist-group input {
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: #0d1117;
+  color: var(--text);
+  font-size: 0.9rem;
+}
+
+.controls {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+/* BUTTONS */
+
+.btn {
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  padding: 6px 14px;
+  font-size: 0.95rem;
+  background: #111827;
+  color: var(--text);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.1s ease, box-shadow 0.1s ease, background 0.1s ease;
+}
+
+.btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
+}
+
+.btn--primary {
+  background: linear-gradient(135deg, #7c3aed, #5eead4);
+  border: none;
+  color: #0b0c10;
+  font-weight: 600;
+}
+
+.btn--small {
+  padding: 4px 10px;
+  font-size: 0.85rem;
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* SESSION HEAD */
+
+.session-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.session-head .meta {
+  color: var(--muted);
+  margin-top: 4px;
+}
 
 .badge {
-    background-color: #333;
-    padding: 4px 8px;
-    border-radius: 4px;
-    font-size: 12px;
+  display: inline-block;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 0.9rem;
 }
 
-.btn-delete {
-    background: none;
-    padding: 5px;
-    font-size: 18px;
+/* GRID */
+
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 2fr;
+  gap: 16px;
 }
 
-@keyframes pulse {
-    0% { opacity: 1; }
-    50% { opacity: 0.5; }
-    100% { opacity: 1; }
+@media (max-width: 900px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* NOW PLAYING */
+
+.now-title {
+  font-size: 1.2rem;
+  font-weight: 700;
+  margin: 0 0 6px;
+}
+
+.now-meta {
+  color: var(--muted);
+  margin: 4px 0;
+}
+
+/* dots animati */
+.dots::after {
+  content: "…";
+  animation: dots 1.2s steps(4, end) infinite;
+  display: inline-block;
+  width: 1.2em;
+  overflow: hidden;
+}
+
+@keyframes dots {
+  0% {
+    width: 0.3em;
+  }
+  33% {
+    width: 0.6em;
+  }
+  66% {
+    width: 0.9em;
+  }
+  100% {
+    width: 1.2em;
+  }
+}
+
+/* LOG LIVE */
+
+.log-head,
+.log-row {
+  display: grid;
+  grid-template-columns: 110px 1fr 1fr 100px;
+  gap: 8px;
+  font-size: 0.9rem;
+}
+
+.log-head {
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 6px;
+  color: var(--muted);
+}
+
+.log-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 340px;
+  overflow: auto;
+}
+
+.log-row .status-ok {
+  color: #22c55e;
+}
+
+.log-row .status-same {
+  color: #9fb0c2;
+}
+
+.log-row .status-new {
+  color: #eab308;
+}
+
+/* REVIEW TABLE */
+
+.table {
+  margin-top: 12px;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 1.2fr 1.4fr auto;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.row--head {
+  font-size: 0.9rem;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+/* intestazioni colonna (Compositore / Titolo / Azioni) tutte a sinistra
+   con lo stesso rientro delle caselle sottostanti */
+.row--head span {
+  text-align: left;
+  padding-left: 8px;
+}
+
+.row .tools {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  flex-wrap: wrap; /* così se lo spazio è stretto i bottoni vanno a capo */
+}
+
+.actions {
+  margin-top: 14px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px; /* così Undo e Generate non stanno appiccicati */
+}
+
+input.inline {
+  width: 100%;
+  background: #0d1117;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 8px;
+  font-size: 0.9rem;
+}
+
+.row.row--confirmed input.inline {
+  border-style: solid;
+  border-color: #22c55e;
+}
+
+/* SCROLLBAR LEGGERA */
+
+.log-body::-webkit-scrollbar,
+body::-webkit-scrollbar {
+  width: 8px;
+}
+
+.log-body::-webkit-scrollbar-thumb,
+body::-webkit-scrollbar-thumb {
+  background: #111827;
+  border-radius: 999px;
+}
+
+/* MODAL DI CONFERMA */
+
+.modal {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal--hidden {
+  display: none;
+}
+
+.modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+}
+
+.modal-dialog {
+  position: relative;
+  min-width: 260px;
+  max-width: 420px;
+  text-align: center;
+}
+
+.modal-message {
+  margin: 4px 0 16px;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
 }

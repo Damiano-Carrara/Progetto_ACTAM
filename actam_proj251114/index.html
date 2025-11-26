@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Borderò Assist</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <main id="app">
+    <!-- FACCIATA 1: WELCOME -->
+    <section id="view-welcome" class="view view--active">
+      <header class="hero">
+        <h1 id="welcome-title">Borderò Assist</h1>
+        <p class="subtitle">Riconoscimento live e compilazione automatica</p>
+      </header>
+
+      <form id="welcome-form" class="card">
+        <fieldset class="mode-group">
+          <legend>Scegli la modalità</legend>
+          <label class="option">
+            <input type="radio" name="mode" value="dj" checked />
+            DJ set
+          </label>
+
+          <label class="option">
+            <input type="radio" name="mode" value="band" />
+            Live band
+          </label>
+        </fieldset>
+
+        <button id="btn-start-program" type="submit" class="btn btn--primary">
+          Start program
+        </button>
+      </form>
+    </section>
+
+    <!-- FACCIATA 2: SESSION -->
+    <section id="view-session" class="view" hidden>
+      <header class="session-head card">
+        <div class="left">
+          <h2>Sessione</h2>
+          <div class="meta">
+            Modalità: <span id="mode-badge" class="badge">DJ set</span>
+            • Tempo sessione: <span id="session-timer">00:00</span>
+          </div>
+        </div>
+        <div class="controls">
+          <button id="btn-session-start" class="btn btn--primary">Start</button>
+          <button id="btn-session-pause" class="btn" disabled>Pause</button>
+          <button id="btn-session-stop" class="btn" disabled>Stop</button>
+        </div>
+      </header>
+
+      <div class="grid">
+        <section class="card now">
+          <h3>Now playing</h3>
+          <p id="now-title" class="now-title">
+            In ascolto<span class="dots" aria-hidden="true"></span>
+          </p>
+          <p class="now-meta">Compositore: <span id="now-composer">—</span></p>
+          <p class="now-meta">Durata brano: <span id="now-duration">00:00</span></p>
+        </section>
+
+        <section class="card">
+          <h3>Log live</h3>
+          <div class="log-head">
+            <span>Ora</span><span>Brano</span><span>Compositore</span><span>Stato</span>
+          </div>
+          <div id="live-log" class="log-body"></div>
+        </section>
+      </div>
+    </section>
+
+    <!-- FACCIATA 3: REVIEW -->
+    <section id="view-review" class="view" hidden>
+      <div class="card">
+        <h2>Revisione Borderò</h2>
+        <div class="table">
+          <div class="row head">
+            <span>Compositore</span><span>Titolo</span><span>Durata</span><span>Azioni</span>
+          </div>
+          <div id="review-rows"></div>
+
+          
+          <template id="review-row-template">
+  <div class="row">
+    <span><input class="inline composer-input"></span>
+    <span><input class="inline title-input"></span>
+    <span class="duration-cell"></span>
+    <span class="tools">
+      <button class="btn btn--primary btn-small" data-action="confirm">Conferma</button>
+      <button class="btn btn-small" data-action="delete">Delete</button>
+    </span>
+  </div>
+</template>
+
+        </div>
+        <div class="actions">
+          <button id="btn-generate" class="btn btn--primary" disabled>Generate</button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="script.js" defer></script>
+</body>
+</html>
