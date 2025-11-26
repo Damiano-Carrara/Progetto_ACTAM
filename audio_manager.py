@@ -223,7 +223,6 @@ class AudioManager:
         data = {'access_key': self.access_key, 'sample_bytes': len(buffer_content), 'timestamp': timestamp, 'signature': sign, 'data_type': data_type, "signature_version": signature_version}
 
         try:
-            # Timeout a 20s per gestire connessioni lente senza fallire
             response = requests.post(f"https://{self.host}/v1/identify", files=files, data=data, timeout=20) 
             result = response.json()
             status_code = result.get('status', {}).get('code')
@@ -233,37 +232,62 @@ class AudioManager:
                 all_found = []
                 def norm(sc): return int(sc * 100) if sc <= 1.0 else int(sc)
 
+                # --- CONTROLLO MUSIC (Originali) ---
                 if 'music' in metadata:
                     for t in metadata['music']:
                         sc = norm(t.get('score', 0))
+                        title = t.get('title', 'Sconosciuto')
+                        
                         if sc >= THRESHOLD_MUSIC:
                             artists = t.get('artists', [])
                             all_found.append({
                                 "status": "success", "type": "Original",
-                                "title": t.get('title'), "artist": artists[0]['name'] if artists else "Unknown",
+                                "title": title, "artist": artists[0]['name'] if artists else "Unknown",
                                 "album": t.get('album', {}).get('name'), "score": sc,
                                 "duration_ms": t.get('duration_ms'), "isrc": t.get('external_ids', {}).get('isrc'),
                                 "upc": t.get('external_metadata', {}).get('upc')
                             })
+                        else:
+                            # ### DEBUG LOG ###
+                            print(f"📉 SCARTATO (Originale): '{title}' - Score: {sc}% (Serve: {THRESHOLD_MUSIC}%)")
 
+                # --- CONTROLLO HUMMING (Cover) ---
                 if 'humming' in metadata:
                     for t in metadata['humming']:
                         sc = norm(t.get('score', 0))
+                        title = t.get('title', 'Sconosciuto')
+
                         if sc >= THRESHOLD_HUMMING:
                             artists = t.get('artists', [])
                             all_found.append({
                                 "status": "success", "type": "Cover/Humming",
-                                "title": t.get('title'), "artist": artists[0]['name'] if artists else "Unknown",
+                                "title": title, "artist": artists[0]['name'] if artists else "Unknown",
                                 "album": t.get('album', {}).get('name'), "score": sc,
                                 "duration_ms": t.get('duration_ms'), "isrc": t.get('external_ids', {}).get('isrc'),
                                 "upc": t.get('external_metadata', {}).get('upc')
                             })
+                        else:
+                            # ### DEBUG LOG ###
+                            print(f"📉 SCARTATO (Humming): '{title}' - Score: {sc}% (Serve: {THRESHOLD_HUMMING}%)")
 
                 if all_found: 
                     all_found.sort(key=lambda x: x['score'], reverse=True)
+                    # ### DEBUG LOG ###
+                    print(f"✅ TROVATO: {all_found[0]['title']} (Score: {all_found[0]['score']}%)")
                     return {"status": "multiple_results", "tracks": all_found}
+                
+                print("⚠️ Nessun risultato ha superato la soglia.")
                 return {"status": "not_found"}
-            return {"status": "not_found"}
+
+            elif status_code == 1001:
+                # ### DEBUG LOG ###
+                print("🚫 API: Nessuna corrispondenza nel database (Code 1001)")
+                return {"status": "not_found"}
+            
+            else:
+                print(f"❌ API Error Code: {status_code}: {result.get('status', {}).get('msg')}")
+                return {"status": "not_found"}
+                
         except Exception as e:
-            print(f"Error API: {e}")
+            print(f"❌ Error API Exception: {e}")
             return {"status": "error"}
