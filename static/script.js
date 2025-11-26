@@ -25,8 +25,11 @@ let sessionTick = null;
 // undo stack (ultimi 5 stati della playlist in review)
 let undoStack = [];
 
-// snapshot eventuale per tornare da review a sessione (se in futuro avrai un tasto)
+// snapshot eventuale per tornare da review a sessione (se servirà)
 let lastSessionSnapshot = null;
+
+// stato dell'onda (idle = piatta, playing = viva, paused = si spegne lentamente)
+let waveMode = "idle"; // "idle" | "playing" | "paused"
 
 // --- UTILS ---
 const $ = (sel) => document.querySelector(sel);
@@ -92,6 +95,182 @@ function hydrateSessionHeader() {
 function setNow(title, composer) {
   $("#now-title").textContent = title || "In ascolto";
   $("#now-composer").textContent = composer || "—";
+}
+
+// --- ONDA STAZIONARIA SOTTO "IN ASCOLTO" ---
+function initListeningWave() {
+  const canvas = document.getElementById("now-wave");
+  if (!canvas || !canvas.getContext) return;
+
+  const ctx = canvas.getContext("2d");
+  let dpr = window.devicePixelRatio || 1;
+
+  function resize() {
+    const rect = canvas.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    dpr = window.devicePixelRatio || 1;
+    canvas.width = rect.width * dpr;
+    canvas.height = rect.height * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  const MIN_NODES = 2;
+  const MAX_NODES = 20;
+
+  // nodi interni (numero di "lobi" della stazionaria)
+  let currentNodes = 8;
+  let targetNodes = 8;
+  let lastNodeChange = 0;
+
+  // fattore di ampiezza casuale dell’inviluppo (0.3..1.0, liscio nel tempo)
+  let envAmpCurrent = 0.7;
+  let envAmpTarget = 0.7;
+  let lastEnvChange = 0;
+
+  // nodo centrale mobile (in coordinate normalizzate 0..1)
+  const MIN_CENTER = 0.15;
+  const MAX_CENTER = 0.85;
+  let nodeCenter = 0.5;
+  let nodeDir = Math.random() < 0.5 ? 1 : -1; // +1 dx, -1 sx
+  let nextDirSwitch = 0;
+  const nodeSpeed = 0.0002; // frazione di larghezza per ms (~0.2/sec)
+
+  const speed = 0.002; // velocità di oscillazione base
+  let phase = 0; // fase dell'onda
+  let amplitudeLevel = 0; // 0 = linea piatta, 1 = piena
+
+  let lastTime = 0;
+
+  function draw(timestamp) {
+    if (!lastTime) lastTime = timestamp;
+    const dt = timestamp - lastTime;
+    lastTime = timestamp;
+
+    // fase a seconda dello stato
+    if (waveMode === "playing") {
+      phase += speed * dt;
+    } else if (waveMode === "paused") {
+      phase += speed * dt * 0.3; // si muove piano mentre svanisce
+    }
+
+    // cambio “target” nodi circa ogni DUE secondi (2..20)
+    if (!lastNodeChange) lastNodeChange = timestamp;
+    if (timestamp - lastNodeChange > 500) {
+      lastNodeChange = timestamp;
+
+      let next =
+        MIN_NODES +
+        Math.floor(Math.random() * (MAX_NODES - MIN_NODES + 1)); // 2..20
+
+      if (next === Math.round(targetNodes)) {
+        const span = MAX_NODES - MIN_NODES + 1;
+        next = MIN_NODES + ((next - MIN_NODES + 1) % span);
+      }
+      targetNodes = next;
+    }
+
+    // transizione morbida tra numero di nodi attuale e target
+    currentNodes += (targetNodes - currentNodes) * 0.08;
+
+    // ampiezza globale: playing = 1, idle/paused = 0 (va a zero gradualmente)
+    const targetAmplitudeLevel = waveMode === "playing" ? 1 : 0;
+    amplitudeLevel += (targetAmplitudeLevel - amplitudeLevel) * 0.05;
+
+    // fattore di ampiezza casuale dell’inviluppo (respira random)
+    if (!lastEnvChange) lastEnvChange = timestamp;
+    if (timestamp - lastEnvChange > 900) {
+      lastEnvChange = timestamp;
+      envAmpTarget = 0.3 + Math.random() * 0.7; // 0.3..1.0
+    }
+    envAmpCurrent += (envAmpTarget - envAmpCurrent) * 0.05;
+
+    // nodo centrale che si muove con moto continuo e inversione random (< 2s)
+    if (!nextDirSwitch) {
+      nextDirSwitch = timestamp + 300 + Math.random() * 1700; // tra 0.3s e 2s
+    }
+    if (timestamp >= nextDirSwitch) {
+      nodeDir *= -1; // cambia direzione
+      nextDirSwitch = timestamp + 300 + Math.random() * 1700;
+    }
+
+    nodeCenter += nodeDir * nodeSpeed * dt;
+
+    // rimbalzo ai bordi con reset del timer di inversione
+    if (nodeCenter < MIN_CENTER) {
+      nodeCenter = MIN_CENTER;
+      nodeDir = 1;
+      nextDirSwitch = timestamp + 300 + Math.random() * 1700;
+    } else if (nodeCenter > MAX_CENTER) {
+      nodeCenter = MAX_CENTER;
+      nodeDir = -1;
+      nextDirSwitch = timestamp + 300 + Math.random() * 1700;
+    }
+
+    const rect = canvas.getBoundingClientRect();
+    if (!rect.width || !rect.height) {
+      requestAnimationFrame(draw);
+      return;
+    }
+
+    const width = rect.width;
+    const height = rect.height;
+    const centerY = height / 2;
+    const baseAmplitude = height * 0.35;
+
+    // fading: più veloce quando “suona”, più lento quando va a spegnersi
+    const fadeAlpha = waveMode === "playing" ? 0.06 : 0.0075;
+    ctx.fillStyle = `rgba(11, 12, 16, ${fadeAlpha})`;
+    ctx.fillRect(0, 0, width, height);
+
+    // k controlla il numero di nodi interni della stazionaria
+    const k = (currentNodes * Math.PI) / width;
+
+    ctx.beginPath();
+    for (let x = 0; x <= width; x += 2) {
+      const pos = x / width;
+
+      // inviluppo con nodo a sinistra (0), nodo centrale mobile (nodeCenter),
+      // nodo a destra (1), costruito con due mezze sinusoidi
+      let envelope;
+      if (pos <= nodeCenter) {
+        const denom = nodeCenter <= 0.001 ? 0.001 : nodeCenter;
+        const t = pos / denom; // 0..1
+        envelope = Math.sin(Math.PI * t); // 0 -> π
+      } else {
+        const denom = 1 - nodeCenter <= 0.001 ? 0.001 : 1 - nodeCenter;
+        const t = (pos - nodeCenter) / denom; // 0..1
+        envelope = Math.sin(Math.PI * t);
+      }
+      if (envelope < 0) envelope = 0;
+
+      // ampiezza locale = inviluppo * fattore random * ampiezza globale
+      const localGain = envAmpCurrent * envelope;
+      const amplitude =
+        baseAmplitude * amplitudeLevel * localGain; // 0 se idle/paused completo
+
+      const y = centerY + amplitude * Math.sin(k * x) * Math.cos(phase);
+
+      if (x === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+
+    const grad = ctx.createLinearGradient(0, 0, width, 0);
+    grad.addColorStop(0, "rgba(94, 234, 212, 0.7)");
+    grad.addColorStop(0.5, "rgba(120, 150, 255, 0.8)");
+    grad.addColorStop(1, "rgba(124, 58, 237, 0.9)");
+
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = grad;
+    ctx.globalCompositeOperation = "lighter";
+    ctx.stroke();
+    ctx.globalCompositeOperation = "source-over";
+
+    requestAnimationFrame(draw);
+  }
+
+  resize();
+  window.addEventListener("resize", resize);
+  requestAnimationFrame(draw);
 }
 
 // --- LOG LIVE ---
@@ -168,7 +347,6 @@ function undoLast() {
 // --- CHIAMATE BACKEND START/STOP RICONOSCIMENTO ---
 
 async function startBackendRecognition() {
-  // targetArtist: solo se modalità concerto e c'è un nome inserito
   const body = {};
   if (state.mode === "concert" && state.concertArtist) {
     body.targetArtist = state.concertArtist;
@@ -228,7 +406,6 @@ async function pollPlaylistOnce() {
       if (!Number.isFinite(id)) return;
 
       if (id > lastMaxSongId) {
-        // Nuovo brano rispetto a quelli che conoscevamo
         const track = {
           id,
           title: song.title || "Titolo sconosciuto",
@@ -265,9 +442,10 @@ async function pollPlaylistOnce() {
 
 function startPlaylistPolling() {
   if (playlistPollInterval) return;
-  // Primo giro subito
+  // prima chiamata immediata
   pollPlaylistOnce();
-  playlistPollInterval = setInterval(pollPlaylistOnce, 4000);
+  // POCO SPAM: una richiesta ogni 15 secondi
+  playlistPollInterval = setInterval(pollPlaylistOnce, 15000);
 }
 
 function stopPlaylistPolling() {
@@ -287,6 +465,9 @@ async function sessionStart() {
   $("#btn-session-pause").disabled = false;
   $("#btn-session-stop").disabled = false;
 
+  // l'onda parte
+  waveMode = "playing";
+
   if (!sessionTick) {
     startSessionTimer();
   }
@@ -300,6 +481,8 @@ async function sessionPause() {
   $("#btn-session-pause").disabled = true;
   $("#btn-session-stop").disabled = false;
 
+  waveMode = "paused";
+
   pauseSessionTimer();
   await stopBackendRecognition();
   stopPlaylistPolling();
@@ -307,23 +490,23 @@ async function sessionPause() {
 
 // STOP → ferma riconoscimento, sincronizza playlist e va direttamente in review
 async function sessionStop() {
-  // UI
   $("#btn-session-start").disabled = false;
   $("#btn-session-pause").disabled = true;
   $("#btn-session-stop").disabled = true;
+
+  waveMode = "idle";
 
   pauseSessionTimer();
   await stopBackendRecognition();
   stopPlaylistPolling();
 
-  // ultimo sync playlist
+  // sync finale con backend
   await pollPlaylistOnce();
 
   resetSessionTimer();
   currentSongId = null;
   setNow("In ascolto", "—");
 
-  // azzero undo per la nuova review
   undoStack = [];
   renderReview();
 
@@ -333,6 +516,8 @@ async function sessionStop() {
 
 // RESET SESSIONE: ferma tutto, pulisce UI e playlist locale
 async function sessionReset() {
+  waveMode = "idle";
+
   await stopBackendRecognition();
   stopPlaylistPolling();
   pauseSessionTimer();
@@ -348,8 +533,7 @@ async function sessionReset() {
   const liveLog = $("#live-log");
   if (liveLog) liveLog.innerHTML = "";
 
-  // allineiamo lastMaxSongId all'ultimo ID presente sul backend,
-  // così un "nuovo giro" prende solo le nuove canzoni
+  // qui facciamo UNA sola get_playlist per riallineare lastMaxSongId
   try {
     const res = await fetch("/api/get_playlist");
     if (res.ok) {
@@ -583,7 +767,6 @@ function initWelcome() {
 
   syncWelcomeModeRadios();
 
-  // mostra/nasconde il campo artista quando cambio modalità
   const modeRadios = form.querySelectorAll('input[name="mode"]');
   modeRadios.forEach((radio) => {
     radio.addEventListener("change", () => {
@@ -674,4 +857,5 @@ document.addEventListener("DOMContentLoaded", () => {
   showView("#view-welcome");
   initWelcome();
   wireSessionButtons();
+  initListeningWave(); // onda in stato "idle" finché non premi Start
 });

@@ -85,14 +85,25 @@
           <p id="now-title" class="now-title">
             In ascolto<span class="dots" aria-hidden="true"></span>
           </p>
-          <p class="now-meta">Compositore: <span id="now-composer">—</span></p>
-          <!-- Durata brano rimossa -->
+          <p class="now-meta">
+            Compositore: <span id="now-composer">—</span>
+          </p>
+
+          <!-- Onda stazionaria animata -->
+          <canvas
+            id="now-wave"
+            class="now-wave"
+            aria-hidden="true"
+          ></canvas>
         </section>
 
         <section class="card">
           <h3>Log live</h3>
           <div class="log-head">
-            <span>Ora</span><span>Brano</span><span>Compositore</span><span>Stato</span>
+            <span>Ora</span>
+            <span>Brano</span>
+            <span>Compositore</span>
+            <span>Stato</span>
           </div>
           <div id="live-log" class="log-body"></div>
         </section>

@@ -32,7 +32,7 @@ body {
 /* UTILITY */
 
 .hidden {
-  display: none !important; /* così vince su qualsiasi display successivo */
+  display: none !important;
 }
 
 /* VIEWS */
@@ -216,6 +216,17 @@ body {
   margin: 4px 0;
 }
 
+/* canvas onda */
+
+.now-wave {
+  margin-top: 10px;
+  width: 100%;
+  height: 80px;
+  border-radius: 12px;
+  display: block;
+  background: transparent; /* nessun gradient sotto l'onda */
+}
+
 /* dots animati */
 .dots::after {
   content: "…";
@@ -298,8 +309,7 @@ body {
   font-weight: 600;
 }
 
-/* intestazioni colonna (Compositore / Titolo / Azioni) tutte a sinistra
-   con lo stesso rientro delle caselle sottostanti */
+/* intestazioni colonna tutte a sinistra, allineate agli input */
 .row--head span {
   text-align: left;
   padding-left: 8px;
@@ -309,14 +319,14 @@ body {
   display: flex;
   gap: 8px;
   justify-content: flex-end;
-  flex-wrap: wrap; /* così se lo spazio è stretto i bottoni vanno a capo */
+  flex-wrap: wrap;
 }
 
 .actions {
   margin-top: 14px;
   display: flex;
   justify-content: flex-end;
-  gap: 8px; /* così Undo e Generate non stanno appiccicati */
+  gap: 8px;
 }
 
 input.inline {
