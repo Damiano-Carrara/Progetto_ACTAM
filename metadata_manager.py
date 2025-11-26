@@ -7,32 +7,50 @@ class MetadataManager:
         musicbrainzngs.set_useragent("SIAE_Project_Univ", "0.1", "tuamail@esempio.com")
         print("📚 Metadata Manager (MusicBrainz) Inizializzato")
 
-    def find_composer(self, title, artist, isrc=None, upc=None):
+    def find_composer(self, title, detected_artist, isrc=None, upc=None, setlist_artist=None):
         """
-        Logica a cascata per trovare il compositore: ISRC > UPC > Titolo.
-        Include lunghe pause di sicurezza (timeout) tra i tentativi.
+        Strategia Ibrida: ISRC > UPC > Setlist Bias > Detected Artist > Solo Titolo
         """
-        composer = None
-
-        # --- TENTATIVO 1: ISRC ---
+        # 1. Codici univoci (Vittoria facile)
         if isrc:
-            print(f"🎯 [Meta] Provo ricerca ISRC: {isrc}")
-            composer = self._search_by_isrc(isrc)
-            if composer: return composer
-            # Pausa lunga prima di passare al fallback
-            time.sleep(2.0) 
-
-        # --- TENTATIVO 2: UPC (Barcode) ---
+            res = self._search_by_isrc(isrc)
+            if res: return res
+            time.sleep(1.0)
         if upc:
-            print(f"📦 [Meta] Provo ricerca UPC: {upc}")
-            composer = self._search_by_upc(upc, title)
-            if composer: return composer
-            # Pausa lunga prima di passare al fallback
-            time.sleep(2.0)
+            res = self._search_by_upc(upc, title)
+            if res: return res
+            time.sleep(1.0)
 
-        # --- TENTATIVO 3: CLASSICO (Titolo + Artista) ---
-        print(f"🔎 [Meta] Fallback su ricerca testuale: {title} - {artist}")
-        return self._search_by_text(title, artist)
+        # Pulizia titolo (Fondamentale per i live)
+        clean_title = self._clean_title(title)
+        # Se la pulizia ha tolto tutto (es. titolo era "(Live)"), usa l'originale
+        search_title = clean_title if len(clean_title) > 2 else title
+        
+        print(f"🔎 Ricerca Compositore per: '{search_title}'")
+
+        # 2. TENTATIVO BIAS (Setlist)
+        # Se sappiamo chi è sul palco, proviamo prima con lui!
+        if setlist_artist:
+            print(f"🎯 [Bias] Provo con Artista Scaletta: {setlist_artist}")
+            res = self._perform_text_query(search_title, setlist_artist)
+            if res != "Sconosciuto":
+                return res
+            # Se fallisce, NON ci fermiamo. È il "cortocircuito" evitato.
+            print("⚠️ Bias fallito (forse è una cover?). Passo al fallback.")
+            time.sleep(1.0)
+
+        # 3. TENTATIVO STANDARD (Artista Rilevato)
+        # Usiamo quello che ha sentito ACRCloud (es. "Domenico Modugno")
+        if detected_artist != setlist_artist:
+            print(f"🎤 [Standard] Provo con Artista Rilevato: {detected_artist}")
+            res = self._perform_text_query(search_title, detected_artist)
+            if res != "Sconosciuto":
+                return res
+            time.sleep(1.0)
+
+        # 4. TENTATIVO DISPERATO (Solo Opera)
+        print("🧩 [Fallback] Cerco solo l'Opera...")
+        return self._fallback_search_work(search_title)
 
     # ---------------------------------------------------------
     # METODI HELPER SPECIFICI
@@ -94,13 +112,13 @@ class MetadataManager:
 
         
     def _clean_title(self, title):
-        """
-        Rimuove il testo tra parentesi e parole comuni dei remix
-        Es: "Reload (RAWA & Voltech Remix)" -> "Reload"
-        """
-        # Rimuove tutto ciò che è tra parentesi tonde o quadre
+        """Rimuove (Live), (Remaster) ecc. per trovare l'opera originale."""
+        # Toglie tutto tra parentesi
         clean = re.sub(r"[\(\[].*?[\)\]]", "", title)
-        # Rimuove spazi extra
+        # Toglie parole chiave comuni nei live
+        patterns = [r"-\s*live", r"live\s*at", r"remaster", r"version"]
+        for p in patterns:
+            clean = re.sub(p, "", clean, flags=re.IGNORECASE)
         return clean.strip()
 
     def _search_by_text(self, title, artist):
