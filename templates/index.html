@@ -4,15 +4,12 @@
   <meta charset="utf-8">
   <title>Live Borderò Assistant</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <!-- CSS -->
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-  <!-- JS -->
   <script defer src="{{ url_for('static', filename='script.js') }}"></script>
 </head>
 <body class="app-body">
   <main class="app">
 
-    <!-- VIEW 1: WELCOME / SETUP EVENTO -->
     <section id="view-welcome" class="view view--active">
       <div class="card card--center">
         <h1>Live Borderò Assistant</h1>
@@ -48,12 +45,18 @@
             <input id="event-date" name="eventDate" type="date">
           </div>
 
+          <div class="form-row">
+            <label for="target-artist">Artista principale (Bias)</label>
+            <input id="target-artist" name="targetArtist" type="text" placeholder="Es. Michael Jackson (Opzionale per Live Band)">
+            <small style="color: #888; display: block; margin-top: 5px; font-size: 0.85rem;">
+              Aiuta l'IA a preferire i brani di questo artista in caso di dubbio.
+            </small>
+          </div>
           <button type="submit" class="btn btn-primary">Avvia programma</button>
         </form>
       </div>
     </section>
 
-    <!-- VIEW 2: SESSIONE LIVE -->
     <section id="view-session" class="view" hidden>
       <header class="session-header">
         <div class="session-info">
@@ -61,7 +64,6 @@
           <p id="session-meta"></p>
         </div>
 
-        <!-- Indicatore di stato (mantenendo id e classi della UI brutta) -->
         <div id="status-indicator" class="status-box idle">
           <span id="status-text">Pronto</span>
         </div>
@@ -74,7 +76,6 @@
       </header>
 
       <section class="session-content">
-        <!-- NOW PLAYING -->
         <div class="card now-playing">
           <h3>Now playing</h3>
           <p class="np-title" id="now-playing-title">In ascolto...</p>
@@ -90,7 +91,6 @@
           </p>
         </div>
 
-        <!-- LOG LIVE -->
         <div class="card live-log">
           <div class="live-log__header">
             <h3>Log live</h3>
@@ -103,7 +103,7 @@
                   <th>Ora</th>
                   <th>Brano</th>
                   <th>Artista</th>
-                  <th>Compositori</th>
+                  <th>Compositore</th>
                   <th>Durata</th>
                   <th>Score</th>
                   <th>Tipo</th>
@@ -111,15 +111,13 @@
                 </tr>
               </thead>
               <tbody id="live-log-body">
-                <!-- Righe generate da JS -->
-              </tbody>
+                </tbody>
             </table>
           </div>
         </div>
       </section>
     </section>
 
-    <!-- VIEW 3: REVIEW / BORDERÒ -->
     <section id="view-review" class="view" hidden>
       <header class="review-header">
         <h2>Review borderò</h2>
@@ -146,8 +144,7 @@
               </tr>
             </thead>
             <tbody id="review-table-body">
-              <!-- Righe generate da JS -->
-            </tbody>
+              </tbody>
           </table>
         </div>
       </section>
