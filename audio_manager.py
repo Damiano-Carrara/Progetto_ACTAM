@@ -224,7 +224,7 @@ class AudioManager:
 
     def _call_acr_api(self, audio_buffer, bias_artist=None):
         THRESHOLD_MUSIC = 70
-        THRESHOLD_HUMMING = 80 
+        THRESHOLD_HUMMING = 70 
         
         http_method = "POST"; http_uri = "/v1/identify"; data_type = "audio"; signature_version = "1"
         timestamp = str(int(time.time()))
@@ -258,11 +258,12 @@ class AudioManager:
                 all_found = []
                 def norm(sc): return int(sc * 100) if sc <= 1.0 else int(sc)
 
-                # --- QUI LA MAGIA DEL REFACTORING + SUPER BONUS ---
+                # --- LOGICA DI ELABORAZIONE ---
                 def process_section(track_list, threshold, type_label):
                     # Calcola il Bonus Dinamico
                     results_count = len(track_list)
-                    current_bonus_val = 30 if results_count == 1 else 15
+                    # MODIFICA 1: Alzato da 15 a 20 il bonus per risultati multipli
+                    current_bonus_val = 50 if results_count == 1 else 25
 
                     for t in track_list:
                         raw_score = norm(t.get('score', 0))
@@ -274,11 +275,18 @@ class AudioManager:
                         if bias_artist:
                              is_in_artist = bias_artist.lower() in artist_name.lower()
                              is_in_title = bias_artist.lower() in title.lower()
+                             
                              if is_in_artist or is_in_title:
-                                # Applica il bonus deciso sopra
+                                # Applica il bonus
                                 final_score += current_bonus_val
+                                
+                                # MODIFICA 2: Log differenziati
                                 if final_score >= threshold and raw_score < threshold:
-                                    print(f"🌟 BOOST BIAS (+{current_bonus_val}): {title} ({raw_score}% -> {final_score}%)")
+                                    # CASO DECISIVO: Il brano è stato salvato grazie al bias
+                                    print(f"🚀 BOOST DECISIVO (+{current_bonus_val}): '{title}' salvato! ({raw_score}% -> {final_score}%)")
+                                else:
+                                    # CASO GENERICO: Il boost è stato applicato (ma era già buono o è rimasto scarso)
+                                    print(f"✨ Boost applicato (+{current_bonus_val}): '{title}' ({raw_score}% -> {final_score}%)")
 
                         if final_score >= threshold:
                             all_found.append({
@@ -291,6 +299,7 @@ class AudioManager:
                                 "upc": t.get('external_metadata', {}).get('upc')
                             })
                         else:
+                            # Stampa lo scarto solo se non è stato "silenziosamente" boostato
                             print(f"📉 SCARTATO: '{title}' - Artista: '{artist_name}' - Score: {final_score}%")
 
                 if 'music' in metadata:
