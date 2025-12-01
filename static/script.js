@@ -1,409 +1,707 @@
-// app.js
+// --- STATO APP ---
+const state = {
+  mode: "dj", // "dj" | "band" | "concert"
+  route: "welcome", // "welcome" | "session" | "review"
+  concertArtist: "",
+};
 
-let isRecording = false;
-let currentPlaylist = [];
+// playlist locale (frontend)
+let songs = [];
 
-// ---- GESTIONE VISTE -------------------------------------------------
+// id massimo visto (per capire quali brani sono nuovi quando facciamo polling)
+let lastMaxSongId = 0;
+
+// brano attualmente mostrato come "Now playing"
+let currentSongId = null;
+
+// polling della playlist backend
+let playlistPollInterval = null;
+
+// timer sessione
+let sessionStartMs = 0;
+let sessionAccumulatedMs = 0;
+let sessionTick = null;
+
+// undo stack (ultimi 5 stati della playlist in review)
+let undoStack = [];
+
+// snapshot eventuale per tornare da review a sessione (se in futuro avrai un tasto)
+let lastSessionSnapshot = null;
+
+// --- UTILS ---
+const $ = (sel) => document.querySelector(sel);
+
+function pad2(n) {
+  return n.toString().padStart(2, "0");
+}
+
+function fmt(ms) {
+  const sec = Math.floor(ms / 1000);
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return `${pad2(m)}:${pad2(s)}`;
+}
+
+function nowHHMM() {
+  const d = new Date();
+  return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+}
+
+// --- NAVIGAZIONE / STATO MODALITÀ ---
+function setMode(mode) {
+  if (mode === "dj" || mode === "band" || mode === "concert") {
+    state.mode = mode;
+    if (mode !== "concert") {
+      state.concertArtist = "";
+    }
+  } else {
+    state.mode = "dj";
+    state.concertArtist = "";
+  }
+}
+
+function setRoute(route) {
+  state.route = route;
+}
 
 function showView(id) {
-  const views = document.querySelectorAll('.view');
-  views.forEach(v => {
-    if (v.id === id) {
-      v.hidden = false;
-      v.classList.add('view--active');
-    } else {
-      v.hidden = true;
-      v.classList.remove('view--active');
-    }
-  });
+  document
+    .querySelectorAll(".view")
+    .forEach((v) => v.classList.remove("view--active"));
+  const el = document.querySelector(id);
+  if (el) el.classList.add("view--active");
 }
 
-// ---- STATO / INDICATORE ---------------------------------------------
+// --- SESSION HEADER ---
+function hydrateSessionHeader() {
+  const badge = $("#mode-badge");
+  if (!badge) return;
 
-function updateStatus(text, stateClass) {
-  const indicator = document.getElementById('status-indicator');
-  const label = document.getElementById('status-text');
-  if (!indicator || !label) return;
-  label.innerText = text;
-  indicator.className = 'status-box ' + (stateClass || 'idle');
-}
-
-function highlightRow(id) {
-  const row = document.getElementById(`row-${id}`);
-  if (row) {
-    const originalBg = row.style.backgroundColor;
-    row.style.backgroundColor = '#2e7d32';
-    setTimeout(() => {
-      row.style.backgroundColor = originalBg || '';
-    }, 2000);
-  }
-}
-
-// ---- SESSIONE: START / STOP / LOOP ----------------------------------
-
-async function startSession() {
-  if (isRecording) return;
-  isRecording = true;
-
-  const btnStart = document.getElementById('btn-start');
-  const btnStop = document.getElementById('btn-stop');
-  const btnReview = document.getElementById('btn-go-review');
-
-  if (btnStart) btnStart.disabled = true;
-  if (btnStop) btnStop.disabled = false;
-  if (btnReview) btnReview.disabled = true;
-
-  updateStatus('🔴 In ascolto...', 'recording');
-
-  // Avvio loop di riconoscimento
-  runRecognitionLoop();
-}
-
-function stopSession() {
-  if (!isRecording) return;
-  isRecording = false;
-
-  const btnStart = document.getElementById('btn-start');
-  const btnStop = document.getElementById('btn-stop');
-  const btnReview = document.getElementById('btn-go-review');
-
-  if (btnStart) btnStart.disabled = false;
-  if (btnStop) btnStop.disabled = true;
-  if (btnReview) btnReview.disabled = false;
-
-  updateStatus('Sessione terminata', 'idle');
-}
-
-// Loop: chiama /api/start_recognition finché isRecording è true
-async function runRecognitionLoop() {
-  if (!isRecording) return;
-
-  try {
-    const res = await fetch('/api/start_recognition', {
-      method: 'POST'
-    });
-    if (!res.ok) throw new Error('Errore HTTP ' + res.status);
-    const data = await res.json();
-    handleRecognitionResponse(data);
-  } catch (err) {
-    console.error(err);
-    updateStatus('Errore nel riconoscimento', 'error');
-  } finally {
-    // Riesegui il loop solo se siamo ancora in modalità recording
-    if (isRecording) {
-      // Lasciamo un piccolo delay per non martellare il server
-      setTimeout(runRecognitionLoop, 1000);
-    }
-  }
-}
-
-// ---- GESTIONE RISPOSTA / POPOLAMENTO UI -----------------------------
-
-function handleRecognitionResponse(data) {
-  const recognition = data.recognition || {};
-  const sessionUpdate = data.session_update || {};
-
-  // Aggiorna "Now playing" se il riconoscimento è andato bene
-  if (recognition.status === 'success') {
-    updateNowPlaying(recognition);
-  } else if (recognition.status === 'not_found') {
-    updateStatus('Nessun brano trovato', 'idle');
-  } else if (recognition.status === 'error') {
-    updateStatus('Errore API: ' + (recognition.message || ''), 'error');
-  }
-
-  // Se il SessionManager ha aggiunto un brano nuovo aggiornare playlist
-  if (sessionUpdate.added) {
-    // Ricarico playlist dal backend e aggiorno log + review
-    fetchPlaylistAndRender().then(() => {
-      if (sessionUpdate.song && sessionUpdate.song.id) {
-        highlightRow(sessionUpdate.song.id);
-      }
-    });
+  if (state.mode === "band") {
+    badge.textContent = "Live band";
+  } else if (state.mode === "concert") {
+    badge.textContent = state.concertArtist
+      ? `Concerto – ${state.concertArtist}`
+      : "Concerto";
   } else {
-    // Duplicate / No match → opzionale: loggare da qualche parte
-    if (sessionUpdate.reason === 'Duplicate') {
-      console.log('Brano duplicato ignorato');
-    }
+    badge.textContent = "DJ set";
   }
 }
 
-// --- NOW PLAYING CARD ------------------------------------------------
-
-function msToMinSec(ms) {
-  if (!ms || ms <= 0) return '';
-  const totalSeconds = Math.round(ms / 1000);
-  const m = Math.floor(totalSeconds / 60);
-  const s = totalSeconds % 60;
-  return `${m}:${s.toString().padStart(2, '0')}`;
+// --- NOW PLAYING ---
+function setNow(title, composer) {
+  $("#now-title").textContent = title || "In ascolto";
+  $("#now-composer").textContent = composer || "—";
 }
 
-function updateNowPlaying(rec) {
-  const titleEl = document.getElementById('now-playing-title');
-  const artistEl = document.getElementById('now-playing-artist');
-  const albumEl = document.getElementById('now-playing-album');
-  const typeEl = document.getElementById('now-playing-type');
-  const tsEl = document.getElementById('now-playing-timestamp');
-  const durEl = document.getElementById('now-playing-duration');
-  const scoreEl = document.getElementById('now-playing-score');
+// --- LOG LIVE ---
+function pushLog({ id, when, title, composer, status }) {
+  const row = document.createElement("div");
+  row.className = "log-row";
+  // IMPORTANTE: Salviamo l'ID per poter ritrovare questa riga e aggiornarla dopo
+  row.dataset.id = id; 
 
-  if (titleEl) titleEl.textContent = rec.title || 'Titolo sconosciuto';
-  if (artistEl) artistEl.textContent = rec.artist || 'Artista sconosciuto';
-  if (albumEl) albumEl.textContent = rec.album || '';
-  if (typeEl) {
-    typeEl.textContent = rec.type || 'Original';
-    typeEl.style.display = 'inline-block';
-  }
+  const cls =
+    status === "NEW"
+      ? "status-new"
+      : status === "SAME"
+      ? "status-same"
+      : "status-ok";
 
-  if (tsEl) {
-    const now = new Date();
-    tsEl.textContent = `Rilevato alle ${now.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
-  }
+  row.innerHTML = `
+    <span>${when}</span>
+    <span>${title || "—"}</span>
+    <span class="col-composer">${composer || "—"}</span>
+    <span class="${cls}">${status}</span>
+  `;
 
-  if (durEl) durEl.textContent = rec.duration_ms ? `Durata: ${msToMinSec(rec.duration_ms)}` : '';
-  if (scoreEl) scoreEl.textContent = rec.score ? `Score match: ${rec.score}` : '';
+  $("#live-log").prepend(row);
 }
 
-// ---- PLAYLIST: LOAD, RENDER LIVE LOG + REVIEW -----------------------
+// --- TIMER SESSIONE ---
+function startSessionTimer() {
+  if (sessionTick) return;
+  sessionStartMs = Date.now();
+  sessionTick = setInterval(() => {
+    const elapsed = sessionAccumulatedMs + (Date.now() - sessionStartMs);
+    $("#session-timer").textContent = fmt(elapsed);
+  }, 1000);
+}
 
-async function fetchPlaylistAndRender() {
+function pauseSessionTimer() {
+  if (!sessionTick) return;
+  clearInterval(sessionTick);
+  sessionTick = null;
+  sessionAccumulatedMs += Date.now() - sessionStartMs;
+}
+
+function resetSessionTimer() {
+  clearInterval(sessionTick);
+  sessionTick = null;
+  sessionStartMs = 0;
+  sessionAccumulatedMs = 0;
+  $("#session-timer").textContent = "00:00";
+}
+
+// --- UNDO ---
+function pushUndoState() {
+  const snapshot = songs.map((s) => ({ ...s }));
+  undoStack.push(snapshot);
+  if (undoStack.length > 5) {
+    undoStack.shift();
+  }
+  updateUndoButton();
+}
+
+function updateUndoButton() {
+  const btnUndo = $("#btn-undo");
+  if (!btnUndo) return;
+  btnUndo.disabled = undoStack.length === 0;
+}
+
+function undoLast() {
+  if (!undoStack.length) return;
+  const snapshot = undoStack.pop();
+  songs = snapshot.map((s) => ({ ...s }));
+  renderReview();
+  updateUndoButton();
+}
+
+// --- CHIAMATE BACKEND START/STOP RICONOSCIMENTO ---
+
+async function startBackendRecognition() {
+  // targetArtist: solo se modalità concerto e c'è un nome inserito
+  const body = {};
+  if (state.mode === "concert" && state.concertArtist) {
+    body.targetArtist = state.concertArtist;
+  }
+
   try {
-    const res = await fetch('/api/get_playlist');
-    if (!res.ok) throw new Error('Errore HTTP ' + res.status);
+    const res = await fetch("/api/start_recognition", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      console.error("Errore HTTP /api/start_recognition:", res.status);
+      return;
+    }
     const data = await res.json();
-    currentPlaylist = data.playlist || [];
-    renderLiveLog();
-    renderReviewTable();
-    updateExportButtonState();
+    console.log("start_recognition:", data);
   } catch (err) {
-    console.error(err);
+    console.error("Errore fetch /api/start_recognition:", err);
   }
 }
 
-function renderLiveLog() {
-  const tbody = document.getElementById('live-log-body');
-  if (!tbody) return;
-  tbody.innerHTML = '';
-
-  currentPlaylist.forEach(song => {
-    const tr = document.createElement('tr');
-    tr.id = `row-${song.id}`;
-
-    // 1. Ora
-    const tdTime = document.createElement('td');
-    tdTime.textContent = song.timestamp || '';
-
-    // 2. Titolo
-    const tdTitle = document.createElement('td');
-    tdTitle.innerHTML = `<strong>${song.title || ''}</strong>`; // Grassetto per leggibilità
-
-    // 3. Artista
-    const tdArtist = document.createElement('td');
-    tdArtist.textContent = song.artist || '';
-
-    // 4. Compositore (NUOVO)
-    const tdComposer = document.createElement('td');
-    tdComposer.textContent = song.composer || '-';
-    tdComposer.style.fontStyle = 'italic'; // Stile corsivo opzionale
-    tdComposer.style.color = '#aaa';       // Colore leggermente più scuro
-
-    // 5. Durata
-    const tdDur = document.createElement('td');
-    tdDur.textContent = msToMinSec(song.duration_ms);
-
-    // 6. Score (NUOVO)
-    const tdScore = document.createElement('td');
-    tdScore.textContent = song.score ? song.score + '%' : '-';
-
-    // 7. Tipo
-    const tdType = document.createElement('td');
-    const badge = document.createElement('span');
-    badge.className = 'badge';
-    badge.textContent = song.type || '';
-    tdType.appendChild(badge);
-
-    // 8. Azioni
-    const tdActions = document.createElement('td');
-    const btnDelete = document.createElement('button');
-    btnDelete.textContent = '🗑️';
-    btnDelete.className = 'btn btn-icon btn-delete';
-    btnDelete.addEventListener('click', () => deleteSong(song.id));
-    tdActions.appendChild(btnDelete);
-
-    // --- ORDINE DI INSERIMENTO (Deve coincidere con l'HTML!) ---
-    tr.appendChild(tdTime);
-    tr.appendChild(tdTitle);
-    tr.appendChild(tdArtist);
-    tr.appendChild(tdComposer); // Aggiunto
-    tr.appendChild(tdDur);
-    tr.appendChild(tdScore);    // Aggiunto
-    tr.appendChild(tdType);
-    tr.appendChild(tdActions);
-
-    tbody.appendChild(tr);
-  });
+async function stopBackendRecognition() {
+  try {
+    const res = await fetch("/api/stop_recognition", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    if (!res.ok) {
+      console.error("Errore HTTP /api/stop_recognition:", res.status);
+      return;
+    }
+    const data = await res.json();
+    console.log("stop_recognition:", data);
+  } catch (err) {
+    console.error("Errore fetch /api/stop_recognition:", err);
+  }
 }
 
-function renderReviewTable() {
-  const tbody = document.getElementById('review-table-body');
-  if (!tbody) return;
-  tbody.innerHTML = '';
+// --- POLLING PLAYLIST BACKEND ---
 
-  currentPlaylist.forEach(song => {
-    const tr = document.createElement('tr');
+async function pollPlaylistOnce() {
+  try {
+    const res = await fetch("/api/get_playlist");
+    if (!res.ok) {
+      console.error("Errore HTTP /api/get_playlist:", res.status);
+      return;
+    }
+    const data = await res.json();
+    const playlist = Array.isArray(data.playlist) ? data.playlist : [];
 
-    // Helper per creare celle con input
-    const createInputCell = (value) => {
-        const td = document.createElement('td');
-        const input = document.createElement('input');
-        input.type = 'text';
-        input.value = value || '';
-        td.appendChild(input);
-        return td;
-    };
+    let maxIdSeen = lastMaxSongId;
 
-    // 1. Ora
-    tr.appendChild(createInputCell(song.timestamp));
+    playlist.forEach((remoteSong) => {
+      const id = Number(remoteSong.id);
+      if (!Number.isFinite(id)) return;
 
-    // 2. Titolo
-    tr.appendChild(createInputCell(song.title));
+      // Cerchiamo se abbiamo già questo brano in locale
+      const localSong = songs.find(s => s.id === id);
 
-    // 3. Artista
-    tr.appendChild(createInputCell(song.artist));
-    
-    // 4. Compositore (NUOVO - Modificabile)
-    tr.appendChild(createInputCell(song.composer));
+      if (!localSong) {
+        // --- CASO 1: NUOVO BRANO (Lo aggiungiamo) ---
+        if (id > lastMaxSongId) {
+            const track = {
+              id,
+              title: remoteSong.title || "Titolo sconosciuto",
+              composer: remoteSong.composer || "—", // Potrebbe essere "⏳ Ricerca..."
+              artist: remoteSong.artist || "",
+              album: remoteSong.album || "",
+              type: remoteSong.type || "",
+              isrc: remoteSong.isrc || null,
+              upc: remoteSong.upc || null,
+              ms: remoteSong.duration_ms || 0,
+              confirmed: false,
+              timestamp: remoteSong.timestamp // Ci serve per il log
+            };
 
-    // 5. Album
-    tr.appendChild(createInputCell(song.album));
+            songs.push(track);
+            currentSongId = track.id;
+            setNow(track.title, track.composer);
 
-    // 6. Durata
-    tr.appendChild(createInputCell(msToMinSec(song.duration_ms)));
-
-    // 7. Tipo
-    tr.appendChild(createInputCell(song.type));
-
-    // 8. Azioni (Delete)
-    const tdActions = document.createElement('td');
-    const btnDelete = document.createElement('button');
-    btnDelete.textContent = '🗑️';
-    btnDelete.className = 'btn btn-icon btn-delete';
-    btnDelete.addEventListener('click', () => deleteSong(song.id));
-    tdActions.appendChild(btnDelete);
-    tr.appendChild(tdActions);
-
-    tbody.appendChild(tr);
-  });
-}
-
-// ---- EXPORT BORDERÒ (CSV) -------------------------------------------
-
-function updateExportButtonState() {
-  const btn = document.getElementById('btn-export');
-  if (!btn) return;
-  btn.disabled = currentPlaylist.length === 0;
-}
-
-function exportBorderoCsv() {
-  const tbody = document.getElementById('review-table-body');
-  if (!tbody || !tbody.rows.length) return;
-
-  // Raccoglie i dati dagli input (che sono editabili dall'utente)
-  const rows = Array.from(tbody.rows).map(tr => {
-    const inputs = tr.querySelectorAll('input');
-    return Array.from(inputs).map(inp => {
-        // Gestiamo eventuali virgolette o punti e virgola nel testo per il CSV
-        let text = inp.value;
-        if (text.includes(';') || text.includes('"')) {
-            text = `"${text.replace(/"/g, '""')}"`; // Escape CSV standard
+            pushLog({
+              id: track.id, // Passiamo l'ID
+              when: remoteSong.timestamp || nowHHMM(),
+              title: track.title,
+              composer: track.composer,
+              status: "NEW",
+            });
         }
-        return text;
+      } else {
+        // --- CASO 2: BRANO ESISTENTE (Controlliamo aggiornamenti) ---
+        // Se il compositore è cambiato (es. da "Ricerca..." a "Michael Jackson")
+        if (remoteSong.composer && localSong.composer !== remoteSong.composer) {
+            console.log(`🔄 Aggiornamento compositore ID ${id}: ${localSong.composer} -> ${remoteSong.composer}`);
+            
+            // 1. Aggiorna dati locali
+            localSong.composer = remoteSong.composer;
+            
+            // 2. Aggiorna "Now Playing" se è lui
+            if (currentSongId === id) {
+                setNow(localSong.title, localSong.composer);
+            }
+
+            // 3. Aggiorna la riga nel Log Live (senza ricrearla)
+            const logRow = document.querySelector(`.log-row[data-id="${id}"]`);
+            if (logRow) {
+                const composerSpan = logRow.querySelector('.col-composer');
+                if (composerSpan) composerSpan.textContent = localSong.composer;
+            }
+        }
+      }
+
+      if (id > maxIdSeen) maxIdSeen = id;
+    });
+
+    lastMaxSongId = maxIdSeen;
+  } catch (err) {
+    console.error("Errore nel polling playlist:", err);
+  }
+}
+
+function startPlaylistPolling() {
+  if (playlistPollInterval) return;
+  pollPlaylistOnce();
+  // Abbassiamo a 2000ms (2 secondi) per rendere l'aggiornamento compositore più reattivo
+  playlistPollInterval = setInterval(pollPlaylistOnce, 2000); 
+}
+
+function stopPlaylistPolling() {
+  if (!playlistPollInterval) return;
+  clearInterval(playlistPollInterval);
+  playlistPollInterval = null;
+}
+
+// --- SESSION CONTROLS ---
+
+async function sessionStart() {
+  setRoute("session");
+  showView("#view-session");
+  hydrateSessionHeader();
+
+  $("#btn-session-start").disabled = true;
+  $("#btn-session-pause").disabled = false;
+  $("#btn-session-stop").disabled = false;
+
+  if (!sessionTick) {
+    startSessionTimer();
+  }
+
+  await startBackendRecognition();
+  startPlaylistPolling();
+}
+
+async function sessionPause() {
+  $("#btn-session-start").disabled = false;
+  $("#btn-session-pause").disabled = true;
+  $("#btn-session-stop").disabled = false;
+
+  pauseSessionTimer();
+  await stopBackendRecognition();
+  stopPlaylistPolling();
+}
+
+// STOP → ferma riconoscimento, sincronizza playlist e va direttamente in review
+async function sessionStop() {
+  // UI
+  $("#btn-session-start").disabled = false;
+  $("#btn-session-pause").disabled = true;
+  $("#btn-session-stop").disabled = true;
+
+  pauseSessionTimer();
+  await stopBackendRecognition();
+  stopPlaylistPolling();
+
+  // ultimo sync playlist
+  await pollPlaylistOnce();
+
+  resetSessionTimer();
+  currentSongId = null;
+  setNow("In ascolto", "—");
+
+  // azzero undo per la nuova review
+  undoStack = [];
+  renderReview();
+
+  setRoute("review");
+  showView("#view-review");
+}
+
+// RESET SESSIONE: ferma tutto, pulisce UI e playlist locale
+async function sessionReset() {
+  await stopBackendRecognition();
+  stopPlaylistPolling();
+  pauseSessionTimer();
+  resetSessionTimer();
+
+  currentSongId = null;
+  setNow("In ascolto", "—");
+
+  songs = [];
+  undoStack = [];
+  updateUndoButton();
+
+  const liveLog = $("#live-log");
+  if (liveLog) liveLog.innerHTML = "";
+
+  // allineiamo lastMaxSongId all'ultimo ID presente sul backend,
+  // così un "nuovo giro" prende solo le nuove canzoni
+  try {
+    const res = await fetch("/api/get_playlist");
+    if (res.ok) {
+      const data = await res.json();
+      const playlist = Array.isArray(data.playlist) ? data.playlist : [];
+      lastMaxSongId = playlist.reduce(
+        (acc, s) => (s.id && s.id > acc ? s.id : acc),
+        0
+      );
+    }
+  } catch (err) {
+    console.error("Errore get_playlist in reset:", err);
+  }
+
+  $("#btn-session-start").disabled = false;
+  $("#btn-session-pause").disabled = true;
+  $("#btn-session-stop").disabled = true;
+}
+
+// --- (OPZIONALE) RIPRISTINO SESSIONE DA REVIEW ---
+function restoreSessionFromSnapshot() {
+  if (!lastSessionSnapshot) return;
+
+  songs = lastSessionSnapshot.songs.map((s) => ({ ...s }));
+  const snapshotCurrentId = lastSessionSnapshot.currentSongId ?? null;
+  currentSongId = snapshotCurrentId;
+  sessionAccumulatedMs = lastSessionSnapshot.sessionAccumulatedMs || 0;
+  sessionStartMs = 0;
+  sessionTick = null;
+
+  $("#session-timer").textContent = fmt(sessionAccumulatedMs);
+
+  const current =
+    currentSongId != null
+      ? songs.find((s) => s.id === currentSongId)
+      : null;
+
+  if (current) {
+    setNow(current.title, current.composer);
+  } else {
+    setNow("In ascolto", "—");
+  }
+
+  $("#btn-session-start").disabled = false;
+  $("#btn-session-pause").disabled = true;
+  $("#btn-session-stop").disabled = false;
+}
+
+function backToSessionFromReview() {
+  restoreSessionFromSnapshot();
+  setRoute("session");
+  showView("#view-session");
+}
+
+// --- MODAL DI CONFERMA ---
+function showConfirm(message) {
+  return new Promise((resolve) => {
+    const modal = $("#confirm-modal");
+    const msgEl = $("#confirm-message");
+    const btnOk = $("#confirm-ok");
+    const btnCancel = $("#confirm-cancel");
+
+    msgEl.textContent = message || "Sei sicuro?";
+
+    modal.classList.remove("modal--hidden");
+
+    function cleanup(result) {
+      modal.classList.add("modal--hidden");
+      btnOk.removeEventListener("click", onOk);
+      btnCancel.removeEventListener("click", onCancel);
+      resolve(result);
+    }
+
+    function onOk(e) {
+      e.preventDefault();
+      cleanup(true);
+    }
+
+    function onCancel(e) {
+      e.preventDefault();
+      cleanup(false);
+    }
+
+    btnOk.addEventListener("click", onOk);
+    btnCancel.addEventListener("click", onCancel);
+  });
+}
+
+// --- REVIEW ---
+function renderReview() {
+  const container = $("#review-rows");
+  const template = $("#review-row-template");
+  const btnGenerate = $("#btn-generate");
+  container.innerHTML = "";
+
+  songs.forEach((song) => {
+    if (typeof song.confirmed !== "boolean") {
+      song.confirmed = false;
+    }
+
+    const node = template.content.firstElementChild.cloneNode(true);
+
+    const inputComposer = node.querySelector('[data-field="composer"]');
+    const inputTitle = node.querySelector('[data-field="title"]');
+    const btnConfirm = node.querySelector(".btn-confirm");
+    const btnEdit = node.querySelector(".btn-edit");
+    const btnDelete = node.querySelector(".btn-delete");
+
+    inputComposer.value = song.composer || "";
+    inputTitle.value = song.title || "";
+
+    inputComposer.readOnly = true;
+    inputTitle.readOnly = true;
+
+    if (song.confirmed) {
+      node.classList.add("row--confirmed");
+    }
+
+    // MODIFICA
+    btnEdit.addEventListener("click", (e) => {
+      e.preventDefault();
+      inputComposer.readOnly = false;
+      inputTitle.readOnly = false;
+      song.confirmed = false;
+      node.classList.remove("row--confirmed");
+      updateGenerateState();
+      inputTitle.focus();
+    });
+
+    // CONFERMA
+    btnConfirm.addEventListener("click", (e) => {
+      e.preventDefault();
+
+      pushUndoState();
+
+      song.composer = inputComposer.value || "";
+      song.title = inputTitle.value || "";
+      song.confirmed = true;
+
+      inputComposer.readOnly = true;
+      inputTitle.readOnly = true;
+
+      node.classList.add("row--confirmed");
+      updateGenerateState();
+    });
+
+    // DELETE
+    btnDelete.addEventListener("click", async (e) => {
+      e.preventDefault();
+
+      const ok = await showConfirm(
+        "Sei sicuro di voler cancellare questo brano?"
+      );
+      if (!ok) return;
+
+      pushUndoState();
+
+      if (song.id != null) {
+        try {
+          await fetch("/api/delete_song", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id: song.id }),
+          });
+        } catch (err) {
+          console.error("Errore delete:", err);
+        }
+      }
+
+      const idx = songs.indexOf(song);
+      if (idx !== -1) {
+        songs.splice(idx, 1);
+      }
+      node.remove();
+      updateGenerateState();
+    });
+
+    container.appendChild(node);
+  });
+
+  function updateGenerateState() {
+    const total = songs.length;
+    const confirmedCount = songs.filter((s) => s.confirmed).length;
+    const ok = total > 0 && confirmedCount === total;
+    btnGenerate.disabled = !ok;
+  }
+
+  updateGenerateState();
+  updateUndoButton();
+}
+
+// --- WELCOME / MODALITÀ + CAMPO CONCERTO ---
+
+function syncWelcomeModeRadios() {
+  const dj = document.querySelector('input[name="mode"][value="dj"]');
+  const band = document.querySelector('input[name="mode"][value="band"]');
+  const concert = document.querySelector('input[name="mode"][value="concert"]');
+  if (!dj || !band || !concert) return;
+
+  if (state.mode === "band") {
+    band.checked = true;
+  } else if (state.mode === "concert") {
+    concert.checked = true;
+  } else {
+    dj.checked = true;
+  }
+
+  updateConcertArtistVisibility();
+}
+
+function updateConcertArtistVisibility() {
+  const group = $("#concert-artist-group");
+  if (!group) return;
+  const modeInput = document.querySelector('input[name="mode"]:checked');
+  const modeValue = modeInput ? modeInput.value : "dj";
+  if (modeValue === "concert") {
+    group.classList.remove("hidden");
+  } else {
+    group.classList.add("hidden");
+  }
+}
+
+function backToWelcome() {
+  syncWelcomeModeRadios();
+  setRoute("welcome");
+  showView("#view-welcome");
+}
+
+function initWelcome() {
+  const form = $("#welcome-form");
+
+  syncWelcomeModeRadios();
+
+  // mostra/nasconde il campo artista quando cambio modalità
+  const modeRadios = form.querySelectorAll('input[name="mode"]');
+  modeRadios.forEach((radio) => {
+    radio.addEventListener("change", () => {
+      updateConcertArtistVisibility();
     });
   });
 
-  // Intestazione del CSV (Deve corrispondere all'ordine delle colonne sopra)
-  const header = ['Ora', 'Titolo', 'Artista', 'Compositore', 'Album', 'Durata', 'Tipo'];
-  
-  const csvLines = [];
-  csvLines.push(header.join(';')); // Usiamo il punto e virgola (standard Excel europeo)
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const modeInput = form.querySelector('input[name="mode"]:checked');
+    const modeValue = modeInput ? modeInput.value : "dj";
+    setMode(modeValue);
 
-  rows.forEach(r => {
-    csvLines.push(r.join(';'));
+    if (modeValue === "concert") {
+      const artistInput = $("#concert-artist");
+      state.concertArtist = artistInput ? artistInput.value.trim() : "";
+    }
+
+    hydrateSessionHeader();
+    setRoute("session");
+    showView("#view-session");
   });
 
-  // Creazione e download del file
-  const blob = new Blob([csvLines.join('\n')], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  
-  // Nome file con data odierna
-  const dateStr = new Date().toISOString().slice(0,10);
-  a.download = `bordero_siae_${dateStr}.csv`;
-  
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  $("#btn-welcome-start").addEventListener("click", (e) => {
+    e.preventDefault();
+    form.requestSubmit();
+  });
 }
 
-// ---- INIT -----------------------------------------------------------
+// --- WIRING BOTTONI SESSIONE / REVIEW ---
+function wireSessionButtons() {
+  $("#btn-session-start").addEventListener("click", (e) => {
+    e.preventDefault();
+    sessionStart();
+  });
 
-document.addEventListener('DOMContentLoaded', () => {
-  // Form evento → passa alla view sessione
-  const eventForm = document.getElementById('event-form');
-  if (eventForm) {
-    eventForm.addEventListener('submit', (e) => {
+  $("#btn-session-pause").addEventListener("click", (e) => {
+    e.preventDefault();
+    sessionPause();
+  });
+
+  $("#btn-session-stop").addEventListener("click", (e) => {
+    e.preventDefault();
+    sessionStop();
+  });
+
+  const btnReset = $("#btn-session-reset");
+  if (btnReset) {
+    btnReset.addEventListener("click", (e) => {
       e.preventDefault();
-      const mode = eventForm.elements['mode'].value;
-      const name = eventForm.elements['eventName'].value;
-      const venue = eventForm.elements['eventVenue'].value;
-      const date = eventForm.elements['eventDate'].value;
-
-      const sessionTitle = document.getElementById('session-title');
-      const sessionMeta = document.getElementById('session-meta');
-
-      if (sessionTitle) {
-        sessionTitle.textContent = mode === 'dj' ? 'Sessione DJ Set' : 'Sessione Live Band';
-      }
-      if (sessionMeta) {
-        const parts = [];
-        if (name) parts.push(name);
-        if (venue) parts.push(venue);
-        if (date) parts.push(new Date(date).toLocaleDateString('it-IT'));
-        sessionMeta.textContent = parts.join(' · ');
-      }
-
-      showView('view-session');
-      fetchPlaylistAndRender();
+      sessionReset();
     });
   }
 
-  // Bottoni sessione
-  const btnStart = document.getElementById('btn-start');
-  const btnStop = document.getElementById('btn-stop');
-  const btnRefresh = document.getElementById('btn-refresh');
-  const btnGoReview = document.getElementById('btn-go-review');
-
-  if (btnStart) btnStart.addEventListener('click', startSession);
-  if (btnStop) btnStop.addEventListener('click', stopSession);
-  if (btnRefresh) btnRefresh.addEventListener('click', fetchPlaylistAndRender);
-  if (btnGoReview) btnGoReview.addEventListener('click', () => {
-    showView('view-review');
-    fetchPlaylistAndRender();
+  $("#btn-generate").addEventListener("click", (e) => {
+    e.preventDefault();
+    alert("TODO: Generazione PDF / CSV");
   });
 
-  // Bottoni review
-  const btnBackSession = document.getElementById('btn-back-session');
-  const btnExport = document.getElementById('btn-export');
+  const btnUndo = $("#btn-undo");
+  if (btnUndo) {
+    btnUndo.addEventListener("click", (e) => {
+      e.preventDefault();
+      undoLast();
+    });
+  }
 
-  if (btnBackSession) btnBackSession.addEventListener('click', () => {
-    showView('view-session');
-  });
+  const btnBackSession = $("#btn-back-session");
+  if (btnBackSession) {
+    btnBackSession.addEventListener("click", (e) => {
+      e.preventDefault();
+      backToSessionFromReview();
+    });
+  }
 
-  if (btnExport) btnExport.addEventListener('click', exportBorderoCsv);
+  const btnBackWelcome = $("#btn-back-welcome");
+  if (btnBackWelcome) {
+    btnBackWelcome.addEventListener("click", (e) => {
+      e.preventDefault();
+      backToWelcome();
+    });
+  }
+}
 
-  // All'avvio: vista welcome, stato pronto
-  showView('view-welcome');
-  updateStatus('Pronto', 'idle');
+// --- AVVIO ---
+document.addEventListener("DOMContentLoaded", () => {
+  setRoute("welcome");
+  showView("#view-welcome");
+  initWelcome();
+  wireSessionButtons();
 });
