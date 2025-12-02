@@ -75,6 +75,57 @@ function showView(id) {
   if (el) el.classList.add("view--active");
 }
 
+// === VISUALIZER A QUADRATINI ===
+const VIS_COLS = 48;
+const VIS_ROWS = 16;
+let visTick = null;
+
+function buildVisualizer() {
+  const container = document.querySelector("#visualizer");
+  if (!container) return;
+
+  container.innerHTML = "";
+  for (let c = 0; c < VIS_COLS; c++) {
+    const col = document.createElement("div");
+    col.className = "vis-col";
+
+    for (let r = 0; r < VIS_ROWS; r++) {
+      const cell = document.createElement("div");
+      cell.className = "vis-cell";
+      col.appendChild(cell);
+    }
+    container.appendChild(col);
+  }
+}
+
+function updateVisualizer() {
+  const cols = document.querySelectorAll(".vis-col");
+  cols.forEach((col) => {
+    const cells = col.children;
+    const level = Math.floor(Math.random() * (VIS_ROWS + 1)); // altezza random
+
+    for (let i = 0; i < cells.length; i++) {
+      cells[i].classList.toggle("active", i < level);
+    }
+  });
+}
+
+function startVisualizer() {
+  if (visTick) return;
+  visTick = setInterval(updateVisualizer, 120);
+}
+
+function stopVisualizer() {
+  if (visTick) {
+    clearInterval(visTick);
+    visTick = null;
+  }
+  document.querySelectorAll(".vis-cell.active").forEach((cell) => {
+    cell.classList.remove("active");
+  });
+}
+
+
 // --- SESSION HEADER ---
 function hydrateSessionHeader() {
   const badge = $("#mode-badge");
@@ -93,185 +144,17 @@ function hydrateSessionHeader() {
 
 // --- NOW PLAYING ---
 function setNow(title, composer) {
-  $("#now-title").textContent = title || "In ascolto";
-  $("#now-composer").textContent = composer || "—";
+  const titleEl = $("#now-title");
+  const compEl = $("#now-composer");
+
+  if (titleEl) {
+    titleEl.textContent = title || "In ascolto";
+  }
+  if (compEl) {
+    compEl.textContent = composer || "—";
+  }
 }
 
-// --- ONDA STAZIONARIA SOTTO "IN ASCOLTO" ---
-function initListeningWave() {
-  const canvas = document.getElementById("now-wave");
-  if (!canvas || !canvas.getContext) return;
-
-  const ctx = canvas.getContext("2d");
-  let dpr = window.devicePixelRatio || 1;
-
-  function resize() {
-    const rect = canvas.getBoundingClientRect();
-    if (!rect.width || !rect.height) return;
-    dpr = window.devicePixelRatio || 1;
-    canvas.width = rect.width * dpr;
-    canvas.height = rect.height * dpr;
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  }
-
-  const MIN_NODES = 2;
-  const MAX_NODES = 20;
-
-  // nodi interni (numero di "lobi" della stazionaria)
-  let currentNodes = 8;
-  let targetNodes = 8;
-  let lastNodeChange = 0;
-
-  // fattore di ampiezza casuale dell’inviluppo (0.3..1.0, liscio nel tempo)
-  let envAmpCurrent = 0.7;
-  let envAmpTarget = 0.7;
-  let lastEnvChange = 0;
-
-  // nodo centrale mobile (in coordinate normalizzate 0..1)
-  const MIN_CENTER = 0.15;
-  const MAX_CENTER = 0.85;
-  let nodeCenter = 0.5;
-  let nodeDir = Math.random() < 0.5 ? 1 : -1; // +1 dx, -1 sx
-  let nextDirSwitch = 0;
-  const nodeSpeed = 0.0002; // frazione di larghezza per ms (~0.2/sec)
-
-  const speed = 0.002; // velocità di oscillazione base
-  let phase = 0; // fase dell'onda
-  let amplitudeLevel = 0; // 0 = linea piatta, 1 = piena
-
-  let lastTime = 0;
-
-  function draw(timestamp) {
-    if (!lastTime) lastTime = timestamp;
-    const dt = timestamp - lastTime;
-    lastTime = timestamp;
-
-    // fase a seconda dello stato
-    if (waveMode === "playing") {
-      phase += speed * dt;
-    } else if (waveMode === "paused") {
-      phase += speed * dt * 0.3; // si muove piano mentre svanisce
-    }
-
-    // cambio “target” nodi circa ogni DUE secondi (2..20)
-    if (!lastNodeChange) lastNodeChange = timestamp;
-    if (timestamp - lastNodeChange > 500) {
-      lastNodeChange = timestamp;
-
-      let next =
-        MIN_NODES +
-        Math.floor(Math.random() * (MAX_NODES - MIN_NODES + 1)); // 2..20
-
-      if (next === Math.round(targetNodes)) {
-        const span = MAX_NODES - MIN_NODES + 1;
-        next = MIN_NODES + ((next - MIN_NODES + 1) % span);
-      }
-      targetNodes = next;
-    }
-
-    // transizione morbida tra numero di nodi attuale e target
-    currentNodes += (targetNodes - currentNodes) * 0.08;
-
-    // ampiezza globale: playing = 1, idle/paused = 0 (va a zero gradualmente)
-    const targetAmplitudeLevel = waveMode === "playing" ? 1 : 0;
-    amplitudeLevel += (targetAmplitudeLevel - amplitudeLevel) * 0.05;
-
-    // fattore di ampiezza casuale dell’inviluppo (respira random)
-    if (!lastEnvChange) lastEnvChange = timestamp;
-    if (timestamp - lastEnvChange > 900) {
-      lastEnvChange = timestamp;
-      envAmpTarget = 0.3 + Math.random() * 0.7; // 0.3..1.0
-    }
-    envAmpCurrent += (envAmpTarget - envAmpCurrent) * 0.05;
-
-    // nodo centrale che si muove con moto continuo e inversione random (< 2s)
-    if (!nextDirSwitch) {
-      nextDirSwitch = timestamp + 300 + Math.random() * 1700; // tra 0.3s e 2s
-    }
-    if (timestamp >= nextDirSwitch) {
-      nodeDir *= -1; // cambia direzione
-      nextDirSwitch = timestamp + 300 + Math.random() * 1700;
-    }
-
-    nodeCenter += nodeDir * nodeSpeed * dt;
-
-    // rimbalzo ai bordi con reset del timer di inversione
-    if (nodeCenter < MIN_CENTER) {
-      nodeCenter = MIN_CENTER;
-      nodeDir = 1;
-      nextDirSwitch = timestamp + 300 + Math.random() * 1700;
-    } else if (nodeCenter > MAX_CENTER) {
-      nodeCenter = MAX_CENTER;
-      nodeDir = -1;
-      nextDirSwitch = timestamp + 300 + Math.random() * 1700;
-    }
-
-    const rect = canvas.getBoundingClientRect();
-    if (!rect.width || !rect.height) {
-      requestAnimationFrame(draw);
-      return;
-    }
-
-    const width = rect.width;
-    const height = rect.height;
-    const centerY = height / 2;
-    const baseAmplitude = height * 0.35;
-
-    // fading: più veloce quando “suona”, più lento quando va a spegnersi
-    const fadeAlpha = waveMode === "playing" ? 0.06 : 0.0075;
-    ctx.fillStyle = `rgba(11, 12, 16, ${fadeAlpha})`;
-    ctx.fillRect(0, 0, width, height);
-
-    // k controlla il numero di nodi interni della stazionaria
-    const k = (currentNodes * Math.PI) / width;
-
-    ctx.beginPath();
-    for (let x = 0; x <= width; x += 2) {
-      const pos = x / width;
-
-      // inviluppo con nodo a sinistra (0), nodo centrale mobile (nodeCenter),
-      // nodo a destra (1), costruito con due mezze sinusoidi
-      let envelope;
-      if (pos <= nodeCenter) {
-        const denom = nodeCenter <= 0.001 ? 0.001 : nodeCenter;
-        const t = pos / denom; // 0..1
-        envelope = Math.sin(Math.PI * t); // 0 -> π
-      } else {
-        const denom = 1 - nodeCenter <= 0.001 ? 0.001 : 1 - nodeCenter;
-        const t = (pos - nodeCenter) / denom; // 0..1
-        envelope = Math.sin(Math.PI * t);
-      }
-      if (envelope < 0) envelope = 0;
-
-      // ampiezza locale = inviluppo * fattore random * ampiezza globale
-      const localGain = envAmpCurrent * envelope;
-      const amplitude =
-        baseAmplitude * amplitudeLevel * localGain; // 0 se idle/paused completo
-
-      const y = centerY + amplitude * Math.sin(k * x) * Math.cos(phase);
-
-      if (x === 0) ctx.moveTo(x, y);
-      else ctx.lineTo(x, y);
-    }
-
-    const grad = ctx.createLinearGradient(0, 0, width, 0);
-    grad.addColorStop(0, "rgba(94, 234, 212, 0.7)");
-    grad.addColorStop(0.5, "rgba(120, 150, 255, 0.8)");
-    grad.addColorStop(1, "rgba(124, 58, 237, 0.9)");
-
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = grad;
-    ctx.globalCompositeOperation = "lighter";
-    ctx.stroke();
-    ctx.globalCompositeOperation = "source-over";
-
-    requestAnimationFrame(draw);
-  }
-
-  resize();
-  window.addEventListener("resize", resize);
-  requestAnimationFrame(draw);
-}
 
 // --- LOG LIVE ---
 function pushLog({ when, title, composer, status }) {
@@ -474,6 +357,7 @@ async function sessionStart() {
 
   await startBackendRecognition();
   startPlaylistPolling();
+  startVisualizer();
 }
 
 async function sessionPause() {
@@ -486,6 +370,7 @@ async function sessionPause() {
   pauseSessionTimer();
   await stopBackendRecognition();
   stopPlaylistPolling();
+  stopVisualizer();
 }
 
 // STOP → ferma riconoscimento, sincronizza playlist e va direttamente in review
@@ -512,6 +397,7 @@ async function sessionStop() {
 
   setRoute("review");
   showView("#view-review");
+  stopVisualizer();
 }
 
 // RESET SESSIONE: ferma tutto, pulisce UI e playlist locale
@@ -728,72 +614,142 @@ function renderReview() {
 // --- WELCOME / MODALITÀ + CAMPO CONCERTO ---
 
 function syncWelcomeModeRadios() {
-  const dj = document.querySelector('input[name="mode"][value="dj"]');
-  const band = document.querySelector('input[name="mode"][value="band"]');
-  const concert = document.querySelector('input[name="mode"][value="concert"]');
-  if (!dj || !band || !concert) return;
+  // Evidenzia la card corretta in base allo stato attuale
+  const cards = document.querySelectorAll(".mode-card");
+  cards.forEach((card) => card.classList.remove("mode-card--selected", "active"));
 
-  if (state.mode === "band") {
-    band.checked = true;
-  } else if (state.mode === "concert") {
-    concert.checked = true;
-  } else {
-    dj.checked = true;
+  const djCard = document.querySelector('.mode-card[data-mode="dj"]');
+  const bandCard = document.querySelector('.mode-card[data-mode="band"]');
+  const concertCard = document.querySelector('.mode-card[data-mode="concert"]');
+  const artistWrapper = document.getElementById("artistInputWrapper");
+  const artistInput = document.getElementById("artistInput");
+
+  if (state.mode === "band" && bandCard) {
+    bandCard.classList.add("mode-card--selected");
+  } else if (state.mode === "concert" && concertCard) {
+    concertCard.classList.add("mode-card--selected", "active");
+    if (artistWrapper) {
+      artistWrapper.classList.add("visible");
+    }
+    if (artistInput) {
+      artistInput.value = state.concertArtist || "";
+    }
+  } else if (djCard) {
+    djCard.classList.add("mode-card--selected");
   }
-
-  updateConcertArtistVisibility();
 }
 
+// Con la nuova UI la visibilità è gestita da syncWelcomeModeRadios
 function updateConcertArtistVisibility() {
-  const group = $("#concert-artist-group");
-  if (!group) return;
-  const modeInput = document.querySelector('input[name="mode"]:checked');
-  const modeValue = modeInput ? modeInput.value : "dj";
-  if (modeValue === "concert") {
-    group.classList.remove("hidden");
-  } else {
-    group.classList.add("hidden");
-  }
+  syncWelcomeModeRadios();
 }
 
 function backToWelcome() {
-  syncWelcomeModeRadios();
+  // Torna alla facciata 1 mantenendo l'eventuale scelta fatta
   setRoute("welcome");
   showView("#view-welcome");
+  syncWelcomeModeRadios();
 }
 
 function initWelcome() {
-  const form = $("#welcome-form");
+  const modeCards = document.querySelectorAll(".mode-card");
+  const concertCard = document.querySelector(".mode-card-concerto");
+  const artistWrapper = document.getElementById("artistInputWrapper");
+  const artistInput = document.getElementById("artistInput");
+  const artistConfirmBtn = document.getElementById("artistConfirmBtn");
+  const artistError = document.getElementById("artistError");
+  const backBtn = document.getElementById("backBtn");
 
+  // Quando arrivi sulla welcome, sincronizza le card con lo stato
   syncWelcomeModeRadios();
 
-  const modeRadios = form.querySelectorAll('input[name="mode"]');
-  modeRadios.forEach((radio) => {
-    radio.addEventListener("change", () => {
-      updateConcertArtistVisibility();
-    });
-  });
-
-  form.addEventListener("submit", (e) => {
-    e.preventDefault();
-    const modeInput = form.querySelector('input[name="mode"]:checked');
-    const modeValue = modeInput ? modeInput.value : "dj";
-    setMode(modeValue);
-
-    if (modeValue === "concert") {
-      const artistInput = $("#concert-artist");
-      state.concertArtist = artistInput ? artistInput.value.trim() : "";
+  function handleModeSelection(mode) {
+    if (mode === "concert") {
+      if (concertCard) concertCard.classList.add("active");
+      if (artistWrapper) artistWrapper.classList.add("visible");
+      if (artistError) artistError.textContent = "";
+      if (artistInput) {
+        setTimeout(() => artistInput.focus(), 10);
+      }
+      return;
     }
 
+    // DJ set o live band
+    state.mode = mode === "band" ? "band" : "dj";
+    state.concertArtist = "";
     hydrateSessionHeader();
     setRoute("session");
     showView("#view-session");
+  }
+
+  function handleArtistSubmit() {
+    if (!artistInput) return;
+    const name = artistInput.value.trim();
+    if (!name) {
+      if (artistError) {
+        artistError.textContent =
+          "Inserisci il nome dell’artista prima di continuare.";
+      }
+      return;
+    }
+
+    if (artistError) artistError.textContent = "";
+
+    state.mode = "concert";
+    state.concertArtist = name;
+    hydrateSessionHeader();
+    setRoute("session");
+    showView("#view-session");
+  }
+
+  modeCards.forEach((card) => {
+    card.addEventListener("click", () => {
+      const mode = card.dataset.mode;
+      handleModeSelection(mode);
+    });
+
+    // Accessibilità tastiera
+    card.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        const mode = card.dataset.mode;
+        handleModeSelection(mode);
+      }
+    });
   });
 
-  $("#btn-welcome-start").addEventListener("click", (e) => {
-    e.preventDefault();
-    form.requestSubmit();
-  });
+  if (artistWrapper) {
+    // Evita che i click sull'input trigghino anche il click sulla card
+    artistWrapper.addEventListener("click", (event) => {
+      event.stopPropagation();
+    });
+  }
+
+  if (artistConfirmBtn) {
+    artistConfirmBtn.addEventListener("click", (event) => {
+      event.stopPropagation();
+      handleArtistSubmit();
+    });
+  }
+
+  if (artistInput) {
+    artistInput.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        handleArtistSubmit();
+      }
+      event.stopPropagation();
+    });
+  }
+
+  if (backBtn) {
+    backBtn.addEventListener("click", (event) => {
+      event.preventDefault();
+      if (window.history.length > 1) {
+        window.history.back();
+      }
+    });
+  }
 }
 
 // --- WIRING BOTTONI SESSIONE / REVIEW ---
@@ -857,5 +813,6 @@ document.addEventListener("DOMContentLoaded", () => {
   showView("#view-welcome");
   initWelcome();
   wireSessionButtons();
-  initListeningWave(); // onda in stato "idle" finché non premi Start
+  
+  buildVisualizer(); 
 });

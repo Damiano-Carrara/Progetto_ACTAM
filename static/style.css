@@ -395,3 +395,365 @@ body::-webkit-scrollbar-thumb {
   gap: 8px;
   margin-top: 8px;
 }
+/* === NUOVA FACCIATA 1: SELEZIONE MODALITÀ === */
+
+.mode-page {
+  width: 100%;
+  padding: 24px;
+}
+
+.mode-container {
+  max-width: 1100px;
+  margin: 0 auto;
+  text-align: center;
+}
+
+/* Titoli facciata 1 */
+.app-title {
+  font-size: 2.1rem;
+  margin-bottom: 0.5rem;
+}
+
+.app-subtitle {
+  font-size: 0.95rem;
+  color: #c7c7e0;
+  margin-bottom: 2.5rem;
+}
+
+/* Griglia delle card */
+.mode-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1.5rem;
+}
+
+.mode-card {
+  position: relative;
+  overflow: hidden;
+  border-radius: 18px;
+  cursor: pointer;
+  min-height: 220px;
+  outline: none;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35);
+  transform: translateY(0);
+  transition:
+    transform 0.25s ease,
+    box-shadow 0.25s ease,
+    outline 0.15s ease;
+  will-change: transform;
+}
+
+/* Sfondo "immagine" */
+.mode-bg {
+  position: absolute;
+  inset: 0;
+  background-size: cover;
+  background-position: center;
+  filter: grayscale(0.1) brightness(0.65);
+  transform: scale(1.02);
+  transition:
+    filter 0.25s ease,
+    transform 0.25s ease;
+  border-radius: inherit;
+}
+
+.mode-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    145deg,
+    rgba(5, 5, 15, 0.92),
+    rgba(88, 80, 180, 0.8)
+  );
+  mix-blend-mode: multiply;
+  transition: opacity 0.25s ease;
+  border-radius: inherit;
+}
+
+/* Contenuto testo */
+.mode-content {
+  position: relative;
+  z-index: 1;
+  padding: 1.4rem 1.5rem;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  height: 100%;
+}
+
+.mode-content h2 {
+  font-size: 1.3rem;
+  margin-bottom: 0.35rem;
+}
+
+.mode-content p {
+  font-size: 0.9rem;
+  color: #d6d6f0;
+}
+
+/* Hover, focus */
+.mode-card:hover,
+.mode-card:focus-visible {
+  transform: translateY(-8px);
+  box-shadow: 0 22px 50px rgba(0, 0, 0, 0.55);
+}
+
+.mode-card:hover .mode-bg,
+.mode-card:focus-visible .mode-bg {
+  filter: grayscale(0) brightness(0.9);
+  transform: scale(1.06);
+}
+
+.mode-card:hover .mode-overlay,
+.mode-card:focus-visible .mode-overlay {
+  opacity: 0.5;
+}
+
+.mode-card:focus-visible {
+  outline: 2px solid #f4bfff;
+}
+
+/* Varianti di sfondo */
+.bg-dj {
+  background-image: radial-gradient(circle at 20% 0%, #ff8a00, #1b0033);
+}
+
+.bg-live {
+  background-image: radial-gradient(circle at 80% 0%, #00ffc3, #002b36);
+}
+
+.bg-concerto {
+  background-image: radial-gradient(circle at 50% 100%, #ff3f6a, #1a0030);
+}
+
+/* Card selezionata (qualunque modalità) */
+.mode-card.mode-card--selected {
+  outline: 2px solid #f4bfff;
+}
+
+/* Card concerto attiva (quando input visibile) */
+.mode-card-concerto.active {
+  outline: 2px solid #ff8ad4;
+}
+
+/* Input artista */
+.artist-input-wrapper {
+  margin-top: 1rem;
+  padding-top: 0.8rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.18);
+  display: none;
+}
+
+.artist-input-wrapper.visible {
+  display: block;
+}
+
+.artist-input-wrapper label {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #f6d7ff;
+  display: inline-block;
+  margin-bottom: 0.35rem;
+}
+
+.artist-input-row {
+  display: flex;
+  gap: 0.6rem;
+}
+
+#artistInput {
+  flex: 1;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  background: rgba(8, 8, 25, 0.85);
+  padding: 0.5rem 0.9rem;
+  color: #ffffff;
+  font-size: 0.9rem;
+}
+
+#artistInput::placeholder {
+  color: #a9a9d8;
+}
+
+#artistInput:focus {
+  outline: none;
+  border-color: #ffbfea;
+  box-shadow: 0 0 0 1px rgba(255, 191, 234, 0.6);
+}
+
+#artistConfirmBtn {
+  border-radius: 999px;
+  border: none;
+  padding: 0 0.9rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  background: linear-gradient(135deg, #ff8ad4, #ffc46a);
+  color: #21021e;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
+}
+
+#artistConfirmBtn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
+  filter: brightness(1.05);
+}
+
+#artistConfirmBtn:active {
+  transform: translateY(1px);
+  box-shadow: none;
+}
+
+.artist-error {
+  margin-top: 0.3rem;
+  font-size: 0.8rem;
+  color: #ffc7d5;
+}
+
+/* Testo di aiuto in fondo */
+.helper-text {
+  margin-top: 2rem;
+  font-size: 0.85rem;
+  color: #a8a8cc;
+}
+
+/* Responsive */
+@media (max-width: 880px) {
+  .mode-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .mode-card {
+    min-height: 190px;
+  }
+
+  .mode-content {
+    padding: 1.3rem 1.3rem 1.4rem;
+  }
+}
+
+/* Barra superiore con bottone indietro */
+.top-bar {
+  display: flex;
+  justify-content: flex-start;
+  margin-bottom: 1.5rem;
+}
+
+.back-btn {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  border-radius: 999px;
+  padding: 0.35rem 0.9rem;
+  color: #f7f7ff;
+  font-size: 0.85rem;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.back-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+/* === FACCIATA 2: SESSIONE CON QUADRATINI === */
+
+/* La vista sessione occupa tutta l’altezza disponibile
+   solo quando è la facciata attiva */
+#view-session.view--active {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: calc(100vh - 48px);
+}
+
+/* Sessione + log in colonna */
+.session-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+}
+
+/* Le card della facciata 2 si estendono da sx a dx */
+.session-panel,
+.log-card,
+.visualizer-card {
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
+}
+
+/* card "Sessione" */
+.session-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.session-panel .meta {
+  color: var(--muted);
+  margin-top: 4px;
+}
+
+.session-panel .left {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* badge già definito sopra, lo lasciamo uguale */
+
+/* Log live (riusa le tue .log-head, .log-body, .log-row) */
+/* niente di extra qui, solo layout già esistente */
+
+/* Card Audio live: full width */
+.visualizer-card {
+  margin-top: 8px;
+  width: 100%;
+  max-width: 100%;
+}
+
+.visualizer-title {
+  margin: 0 0 10px;
+}
+
+/* Griglia dei quadratini: altezza fissa, riempie la card */
+.visualizer-grid {
+  display: flex;
+  gap: 3px;
+  height: 220px; /* alza o abbassa qui */
+  align-items: flex-end;
+  overflow: hidden;
+}
+
+/* Colonne una accanto all'altra */
+.vis-col {
+  display: flex;
+  flex-direction: column-reverse; /* i blocchi “salgono” dal basso */
+  gap: 2px;
+}
+
+/* Celle: dimensione fissa */
+.vis-cell {
+  width: 7px;
+  height: 10px;
+  border-radius: 2px;
+  background: #11151f;
+  opacity: 0.15;
+  transition: opacity 0.15s ease, background 0.15s ease, transform 0.15s ease;
+}
+
+.vis-cell.active {
+  opacity: 1;
+  background: linear-gradient(180deg, #7c3aed, #5eead4);
+  transform: translateY(-1px);
+}
+
+/* Responsive: card sempre full width, ci pensa già il container */
+@media (max-width: 900px) {
+  #view-session.view--active {
+    min-height: auto;
+  }
+}
