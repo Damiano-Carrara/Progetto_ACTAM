@@ -10,94 +10,127 @@
   <main id="app">
     <!-- FACCIATA 1: WELCOME -->
     <section id="view-welcome" class="view view--active">
-      <header class="hero">
-        <h1 id="welcome-title">Borderò Assist</h1>
-        <p class="subtitle">Riconoscimento live e compilazione automatica</p>
-      </header>
+      <div class="mode-page">
+        <div class="mode-container">
+          <h1 class="app-title">Seleziona la modalità</h1>
+          <p class="app-subtitle">
+            Scegli se stai compilando un DJ set, una live band o il concerto di un artista.
+          </p>
 
-      <form id="welcome-form" class="card">
-        <fieldset class="mode-group">
-          <legend>Scegli la modalità</legend>
+          <div class="mode-grid">
+            <!-- DJ SET -->
+            <div
+              class="mode-card"
+              data-mode="dj"
+              tabindex="0"
+              role="button"
+              aria-label="DJ set"
+            >
+              <div class="mode-bg bg-dj"></div>
+              <div class="mode-overlay"></div>
+              <div class="mode-content">
+                <h2>DJ set</h2>
+                <p>Per serate con uno o più DJ, mashup e remix.</p>
 
-          <label class="option">
-            <input type="radio" name="mode" value="dj" checked />
-            DJ set
-          </label>
+                <!-- Conferma DJ: solo tasto Invia, nessuna label -->
+                <div class="artist-input-wrapper" id="djConfirmWrapper">
+                  <div class="artist-input-row">
+                    <div class="artist-placeholder"></div>
+                    <button type="button" id="djConfirmBtn">Invia</button>
+                  </div>
+                </div>
+              </div>
+            </div>
 
-          <label class="option">
-            <input type="radio" name="mode" value="band" />
-            Live band
-          </label>
+            <!-- LIVE BAND -->
+            <div
+              class="mode-card"
+              data-mode="band"
+              tabindex="0"
+              role="button"
+              aria-label="Live band"
+            >
+              <div class="mode-bg bg-live"></div>
+              <div class="mode-overlay"></div>
+              <div class="mode-content">
+                <h2>Live band</h2>
+                <p>Per band con strumenti dal vivo e voce.</p>
 
-          <label class="option">
-            <input type="radio" name="mode" value="concert" />
-            Concerto
-          </label>
+                <!-- Input artista (opzionale), grafica come concerto -->
+                <div class="artist-input-wrapper" id="bandArtistWrapper">
+                  <label for="bandArtistInput">Nome artista (opzionale)</label>
+                  <div class="artist-input-row">
+                    <input
+                      type="text"
+                      id="bandArtistInput"
+                      placeholder="Nome artista (opzionale)"
+                      autocomplete="off"
+                    />
+                    <button type="button" id="bandConfirmBtn">Invia</button>
+                  </div>
+                </div>
+              </div>
+            </div>
 
-          <!-- Campo visibile solo se è selezionato "Concerto" -->
-          <div id="concert-artist-group" class="concert-artist-group hidden">
-            <label for="concert-artist">Artista del concerto</label>
-            <input
-              type="text"
-              id="concert-artist"
-              name="concert-artist"
-              placeholder="Es. Coldplay"
-              autocomplete="off"
-            />
+            <!-- CONCERTO -->
+            <div
+              class="mode-card mode-card-concerto"
+              data-mode="concert"
+              tabindex="0"
+              role="button"
+              aria-label="Concerto"
+            >
+              <div class="mode-bg bg-concerto"></div>
+              <div class="mode-overlay"></div>
+              <div class="mode-content">
+                <h2>Concerto</h2>
+                <p>Per le date di un tour o concerti singoli.</p>
+
+                <!-- Input artista obbligatorio -->
+                <div class="artist-input-wrapper" id="artistInputWrapper">
+                  <label for="artistInput">Nome artista</label>
+                  <div class="artist-input-row">
+                    <input
+                      type="text"
+                      id="artistInput"
+                      placeholder="Nome artista"
+                      autocomplete="off"
+                    />
+                    <button type="button" id="artistConfirmBtn">Invia</button>
+                  </div>
+                  <p class="artist-error" id="artistError"></p>
+                </div>
+              </div>
+            </div>
           </div>
-        </fieldset>
-
-        <div class="controls">
-          <button id="btn-welcome-start" class="btn btn--primary">
-            Inizia sessione
-          </button>
         </div>
-      </form>
+      </div>
     </section>
 
     <!-- FACCIATA 2: SESSION -->
     <section id="view-session" class="view">
-      <header class="session-head">
-        <div>
-          <h2>Sessione live</h2>
-          <p class="meta">
-            Modalità:
-            <span class="badge" id="mode-badge">DJ set</span>
-          </p>
-        </div>
-
-        <div class="meta">
-          Durata sessione:
-          <span id="session-timer">00:00</span>
-        </div>
-
-        <div class="controls">
-          <button id="btn-session-start" class="btn btn--primary">Start</button>
-          <button id="btn-session-pause" class="btn" disabled>Pause</button>
-          <button id="btn-session-stop" class="btn" disabled>Stop</button>
-          <button id="btn-session-reset" class="btn">Reset</button>
-        </div>
-      </header>
-
-      <div class="grid">
-        <section class="card now">
-          <h3>Now playing</h3>
-          <p id="now-title" class="now-title">
-            In ascolto<span class="dots" aria-hidden="true"></span>
-          </p>
-          <p class="now-meta">
-            Compositore: <span id="now-composer">—</span>
-          </p>
-
-          <!-- Onda stazionaria animata -->
-          <canvas
-            id="now-wave"
-            class="now-wave"
-            aria-hidden="true"
-          ></canvas>
+      <div class="session-grid">
+        <!-- Card con titolo sessione e controlli -->
+        <section class="card session-panel">
+          <div class="left">
+            <h2>Sessione</h2>
+            <div class="meta">
+              Modalità:
+              <span id="mode-badge" class="badge">DJ set</span>
+              • Tempo sessione:
+              <span id="session-timer">00:00</span>
+            </div>
+          </div>
+          <div class="controls">
+            <button id="btn-session-start" class="btn btn--primary">Start</button>
+            <button id="btn-session-pause" class="btn" disabled>Pause</button>
+            <button id="btn-session-stop" class="btn" disabled>Stop</button>
+            <button id="btn-session-reset" class="btn">Reset</button>
+          </div>
         </section>
 
-        <section class="card">
+        <!-- Card log live -->
+        <section class="card log-card">
           <h3>Log live</h3>
           <div class="log-head">
             <span>Ora</span>
@@ -108,6 +141,11 @@
           <div id="live-log" class="log-body"></div>
         </section>
       </div>
+
+      <!-- Visualizer a quadratini FULL WIDTH -->
+      <section class="visualizer-strip">
+        <div id="visualizer" class="visualizer-grid" aria-hidden="true"></div>
+      </section>
     </section>
 
     <!-- FACCIATA 3: REVIEW -->
@@ -119,16 +157,17 @@
         </p>
       </header>
 
-      <div class="card">
+      <div class="card review-card">
         <h3>Playlist della serata</h3>
 
-        <div class="table">
+        <div class="table review-table">
           <div class="row row--head">
             <span>Compositore</span>
             <span>Titolo</span>
             <span>Azioni</span>
           </div>
-          <div id="review-rows"></div>
+
+          <div id="review-rows" class="review-rows-body"></div>
 
           <template id="review-row-template">
             <div class="row">
@@ -152,7 +191,7 @@
       </div>
     </section>
 
-    <!-- MODAL DI CONFERMA DELETE -->
+    <!-- MODAL DI CONFERMA GENERICA -->
     <div id="confirm-modal" class="modal modal--hidden">
       <div class="modal-backdrop"></div>
       <div class="modal-dialog card">
@@ -165,7 +204,6 @@
         </div>
       </div>
     </div>
-
   </main>
 
   <script src="{{ url_for('static', filename='script.js') }}" defer></script>
