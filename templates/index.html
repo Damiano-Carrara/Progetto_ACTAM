@@ -57,18 +57,14 @@
                 <p>Per band con strumenti dal vivo e voce.</p>
 
                 <!-- Input artista (opzionale), grafica come concerto -->
+                                <!-- Conferma Live band: solo tasto Invia, nessun campo artista -->
                 <div class="artist-input-wrapper" id="bandArtistWrapper">
-                  <label for="bandArtistInput">Nome artista (opzionale)</label>
                   <div class="artist-input-row">
-                    <input
-                      type="text"
-                      id="bandArtistInput"
-                      placeholder="Nome artista (opzionale)"
-                      autocomplete="off"
-                    />
+                    <div class="artist-placeholder"></div>
                     <button type="button" id="bandConfirmBtn">Invia</button>
                   </div>
                 </div>
+
               </div>
             </div>
 
@@ -78,12 +74,12 @@
               data-mode="concert"
               tabindex="0"
               role="button"
-              aria-label="Concerto"
+              aria-label="Concerto (o Tribute Band)"
             >
               <div class="mode-bg bg-concerto"></div>
               <div class="mode-overlay"></div>
               <div class="mode-content">
-                <h2>Concerto</h2>
+                <h2>Concerto (o Tribute Band)</h2>
                 <p>Per le date di un tour o concerti singoli.</p>
 
                 <!-- Input artista obbligatorio -->
@@ -130,17 +126,15 @@
         </section>
 
         <!-- Card log live -->
-        <section class="card log-card">
-          <h3>Log live</h3>
-          <div class="log-head">
-            <span>Ora</span>
-            <span>Brano</span>
-            <span>Compositore</span>
-            <span>Stato</span>
-          </div>
-          <div id="live-log" class="log-body"></div>
+       <section class="card log-card">
+            <h3>Log live</h3>
+            <div class="log-head">
+                <span>Brano</span>
+                <span>Compositore</span>
+                <span>Artista</span>
+            </div>
+            <div id="live-log" class="log-body"></div>
         </section>
-      </div>
 
       <!-- Visualizer a quadratini FULL WIDTH -->
       <section class="visualizer-strip">

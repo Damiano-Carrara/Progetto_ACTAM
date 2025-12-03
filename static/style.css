@@ -68,7 +68,7 @@ body.no-scroll {
   color: var(--muted);
 }
 
-/* Card-hero in review: la facciamo diventare una card vera */
+/* Card-hero in review */
 #view-review .hero.hero--small {
   padding: 16px 18px;
   border-radius: 16px;
@@ -148,7 +148,6 @@ body.no-scroll {
   text-align: center;
 }
 
-/* Titoli facciata 1 */
 .app-title {
   font-size: 2.1rem;
   margin-bottom: 0.5rem;
@@ -160,14 +159,12 @@ body.no-scroll {
   margin-bottom: 2.5rem;
 }
 
-/* Griglia delle card */
 .mode-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 1.5rem;
 }
 
-/* Card modalità */
 .mode-card {
   position: relative;
   overflow: hidden;
@@ -184,7 +181,6 @@ body.no-scroll {
   will-change: transform;
 }
 
-/* Sfondo "immagine" */
 .mode-bg {
   position: absolute;
   inset: 0;
@@ -211,7 +207,6 @@ body.no-scroll {
   border-radius: inherit;
 }
 
-/* Contenuto testo */
 .mode-content {
   position: relative;
   z-index: 1;
@@ -233,7 +228,6 @@ body.no-scroll {
   color: #d6d6f0;
 }
 
-/* Hover, focus */
 .mode-card:hover,
 .mode-card:focus-visible {
   transform: translateY(-8px);
@@ -255,7 +249,6 @@ body.no-scroll {
   outline: 2px solid #f4bfff;
 }
 
-/* Varianti di sfondo */
 .bg-dj {
   background-image: radial-gradient(circle at 20% 0%, #ff8a00, #1b0033);
 }
@@ -268,17 +261,14 @@ body.no-scroll {
   background-image: radial-gradient(circle at 50% 100%, #ff3f6a, #1a0030);
 }
 
-/* Card selezionata */
 .mode-card.mode-card--selected {
   outline: 2px solid #f4bfff;
 }
 
-/* Card concerto attiva */
 .mode-card-concerto.active {
   outline: 2px solid #ff8ad4;
 }
 
-/* Input artista / conferma */
 .artist-input-wrapper {
   margin-top: 1rem;
   padding-top: 0.8rem;
@@ -329,27 +319,25 @@ body.no-scroll {
   box-shadow: 0 0 0 1px rgba(255, 191, 234, 0.6);
 }
 
-/* Placeholder per DJ (riempie lo spazio dell'input per avere stessa struttura) */
 .artist-placeholder {
   flex: 1 1 auto;
   min-width: 0;
 }
 
-/* Bottoni Invia (DJ, band, concerto) – TUTTI UGUALI e "cicciotti" */
 #artistConfirmBtn,
 #bandConfirmBtn,
 #djConfirmBtn {
   flex: 0 0 auto;
   border-radius: 999px;
   border: none;
-  padding: 0.45rem 0.9rem;     /* più padding verticale */
-  min-height: 38px;            /* altezza minima uguale per tutti */
+  padding: 0.45rem 0.9rem;
+  min-height: 38px;
   font-size: 0.9rem;
   font-weight: 600;
   background: linear-gradient(135deg, #ff8ad4, #ffc46a);
   color: #21021e;
   cursor: pointer;
-  width: 110px;                /* larghezza identica per tutti e tre */
+  width: 110px;
   text-align: center;
   transition:
     transform 0.15s ease,
@@ -378,16 +366,13 @@ body.no-scroll {
   color: #ffc7d5;
 }
 
-/* Responsive prima schermata */
 @media (max-width: 880px) {
   .mode-grid {
     grid-template-columns: 1fr;
   }
-
   .mode-card {
     min-height: 190px;
   }
-
   .mode-content {
     padding: 1.3rem 1.3rem 1.4rem;
   }
@@ -402,7 +387,6 @@ body.no-scroll {
   min-height: calc(100vh - 48px);
 }
 
-/* Sessione + log in colonna */
 .session-grid {
   display: flex;
   flex-direction: column;
@@ -410,7 +394,6 @@ body.no-scroll {
   width: 100%;
 }
 
-/* card "Sessione" */
 .session-panel {
   display: flex;
   align-items: center;
@@ -428,17 +411,17 @@ body.no-scroll {
   gap: 4px;
 }
 
-/* Log live card (sotto) – resta neutra */
 .log-card {
   display: flex;
   flex-direction: column;
-  height: 280px; /* ~7 righe, poi scroll interno */
+  height: 280px;
 }
 
 .log-head,
 .log-row {
   display: grid;
-  grid-template-columns: 110px 1fr 1fr 100px;
+  /* Brano | Compositore | Artista */
+  grid-template-columns: 2fr 1.5fr 1.2fr;
   gap: 8px;
   font-size: 0.9rem;
 }
@@ -458,19 +441,10 @@ body.no-scroll {
   overflow: auto;
 }
 
-.log-row .status-ok {
-  color: #22c55e;
-}
+.log-row .status-ok { color: #22c55e; }
+.log-row .status-same { color: #9fb0c2; }
+.log-row .status-new { color: #eab308; }
 
-.log-row .status-same {
-  color: #9fb0c2;
-}
-
-.log-row .status-new {
-  color: #eab308;
-}
-
-/* VISUALIZER FULL WIDTH */
 .visualizer-strip {
   position: fixed;
   left: 50%;
@@ -480,6 +454,8 @@ body.no-scroll {
   margin: 0;
   padding: 0;
   z-index: 5;
+  opacity: 0.75;
+  pointer-events: none;
 }
 
 .visualizer-grid {
@@ -502,8 +478,8 @@ body.no-scroll {
   width: 100%;
   height: 10px;
   border-radius: 2px;
-  background: #11151f;
-  opacity: 0.15;
+  background: #05070d;
+  opacity: 0.12;
   transition:
     opacity 0.4s ease,
     background 0.4s ease,
@@ -511,23 +487,25 @@ body.no-scroll {
 }
 
 .vis-cell.active {
-  opacity: 1;
-  background: linear-gradient(180deg, #7c3aed, #5eead4);
+  opacity: 0.85;
+  background: linear-gradient(
+    180deg,
+    rgba(124, 58, 237, 0.05),
+    rgba(124, 58, 237, 0.55),
+    rgba(94, 234, 212, 0.95)
+  );
   transform: translateY(-1px);
 }
 
-/* Responsive seconda schermata */
 @media (max-width: 900px) {
   #view-session.view--active {
     min-height: auto;
   }
-
   .session-panel {
     flex-direction: column;
     align-items: flex-start;
     gap: 12px;
   }
-
   .controls {
     width: 100%;
     justify-content: flex-start;
@@ -537,12 +515,13 @@ body.no-scroll {
   }
 }
 
-/* === FACCIATA 3: REVIEW === */
+/* === FACCIATA 3: REVIEW E TABELLE === */
+/* Qui ci sono le modifiche per i tuoi segni giallo/blu */
 
 .review-card {
   display: flex;
   flex-direction: column;
-  height: 460px; /* come se contenesse ~8 righe */
+  height: 460px;
 }
 
 .review-table {
@@ -559,13 +538,13 @@ body.no-scroll {
   overflow: auto;
 }
 
-/* Tabelle */
 .table {
   margin-top: 12px;
 }
 
 .row {
   display: grid;
+  /* Le 3 colonne */
   grid-template-columns: 1.2fr 1.4fr auto;
   gap: 8px;
   align-items: center;
@@ -573,22 +552,33 @@ body.no-scroll {
   border-bottom: 1px solid var(--border);
 }
 
+/* INTESTAZIONI */
 .row--head {
   font-size: 0.9rem;
   color: var(--muted);
   font-weight: 600;
 }
 
-/* intestazioni colonna tutte a sinistra */
+/* Tutte le intestazioni: aggiungiamo padding sinistro per allineare al testo degli input */
 .row--head span {
-  text-align: left;
-  padding-left: 8px;
+  padding-left: 9px; /* CORREZIONE GIALLA: allinea il titolo al testo dell'input */
+  text-align: left !important;
 }
 
+/* Specifico per la colonna "Azioni" (3a colonna) */
+.row--head span:nth-child(3) {
+  /* CORREZIONE BLU: Spinge la scritta Azioni tutta a sinistra nella sua colonna */
+  justify-self: flex-start;
+  display: flex;
+  justify-content: flex-start; 
+}
+
+/* Colonna bottoni (dentro le righe dati) */
 .row .tools {
   display: flex;
   gap: 8px;
-  justify-content: flex-end;
+  /* CORREZIONE BLU: Spinge i bottoni a sinistra per seguire la scritta Azioni */
+  justify-content: flex-start;
   flex-wrap: wrap;
 }
 
@@ -605,22 +595,21 @@ input.inline {
   color: var(--text);
   border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 6px 8px;
+  padding: 6px 8px; /* Ecco perché sopra ho messo padding-left: 9px */
   font-size: 0.9rem;
 }
 
 .row.row--confirmed input.inline {
   border-style: solid;
-  border-color: #22c55e; /* override dal tema sotto */
+  border-color: #22c55e;
 }
 
-/* SCROLLBAR LEGGERA */
+/* SCROLLBAR */
 .log-body::-webkit-scrollbar,
 .review-rows-body::-webkit-scrollbar,
 body::-webkit-scrollbar {
   width: 8px;
 }
-
 .log-body::-webkit-scrollbar-thumb,
 .review-rows-body::-webkit-scrollbar-thumb,
 body::-webkit-scrollbar-thumb {
@@ -628,7 +617,7 @@ body::-webkit-scrollbar-thumb {
   border-radius: 999px;
 }
 
-/* MODAL DI CONFERMA */
+/* MODAL */
 .modal {
   position: fixed;
   inset: 0;
@@ -637,28 +626,19 @@ body::-webkit-scrollbar-thumb {
   justify-content: center;
   z-index: 1000;
 }
-
-.modal--hidden {
-  display: none;
-}
-
+.modal--hidden { display: none; }
 .modal-backdrop {
   position: absolute;
   inset: 0;
   background: rgba(0, 0, 0, 0.65);
 }
-
 .modal-dialog {
   position: relative;
   min-width: 260px;
   max-width: 420px;
   text-align: center;
 }
-
-.modal-message {
-  margin: 4px 0 16px;
-}
-
+.modal-message { margin: 4px 0 16px; }
 .modal-actions {
   display: flex;
   justify-content: flex-end;
@@ -666,79 +646,88 @@ body::-webkit-scrollbar-thumb {
   margin-top: 8px;
 }
 
-/* === TEMA: colori coerenti tra schermate === */
-
-/* DJ set */
+/* TEMA */
 #app.theme-dj .btn--primary {
   background: linear-gradient(135deg, #ff8a00, #ffca4d);
   color: #140616;
 }
-
 #app.theme-dj .vis-cell.active {
-  background: linear-gradient(180deg, #ff8a00, #ffca4d);
+  background: linear-gradient(180deg, rgba(255, 138, 0, 0.00), rgba(255, 138, 0, 0.45), rgba(255, 202, 77, 0.85));
 }
-
-#app.theme-dj .row.row--confirmed input.inline {
-  border-color: #ff8a00;
-}
-
-/* card in alto (sessione + hero review) con gradiente DJ */
+#app.theme-dj .row.row--confirmed input.inline { border-color: #ff8a00; }
 #app.theme-dj .session-panel,
 #app.theme-dj #view-review .hero.hero--small {
   background-image:
-    /* velo leggermente scuro da sinistra per migliorare il contrasto del testo */
     linear-gradient(90deg, rgba(0, 0, 0, 0.40), rgba(0, 0, 0, 0.05) 55%, rgba(0, 0, 0, 0) 100%),
     radial-gradient(circle at 20% 0%, #ff8a00, #1b0033);
   border-color: #ff8a00;
 }
 
-/* Live band */
 #app.theme-band .btn--primary {
-  /* azzurro più scuro sul secondo colore */
   background: linear-gradient(135deg, #00ffc3, #007c9f);
   color: #021315;
 }
-
 #app.theme-band .vis-cell.active {
-  background: linear-gradient(180deg, #00ffc3, #007c9f);
+  background: linear-gradient(180deg, rgba(0, 255, 195, 0.00), rgba(0, 255, 195, 0.50), rgba(0, 124, 159, 0.85));
 }
-
-#app.theme-band .row.row--confirmed input.inline {
-  border-color: #00ffc3;
-}
-
-/* card in alto (sessione + hero review) con gradiente band leggermente più scuro */
+#app.theme-band .row.row--confirmed input.inline { border-color: #00ffc3; }
 #app.theme-band .session-panel {
   background-image: radial-gradient(circle at 80% 0%, #00ffc3, #003848);
   border-color: #00ffc3;
 }
-
 #app.theme-band #view-review .hero.hero--small {
   background-image: radial-gradient(circle at 80% 0%, #00ffc3, #003848);
   border-color: #00ffc3;
 }
 
-/* Concerto */
 #app.theme-concert .btn--primary {
   background: linear-gradient(135deg, #ff3f6a, #ff9ad7);
   color: #21021e;
 }
-
 #app.theme-concert .vis-cell.active {
-  background: linear-gradient(180deg, #ff3f6a, #ff9ad7);
+  background: linear-gradient(180deg, rgba(255, 63, 106, 0.00), rgba(255, 63, 106, 0.50), rgba(255, 154, 215, 0.90));
 }
-
-#app.theme-concert .row.row--confirmed input.inline {
-  border-color: #ff3f6a;
-}
-
-/* card in alto (sessione + hero review) con gradiente concerto */
+#app.theme-concert .row.row--confirmed input.inline { border-color: #ff3f6a; }
 #app.theme-concert .session-panel {
   background-image: radial-gradient(circle at 50% 100%, #ff3f6a, #1a0030);
   border-color: #ff3f6a;
 }
-
 #app.theme-concert #view-review .hero.hero--small {
   background-image: radial-gradient(circle at 50% 100%, #ff3f6a, #1a0030);
   border-color: #ff3f6a;
+}
+
+/* ============================================================
+   FIX DEFINITIVO ALLINEAMENTO TABELLA
+   Incolla questo alla FINE del file style.css
+   ============================================================ */
+
+/* 1. REGOLA LA GRIGLIA */
+/* Rendo la colonna azioni un po' più larga e fissa per evitare che collassi */
+.review-table .row {
+    grid-template-columns: 1.2fr 1.4fr 240px !important;
+}
+
+/* 2. TITOLO (Segno Giallo) */
+/* Aggiungo 10px di spazio a sinistra alla scritta "Titolo" 
+   perché corrisponda esattamente al padding interno dell'input sotto */
+.review-table .row--head span:nth-child(2) {
+    padding-left: 10px !important; 
+    text-align: left !important;
+    justify-self: start !important;
+}
+
+/* 3. AZIONI (Segno Blu - Intestazione) */
+/* La scritta "Azioni" viene forzata a sinistra */
+.review-table .row--head span:nth-child(3) {
+    text-align: left !important;
+    justify-self: start !important; /* Si attacca all'inizio della colonna */
+    padding-left: 0 !important;
+}
+
+/* 4. AZIONI (Segno Blu - Bottoni) */
+/* Anche i bottoni vengono forzati a sinistra per allinearsi alla scritta */
+.review-table .row .tools {
+    justify-content: flex-start !important;
+    gap: 8px !important;
 }

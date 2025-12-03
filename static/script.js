@@ -123,24 +123,25 @@ function updateVisualizer() {
   for (let colIndex = 0; colIndex < cols.length; colIndex++) {
     let current = visLevels[colIndex] || 0;
 
-    // target con forte bias verso zero (random^2.2)
-    let target = Math.pow(Math.random(), 2.2) * VIS_ROWS;
+    // target con bias ancora più forte verso zero (valor medio più basso)
+    let base = Math.pow(Math.random(), 3.2); // prima 2.2 -> ora molte più colonne "basse"
+    let target = base * VIS_ROWS * 0.9;
 
-    // ogni tanto un picco alto (tipo colpo di cassa)
-    if (Math.random() < 0.12) {
-      target = VIS_ROWS * (0.6 + 0.4 * Math.random()); // 60–100% dell'altezza
+    // ogni tanto un picco alto (tipo colpo di cassa), che mantiene la sensazione di "botta"
+    if (Math.random() < 0.1) {
+      target = VIS_ROWS * (0.55 + 0.45 * Math.random()); // 55–100% dell'altezza
     }
 
-    // easing salita/discesa
+    // easing salita/discesa (rimasti uguali: manteniamo il fading che ti piaceva)
     const speedUp = 0.45;
-    const speedDown = 0.12;      // più lento: discesa più morbida
+    const speedDown = 0.12;
     if (target > current) {
       current += (target - current) * speedUp;
     } else {
       current += (target - current) * speedDown;
     }
 
-    // damping più morbido (residuo più lungo)
+    // damping morbido: residuo che resta un po' di più
     current *= 0.985;
 
     // clamp
@@ -213,7 +214,7 @@ function setNow(title, composer) {
 }
 
 // --- LOG LIVE ---
-function pushLog({ id, when, title, composer, status }) {
+function pushLog({ id, title, composer, artist }) {
   const row = document.createElement("div");
   row.className = "log-row";
 
@@ -222,18 +223,10 @@ function pushLog({ id, when, title, composer, status }) {
     row.dataset.id = id;
   }
 
-  const cls =
-    status === "NEW"
-      ? "status-new"
-      : status === "SAME"
-      ? "status-same"
-      : "status-ok";
-
   row.innerHTML = `
-    <span>${when}</span>
     <span>${title || "—"}</span>
     <span class="col-composer">${composer || "—"}</span>
-    <span class="${cls}">${status}</span>
+    <span class="col-artist">${artist || "—"}</span>
   `;
 
   $("#live-log").prepend(row);
@@ -384,15 +377,15 @@ async function pollPlaylistOnce() {
 
           pushLog({
             id: track.id,
-            when: track.timestamp || nowHHMM(),
             title: track.title,
             composer: track.composer,
-            status: "NEW",
+            artist: track.artist,
           });
         }
       } else {
-        // --- BRANO GIÀ PRESENTE: aggiorno metadata (es. COMPOSITORE) ---
+        // --- BRANO GIÀ PRESENTE: aggiorno metadata (es. COMPOSITORE / ARTISTA) ---
         const oldComposer = existing.composer;
+        const oldArtist = existing.artist;
 
         existing.title = song.title || existing.title;
         existing.composer = song.composer || existing.composer;
@@ -403,7 +396,10 @@ async function pollPlaylistOnce() {
         existing.upc = song.upc || existing.upc;
         existing.ms = song.duration_ms || existing.ms;
 
-        if (existing.composer !== oldComposer) {
+        const composerChanged = existing.composer !== oldComposer;
+        const artistChanged = existing.artist !== oldArtist;
+
+        if (composerChanged || artistChanged) {
           updatedExisting = true;
 
           // se è il brano attualmente in riproduzione, aggiorno il "Now"
@@ -417,6 +413,10 @@ async function pollPlaylistOnce() {
             const composerSpan = logRow.querySelector(".col-composer");
             if (composerSpan) {
               composerSpan.textContent = existing.composer;
+            }
+            const artistSpan = logRow.querySelector(".col-artist");
+            if (artistSpan) {
+              artistSpan.textContent = existing.artist || "—";
             }
           }
         }
