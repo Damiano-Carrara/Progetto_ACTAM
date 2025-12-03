@@ -262,33 +262,80 @@ class AudioManager:
                 def process_section(track_list, threshold, type_label):
                     # Calcola il Bonus Dinamico
                     results_count = len(track_list)
-                    # MODIFICA 1: Alzato da 15 a 20 il bonus per risultati multipli
                     current_bonus_val = 50 if results_count == 1 else 25
 
                     for t in track_list:
                         raw_score = norm(t.get('score', 0))
                         final_score = raw_score
+                        
                         title = t.get('title', 'Sconosciuto')
                         artists = t.get('artists', [])
                         artist_name = artists[0]['name'] if artists else "Unknown"
-
+                        
+                        applied_bonus = 0
+                        
+                        # --- CONTROLLO FEATURING E BIAS ---
                         if bias_artist:
-                             is_in_artist = bias_artist.lower() in artist_name.lower()
-                             is_in_title = bias_artist.lower() in title.lower()
+                             bias_clean = bias_artist.strip().lower()
+                             title_lower = title.lower()
+                             main_artist_lower = artist_name.lower()
                              
-                             if is_in_artist or is_in_title:
-                                # Applica il bonus
-                                final_score += current_bonus_val
-                                
-                                # MODIFICA 2: Log differenziati
-                                if final_score >= threshold and raw_score < threshold:
-                                    # CASO DECISIVO: Il brano è stato salvato grazie al bias
-                                    print(f"🚀 BOOST DECISIVO (+{current_bonus_val}): '{title}' salvato! ({raw_score}% -> {final_score}%)")
-                                else:
-                                    # CASO GENERICO: Il boost è stato applicato (ma era già buono o è rimasto scarso)
-                                    print(f"✨ Boost applicato (+{current_bonus_val}): '{title}' ({raw_score}% -> {final_score}%)")
+                             # DEBUG
+                             print(f"\n🔍 ANALISI BIAS su: '{title}' (Score: {raw_score}%)")
+                             print(f"   Target: '{bias_clean}'")
+                             
+                             is_match = False
+                             
+                             # A. Cerca nell'artista principale
+                             if bias_clean in main_artist_lower: 
+                                 is_match = True
+                                 print(f"   > Check Artista Main ('{main_artist_lower}'): SI")
+                             else:
+                                 print(f"   > Check Artista Main ('{main_artist_lower}'): NO")
+                             
+                             # B. Cerca nel titolo
+                             if not is_match:
+                                 if bias_clean in title_lower: 
+                                     is_match = True
+                                     print(f"   > Check Titolo ('{title_lower}'): SI")
+                                 else:
+                                     print(f"   > Check Titolo ('{title_lower}'): NO")
+                             
+                             # C. Cerca nella lista artisti completa
+                             if not is_match:
+                                 artist_list_str = [a['name'].lower() for a in artists]
+                                 for art_str in artist_list_str:
+                                     if bias_clean in art_str:
+                                         is_match = True
+                                         break
+                                 print(f"   > Check Lista Artisti {artist_list_str}: {'SI' if is_match else 'NO'}")
 
+                             # D. NUOVO CHECK: Cerca nei METADATA ESTESI (Spotify, YouTube, ecc.)
+                             if not is_match and 'external_metadata' in t:
+                                 # Trasformiamo tutto il blocco metadata in una stringa e cerchiamo lì dentro.
+                                 # È un metodo "brute force" ma efficacissimo per trovare i featuring nascosti.
+                                 ext_meta_dump = json.dumps(t['external_metadata']).lower()
+                                 
+                                 if bias_clean in ext_meta_dump:
+                                     is_match = True
+                                     print(f"   > Check External Metadata (Spotify/YT): SI (Trovato nei dati estesi!)")
+                                 else:
+                                     print(f"   > Check External Metadata: NO")
+
+                             if is_match:
+                                applied_bonus = 40 
+                                final_score += applied_bonus
+                                print(f"   ✅ MATCH CONFERMATO! Applico bonus +{applied_bonus}")
+                             else:
+                                print(f"   ❌ NESSUN MATCH RILEVATO.")
+
+                        # Logica di accettazione
                         if final_score >= threshold:
+                            if raw_score < threshold:
+                                print(f"🚀 BOOST DECISIVO (+{applied_bonus}): '{title}' (Raw: {raw_score}% -> Final: {final_score}%)")
+                            elif applied_bonus > 0:
+                                print(f"✨ Boost applicato (+{applied_bonus}): '{title}' (Era già valido: {raw_score}%)")
+                                
                             all_found.append({
                                 "status": "success", "type": type_label,
                                 "title": title, "artist": artist_name,
@@ -299,8 +346,8 @@ class AudioManager:
                                 "upc": t.get('external_metadata', {}).get('upc')
                             })
                         else:
-                            # Stampa lo scarto solo se non è stato "silenziosamente" boostato
-                            print(f"📉 SCARTATO: '{title}' - Artista: '{artist_name}' - Score: {final_score}%")
+                            bias_msg = f" (Bias '{bias_artist}' fallito)" if bias_artist and applied_bonus == 0 else ""
+                            print(f"📉 SCARTATO: '{title}' - Artista: '{artist_name}' - Score: {final_score}%{bias_msg}")
 
                 if 'music' in metadata:
                     process_section(metadata['music'], THRESHOLD_MUSIC, "Original")
@@ -312,7 +359,7 @@ class AudioManager:
                     print(f"✅ TROVATO: {all_found[0]['title']} - {all_found[0]['artist']} (Score: {all_found[0]['score']}%)")
                     return {"status": "multiple_results", "tracks": all_found}
                 
-                print("⚠️ Nessun risultato ha superato la soglia.")
+                print(f"⚠️ Nessun risultato sopra soglia (Bias attivo: {bias_artist if bias_artist else 'No'}).")
                 return {"status": "not_found"}
 
             elif status_code == 1001:
@@ -323,7 +370,7 @@ class AudioManager:
                 return {"status": "not_found"}
                 
         except Exception as e:
-            print(f"❌ Errore rete (Timeout/SSL).")
+            print(f"❌ Errore rete (Timeout/SSL): {e}")
             if not self.low_quality_mode:
                 print("⚠️ Attivo modalità RISPARMIO DATI (8kHz) per recuperare.")
                 self.low_quality_mode = True

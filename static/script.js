@@ -1,8 +1,9 @@
 // --- STATO APP ---
 const state = {
-  mode: "dj", // "dj" | "band" | "concert"
+  mode: null, // "dj" | "band" | "concert"
   route: "welcome", // "welcome" | "session" | "review"
   concertArtist: "",
+  bandArtist: "", // artista opzionale per live band
 };
 
 // playlist locale (frontend)
@@ -25,12 +26,22 @@ let sessionTick = null;
 // undo stack (ultimi 5 stati della playlist in review)
 let undoStack = [];
 
-// snapshot eventuale per tornare da review a sessione (se in futuro avrai un tasto)
+// snapshot eventuale per tornare da review a sessione (se servirà)
 let lastSessionSnapshot = null;
 
-// --- UTILS ---
+// stato dell'onda (idle = piatta, playing = viva, paused = si spegne lentamente)
+let waveMode = "idle"; // "idle" | "playing" | "paused"
+
+// --- VISUALIZER: equalizzatore continuo full-width ---
+const VIS_COLS = 96;
+const VIS_ROWS = 16;
+let visTick = null;
+let visLevels = new Array(VIS_COLS).fill(0);
+
+/** selettore rapido */
 const $ = (sel) => document.querySelector(sel);
 
+// --- UTILS ---
 function pad2(n) {
   return n.toString().padStart(2, "0");
 }
@@ -47,21 +58,35 @@ function nowHHMM() {
   return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
 }
 
-// --- NAVIGAZIONE / STATO MODALITÀ ---
-function setMode(mode) {
-  if (mode === "dj" || mode === "band" || mode === "concert") {
-    state.mode = mode;
-    if (mode !== "concert") {
-      state.concertArtist = "";
-    }
-  } else {
-    state.mode = "dj";
-    state.concertArtist = "";
+// --- THEME (colore coerente alla modalità) ---
+function applyTheme() {
+  const app = document.getElementById("app");
+  if (!app) return;
+
+  app.classList.remove("theme-dj", "theme-band", "theme-concert");
+
+  if (state.mode === "band") {
+    app.classList.add("theme-band");
+  } else if (state.mode === "concert") {
+    app.classList.add("theme-concert");
+  } else if (state.mode === "dj") {
+    app.classList.add("theme-dj");
   }
 }
 
+// --- NAVIGAZIONE / ROUTE ---
 function setRoute(route) {
   state.route = route;
+
+  // niente scroll generale in welcome + session
+  const body = document.body;
+  if (body) {
+    if (route === "welcome" || route === "session") {
+      body.classList.add("no-scroll");
+    } else {
+      body.classList.remove("no-scroll");
+    }
+  }
 }
 
 function showView(id) {
@@ -72,13 +97,97 @@ function showView(id) {
   if (el) el.classList.add("view--active");
 }
 
+// --- VISUALIZER BUILD + UPDATE ---
+function buildVisualizer() {
+  const container = document.querySelector("#visualizer");
+  if (!container) return;
+
+  container.innerHTML = "";
+  for (let c = 0; c < VIS_COLS; c++) {
+    const col = document.createElement("div");
+    col.className = "vis-col";
+
+    for (let r = 0; r < VIS_ROWS; r++) {
+      const cell = document.createElement("div");
+      cell.className = "vis-cell";
+      col.appendChild(cell);
+    }
+    container.appendChild(col);
+  }
+}
+
+function updateVisualizer() {
+  const cols = document.querySelectorAll(".vis-col");
+  if (!cols.length) return;
+
+  for (let colIndex = 0; colIndex < cols.length; colIndex++) {
+    let current = visLevels[colIndex] || 0;
+
+    // target con forte bias verso zero (random^2.2)
+    let target = Math.pow(Math.random(), 2.2) * VIS_ROWS;
+
+    // ogni tanto un picco alto (tipo colpo di cassa)
+    if (Math.random() < 0.12) {
+      target = VIS_ROWS * (0.6 + 0.4 * Math.random()); // 60–100% dell'altezza
+    }
+
+    // easing salita/discesa
+    const speedUp = 0.45;
+    const speedDown = 0.12;      // più lento: discesa più morbida
+    if (target > current) {
+      current += (target - current) * speedUp;
+    } else {
+      current += (target - current) * speedDown;
+    }
+
+    // damping più morbido (residuo più lungo)
+    current *= 0.985;
+
+    // clamp
+    if (current < 0) current = 0;
+    if (current > VIS_ROWS) current = VIS_ROWS;
+
+    visLevels[colIndex] = current;
+
+    const cells = cols[colIndex].children;
+    const levelRounded = Math.round(current);
+
+    for (let i = 0; i < VIS_ROWS; i++) {
+      const active = i < levelRounded;
+      cells[i].classList.toggle("active", active);
+    }
+  }
+}
+
+function startVisualizer() {
+  if (visTick) return;
+  visLevels = new Array(VIS_COLS).fill(0);
+  visTick = setInterval(updateVisualizer, 80);
+}
+
+function pauseVisualizer() {
+  if (!visTick) return;
+  clearInterval(visTick);
+  visTick = null;
+}
+
+function stopVisualizer() {
+  pauseVisualizer();
+  document.querySelectorAll(".vis-cell.active").forEach((cell) => {
+    cell.classList.remove("active");
+  });
+  visLevels = new Array(VIS_COLS).fill(0);
+}
+
 // --- SESSION HEADER ---
 function hydrateSessionHeader() {
   const badge = $("#mode-badge");
   if (!badge) return;
 
   if (state.mode === "band") {
-    badge.textContent = "Live band";
+    badge.textContent = state.bandArtist
+      ? `Live band – ${state.bandArtist}`
+      : "Live band";
   } else if (state.mode === "concert") {
     badge.textContent = state.concertArtist
       ? `Concerto – ${state.concertArtist}`
@@ -86,20 +195,32 @@ function hydrateSessionHeader() {
   } else {
     badge.textContent = "DJ set";
   }
+
+  applyTheme();
 }
 
 // --- NOW PLAYING ---
 function setNow(title, composer) {
-  $("#now-title").textContent = title || "In ascolto";
-  $("#now-composer").textContent = composer || "—";
+  const titleEl = $("#now-title");
+  const compEl = $("#now-composer");
+
+  if (titleEl) {
+    titleEl.textContent = title || "In ascolto";
+  }
+  if (compEl) {
+    compEl.textContent = composer || "—";
+  }
 }
 
 // --- LOG LIVE ---
 function pushLog({ id, when, title, composer, status }) {
   const row = document.createElement("div");
   row.className = "log-row";
-  // IMPORTANTE: Salviamo l'ID per poter ritrovare questa riga e aggiornarla dopo
-  row.dataset.id = id; 
+
+  // salviamo l'id per poter aggiornare questa riga in seguito
+  if (id != null) {
+    row.dataset.id = id;
+  }
 
   const cls =
     status === "NEW"
@@ -124,7 +245,8 @@ function startSessionTimer() {
   sessionStartMs = Date.now();
   sessionTick = setInterval(() => {
     const elapsed = sessionAccumulatedMs + (Date.now() - sessionStartMs);
-    $("#session-timer").textContent = fmt(elapsed);
+    const el = $("#session-timer");
+    if (el) el.textContent = fmt(elapsed);
   }, 1000);
 }
 
@@ -140,7 +262,8 @@ function resetSessionTimer() {
   sessionTick = null;
   sessionStartMs = 0;
   sessionAccumulatedMs = 0;
-  $("#session-timer").textContent = "00:00";
+  const el = $("#session-timer");
+  if (el) el.textContent = "00:00";
 }
 
 // --- UNDO ---
@@ -167,13 +290,19 @@ function undoLast() {
   updateUndoButton();
 }
 
-// --- CHIAMATE BACKEND START/STOP RICONOSCIMENTO ---
-
+// --- BACKEND START/STOP RICONOSCIMENTO ---
 async function startBackendRecognition() {
-  // targetArtist: solo se modalità concerto e c'è un nome inserito
   const body = {};
+
+  let targetArtist = null;
   if (state.mode === "concert" && state.concertArtist) {
-    body.targetArtist = state.concertArtist;
+    targetArtist = state.concertArtist;
+  } else if (state.mode === "band" && state.bandArtist) {
+    targetArtist = state.bandArtist;
+  }
+
+  if (targetArtist) {
+    body.targetArtist = targetArtist; // "bias artist" lato backend
   }
 
   try {
@@ -211,8 +340,7 @@ async function stopBackendRecognition() {
   }
 }
 
-// --- POLLING PLAYLIST BACKEND ---
-
+// --- POLLING PLAYLIST ---
 async function pollPlaylistOnce() {
   try {
     const res = await fetch("/api/get_playlist");
@@ -224,63 +352,73 @@ async function pollPlaylistOnce() {
     const playlist = Array.isArray(data.playlist) ? data.playlist : [];
 
     let maxIdSeen = lastMaxSongId;
+    let updatedExisting = false;
 
-    playlist.forEach((remoteSong) => {
-      const id = Number(remoteSong.id);
+    playlist.forEach((song) => {
+      const id = Number(song.id);
       if (!Number.isFinite(id)) return;
 
-      // Cerchiamo se abbiamo già questo brano in locale
-      const localSong = songs.find(s => s.id === id);
+      // Cerco se il brano esiste già nel frontend
+      const existing = songs.find((t) => t.id === id);
 
-      if (!localSong) {
-        // --- CASO 1: NUOVO BRANO (Lo aggiungiamo) ---
+      if (!existing) {
+        // --- NUOVO BRANO CON ID MAGGIORE DELL'ULTIMO VISTO ---
         if (id > lastMaxSongId) {
-            const track = {
-              id,
-              title: remoteSong.title || "Titolo sconosciuto",
-              composer: remoteSong.composer || "—", // Potrebbe essere "⏳ Ricerca..."
-              artist: remoteSong.artist || "",
-              album: remoteSong.album || "",
-              type: remoteSong.type || "",
-              isrc: remoteSong.isrc || null,
-              upc: remoteSong.upc || null,
-              ms: remoteSong.duration_ms || 0,
-              confirmed: false,
-              timestamp: remoteSong.timestamp // Ci serve per il log
-            };
+          const track = {
+            id,
+            title: song.title || "Titolo sconosciuto",
+            composer: song.composer || "—", // può essere "Ricerca..."
+            artist: song.artist || "",
+            album: song.album || "",
+            type: song.type || "",
+            isrc: song.isrc || null,
+            upc: song.upc || null,
+            ms: song.duration_ms || 0,
+            confirmed: false,
+            timestamp: song.timestamp || null,
+          };
 
-            songs.push(track);
-            currentSongId = track.id;
-            setNow(track.title, track.composer);
+          songs.push(track);
+          currentSongId = track.id;
+          setNow(track.title, track.composer);
 
-            pushLog({
-              id: track.id, // Passiamo l'ID
-              when: remoteSong.timestamp || nowHHMM(),
-              title: track.title,
-              composer: track.composer,
-              status: "NEW",
-            });
+          pushLog({
+            id: track.id,
+            when: track.timestamp || nowHHMM(),
+            title: track.title,
+            composer: track.composer,
+            status: "NEW",
+          });
         }
       } else {
-        // --- CASO 2: BRANO ESISTENTE (Controlliamo aggiornamenti) ---
-        // Se il compositore è cambiato (es. da "Ricerca..." a "Michael Jackson")
-        if (remoteSong.composer && localSong.composer !== remoteSong.composer) {
-            console.log(`🔄 Aggiornamento compositore ID ${id}: ${localSong.composer} -> ${remoteSong.composer}`);
-            
-            // 1. Aggiorna dati locali
-            localSong.composer = remoteSong.composer;
-            
-            // 2. Aggiorna "Now Playing" se è lui
-            if (currentSongId === id) {
-                setNow(localSong.title, localSong.composer);
-            }
+        // --- BRANO GIÀ PRESENTE: aggiorno metadata (es. COMPOSITORE) ---
+        const oldComposer = existing.composer;
 
-            // 3. Aggiorna la riga nel Log Live (senza ricrearla)
-            const logRow = document.querySelector(`.log-row[data-id="${id}"]`);
-            if (logRow) {
-                const composerSpan = logRow.querySelector('.col-composer');
-                if (composerSpan) composerSpan.textContent = localSong.composer;
+        existing.title = song.title || existing.title;
+        existing.composer = song.composer || existing.composer;
+        existing.artist = song.artist || existing.artist;
+        existing.album = song.album || existing.album;
+        existing.type = song.type || existing.type;
+        existing.isrc = song.isrc || existing.isrc;
+        existing.upc = song.upc || existing.upc;
+        existing.ms = song.duration_ms || existing.ms;
+
+        if (existing.composer !== oldComposer) {
+          updatedExisting = true;
+
+          // se è il brano attualmente in riproduzione, aggiorno il "Now"
+          if (currentSongId === id) {
+            setNow(existing.title, existing.composer);
+          }
+
+          // aggiorno anche la riga nel log live senza ricrearla
+          const logRow = document.querySelector(`.log-row[data-id="${id}"]`);
+          if (logRow) {
+            const composerSpan = logRow.querySelector(".col-composer");
+            if (composerSpan) {
+              composerSpan.textContent = existing.composer;
             }
+          }
         }
       }
 
@@ -288,6 +426,12 @@ async function pollPlaylistOnce() {
     });
 
     lastMaxSongId = maxIdSeen;
+
+    // Se siamo in review e qualche brano è stato aggiornato (es. il compositore),
+    // ridisegno la tabella.
+    if (updatedExisting && state.route === "review") {
+      renderReview();
+    }
   } catch (err) {
     console.error("Errore nel polling playlist:", err);
   }
@@ -295,9 +439,9 @@ async function pollPlaylistOnce() {
 
 function startPlaylistPolling() {
   if (playlistPollInterval) return;
-  pollPlaylistOnce();
-  // Abbassiamo a 2000ms (2 secondi) per rendere l'aggiornamento compositore più reattivo
-  playlistPollInterval = setInterval(pollPlaylistOnce, 2000); 
+  pollPlaylistOnce(); // prima chiamata immediata
+  // intervallo più rapido (2s) come nella versione funzionante del tuo amico
+  playlistPollInterval = setInterval(pollPlaylistOnce, 2000);
 }
 
 function stopPlaylistPolling() {
@@ -307,62 +451,78 @@ function stopPlaylistPolling() {
 }
 
 // --- SESSION CONTROLS ---
-
 async function sessionStart() {
   setRoute("session");
   showView("#view-session");
   hydrateSessionHeader();
 
-  $("#btn-session-start").disabled = true;
-  $("#btn-session-pause").disabled = false;
-  $("#btn-session-stop").disabled = false;
+  const btnStart = $("#btn-session-start");
+  const btnPause = $("#btn-session-pause");
+  const btnStop = $("#btn-session-stop");
 
-  if (!sessionTick) {
-    startSessionTimer();
-  }
+  if (btnStart) btnStart.disabled = true;
+  if (btnPause) btnPause.disabled = false;
+  if (btnStop) btnStop.disabled = false;
+
+  waveMode = "playing";
+
+  if (!sessionTick) startSessionTimer();
 
   await startBackendRecognition();
   startPlaylistPolling();
+  startVisualizer();
 }
 
 async function sessionPause() {
-  $("#btn-session-start").disabled = false;
-  $("#btn-session-pause").disabled = true;
-  $("#btn-session-stop").disabled = false;
+  const btnStart = $("#btn-session-start");
+  const btnPause = $("#btn-session-pause");
+  const btnStop = $("#btn-session-stop");
+
+  if (btnStart) btnStart.disabled = false;
+  if (btnPause) btnPause.disabled = true;
+  if (btnStop) btnStop.disabled = false;
+
+  waveMode = "paused";
 
   pauseSessionTimer();
   await stopBackendRecognition();
   stopPlaylistPolling();
+  pauseVisualizer();
 }
 
-// STOP → ferma riconoscimento, sincronizza playlist e va direttamente in review
 async function sessionStop() {
-  // UI
-  $("#btn-session-start").disabled = false;
-  $("#btn-session-pause").disabled = true;
-  $("#btn-session-stop").disabled = true;
+  const btnStart = $("#btn-session-start");
+  const btnPause = $("#btn-session-pause");
+  const btnStop = $("#btn-session-stop");
+
+  if (btnStart) btnStart.disabled = false;
+  if (btnPause) btnPause.disabled = true;
+  if (btnStop) btnStop.disabled = true;
+
+  waveMode = "idle";
 
   pauseSessionTimer();
   await stopBackendRecognition();
   stopPlaylistPolling();
 
-  // ultimo sync playlist
+  // sync finale
   await pollPlaylistOnce();
 
   resetSessionTimer();
   currentSongId = null;
   setNow("In ascolto", "—");
 
-  // azzero undo per la nuova review
   undoStack = [];
   renderReview();
 
   setRoute("review");
   showView("#view-review");
+  stopVisualizer();
 }
 
-// RESET SESSIONE: ferma tutto, pulisce UI e playlist locale
 async function sessionReset() {
+  waveMode = "idle";
+
   await stopBackendRecognition();
   stopPlaylistPolling();
   pauseSessionTimer();
@@ -378,8 +538,6 @@ async function sessionReset() {
   const liveLog = $("#live-log");
   if (liveLog) liveLog.innerHTML = "";
 
-  // allineiamo lastMaxSongId all'ultimo ID presente sul backend,
-  // così un "nuovo giro" prende solo le nuove canzoni
   try {
     const res = await fetch("/api/get_playlist");
     if (res.ok) {
@@ -394,12 +552,18 @@ async function sessionReset() {
     console.error("Errore get_playlist in reset:", err);
   }
 
-  $("#btn-session-start").disabled = false;
-  $("#btn-session-pause").disabled = true;
-  $("#btn-session-stop").disabled = true;
+  const btnStart = $("#btn-session-start");
+  const btnPause = $("#btn-session-pause");
+  const btnStop = $("#btn-session-stop");
+
+  if (btnStart) btnStart.disabled = false;
+  if (btnPause) btnPause.disabled = true;
+  if (btnStop) btnStop.disabled = true;
+
+  stopVisualizer();
 }
 
-// --- (OPZIONALE) RIPRISTINO SESSIONE DA REVIEW ---
+// --- REVIEW / SNAPSHOT ---
 function restoreSessionFromSnapshot() {
   if (!lastSessionSnapshot) return;
 
@@ -410,7 +574,8 @@ function restoreSessionFromSnapshot() {
   sessionStartMs = 0;
   sessionTick = null;
 
-  $("#session-timer").textContent = fmt(sessionAccumulatedMs);
+  const timerEl = $("#session-timer");
+  if (timerEl) timerEl.textContent = fmt(sessionAccumulatedMs);
 
   const current =
     currentSongId != null
@@ -423,9 +588,13 @@ function restoreSessionFromSnapshot() {
     setNow("In ascolto", "—");
   }
 
-  $("#btn-session-start").disabled = false;
-  $("#btn-session-pause").disabled = true;
-  $("#btn-session-stop").disabled = false;
+  const btnStart = $("#btn-session-start");
+  const btnPause = $("#btn-session-pause");
+  const btnStop = $("#btn-session-stop");
+
+  if (btnStart) btnStart.disabled = false;
+  if (btnPause) btnPause.disabled = true;
+  if (btnStop) btnStop.disabled = false;
 }
 
 function backToSessionFromReview() {
@@ -441,6 +610,11 @@ function showConfirm(message) {
     const msgEl = $("#confirm-message");
     const btnOk = $("#confirm-ok");
     const btnCancel = $("#confirm-cancel");
+
+    if (!modal || !msgEl || !btnOk || !btnCancel) {
+      resolve(false);
+      return;
+    }
 
     msgEl.textContent = message || "Sei sicuro?";
 
@@ -473,6 +647,8 @@ function renderReview() {
   const container = $("#review-rows");
   const template = $("#review-row-template");
   const btnGenerate = $("#btn-generate");
+  if (!container || !template || !btnGenerate) return;
+
   container.innerHTML = "";
 
   songs.forEach((song) => {
@@ -550,9 +726,7 @@ function renderReview() {
       }
 
       const idx = songs.indexOf(song);
-      if (idx !== -1) {
-        songs.splice(idx, 1);
-      }
+      if (idx !== -1) songs.splice(idx, 1);
       node.remove();
       updateGenerateState();
     });
@@ -571,107 +745,264 @@ function renderReview() {
   updateUndoButton();
 }
 
-// --- WELCOME / MODALITÀ + CAMPO CONCERTO ---
-
+// --- WELCOME / MODALITÀ + CAMPI ARTISTA / DOPPIO CLICK ---
 function syncWelcomeModeRadios() {
-  const dj = document.querySelector('input[name="mode"][value="dj"]');
-  const band = document.querySelector('input[name="mode"][value="band"]');
-  const concert = document.querySelector('input[name="mode"][value="concert"]');
-  if (!dj || !band || !concert) return;
+  const cards = document.querySelectorAll(".mode-card");
+  cards.forEach((card) =>
+    card.classList.remove("mode-card--selected", "active")
+  );
 
-  if (state.mode === "band") {
-    band.checked = true;
-  } else if (state.mode === "concert") {
-    concert.checked = true;
-  } else {
-    dj.checked = true;
+  const djCard = document.querySelector('.mode-card[data-mode="dj"]');
+  const bandCard = document.querySelector('.mode-card[data-mode="band"]');
+  const concertCard = document.querySelector('.mode-card[data-mode="concert"]');
+
+  const artistWrapper = document.getElementById("artistInputWrapper");
+  const artistInput = document.getElementById("artistInput");
+
+  const bandWrapper = document.getElementById("bandArtistWrapper");
+  const bandInput = document.getElementById("bandArtistInput");
+
+  const djWrapper = document.getElementById("djConfirmWrapper");
+
+  // nascondi tutto
+  if (artistWrapper) artistWrapper.classList.remove("visible");
+  if (bandWrapper) bandWrapper.classList.remove("visible");
+  if (djWrapper) djWrapper.classList.remove("visible");
+
+  if (state.mode === "dj" && djCard) {
+    djCard.classList.add("mode-card--selected");
+    if (djWrapper) djWrapper.classList.add("visible");
+  } else if (state.mode === "band" && bandCard) {
+    bandCard.classList.add("mode-card--selected");
+    if (bandWrapper) bandWrapper.classList.add("visible");
+    if (bandInput) bandInput.value = state.bandArtist || "";
+  } else if (state.mode === "concert" && concertCard) {
+    concertCard.classList.add("mode-card--selected", "active");
+    if (artistWrapper) artistWrapper.classList.add("visible");
+    if (artistInput) artistInput.value = state.concertArtist || "";
   }
-
-  updateConcertArtistVisibility();
 }
 
+// alias usato altrove
 function updateConcertArtistVisibility() {
-  const group = $("#concert-artist-group");
-  if (!group) return;
-  const modeInput = document.querySelector('input[name="mode"]:checked');
-  const modeValue = modeInput ? modeInput.value : "dj";
-  if (modeValue === "concert") {
-    group.classList.remove("hidden");
-  } else {
-    group.classList.add("hidden");
-  }
+  syncWelcomeModeRadios();
 }
 
 function backToWelcome() {
-  syncWelcomeModeRadios();
   setRoute("welcome");
   showView("#view-welcome");
+  syncWelcomeModeRadios();
 }
 
 function initWelcome() {
-  const form = $("#welcome-form");
+  const modeCards = document.querySelectorAll(".mode-card");
+  const concertCard = document.querySelector(".mode-card-concerto");
 
+  const artistWrapper = document.getElementById("artistInputWrapper");
+  const artistInput = document.getElementById("artistInput");
+  const artistConfirmBtn = document.getElementById("artistConfirmBtn");
+  const artistError = document.getElementById("artistError");
+
+  const bandWrapper = document.getElementById("bandArtistWrapper");
+  const bandInput = document.getElementById("bandArtistInput");
+  const bandConfirmBtn = document.getElementById("bandConfirmBtn");
+
+  const djWrapper = document.getElementById("djConfirmWrapper");
+  const djConfirmBtn = document.getElementById("djConfirmBtn");
+
+  // nessuna selezione iniziale
+  state.mode = null;
+  applyTheme();
   syncWelcomeModeRadios();
 
-  // mostra/nasconde il campo artista quando cambio modalità
-  const modeRadios = form.querySelectorAll('input[name="mode"]');
-  modeRadios.forEach((radio) => {
-    radio.addEventListener("change", () => {
-      updateConcertArtistVisibility();
-    });
-  });
-
-  form.addEventListener("submit", (e) => {
-    e.preventDefault();
-    const modeInput = form.querySelector('input[name="mode"]:checked');
-    const modeValue = modeInput ? modeInput.value : "dj";
-    setMode(modeValue);
-
-    if (modeValue === "concert") {
-      const artistInput = $("#concert-artist");
-      state.concertArtist = artistInput ? artistInput.value.trim() : "";
-    }
-
+  function goToSession() {
     hydrateSessionHeader();
     setRoute("session");
     showView("#view-session");
+  }
+
+  function handleModeSelection(mode) {
+    if (mode === "concert") {
+      state.mode = "concert";
+      applyTheme();
+      if (concertCard) concertCard.classList.add("active");
+      if (artistError) artistError.textContent = "";
+      syncWelcomeModeRadios();
+      if (artistInput) setTimeout(() => artistInput.focus(), 10);
+      return;
+    }
+
+    if (mode === "band") {
+      state.mode = "band";
+      applyTheme();
+      syncWelcomeModeRadios();
+      if (bandInput) setTimeout(() => bandInput.focus(), 10);
+      return;
+    }
+
+    if (mode === "dj") {
+      state.mode = "dj";
+      state.concertArtist = "";
+      state.bandArtist = "";
+      applyTheme();
+      syncWelcomeModeRadios();
+      return; // conferma con tasto Invia
+    }
+  }
+
+  function handleConcertSubmit() {
+    if (!artistInput) return;
+    const name = artistInput.value.trim();
+    if (!name) {
+      if (artistError) {
+        artistError.textContent =
+          "Inserisci il nome dell’artista prima di continuare.";
+      }
+      return;
+    }
+    if (artistError) artistError.textContent = "";
+
+    state.mode = "concert";
+    state.concertArtist = name;
+    applyTheme();
+    goToSession();
+  }
+
+  function handleBandSubmit() {
+    const name = bandInput ? bandInput.value.trim() : "";
+    state.mode = "band";
+    state.bandArtist = name; // facoltativo, può essere vuoto
+    applyTheme();
+    goToSession();
+  }
+
+  function handleDjSubmit() {
+    state.mode = "dj";
+    state.concertArtist = "";
+    state.bandArtist = "";
+    applyTheme();
+    goToSession();
+  }
+
+  modeCards.forEach((card) => {
+    card.addEventListener("click", () => {
+      const mode = card.dataset.mode;
+      handleModeSelection(mode);
+    });
+
+    card.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        const mode = card.dataset.mode;
+        handleModeSelection(mode);
+      }
+    });
   });
 
-  $("#btn-welcome-start").addEventListener("click", (e) => {
-    e.preventDefault();
-    form.requestSubmit();
-  });
+  // evitare che click dentro i wrapper triggerino anche click sulla card
+  if (artistWrapper) {
+    artistWrapper.addEventListener("click", (e) => e.stopPropagation());
+  }
+  if (bandWrapper) {
+    bandWrapper.addEventListener("click", (e) => e.stopPropagation());
+  }
+  if (djWrapper) {
+    djWrapper.addEventListener("click", (e) => e.stopPropagation());
+  }
+
+  if (artistConfirmBtn) {
+    artistConfirmBtn.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      handleConcertSubmit();
+    });
+  }
+  if (artistInput) {
+    artistInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        handleConcertSubmit();
+      }
+      e.stopPropagation();
+    });
+  }
+
+  if (bandConfirmBtn) {
+    bandConfirmBtn.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      handleBandSubmit();
+    });
+  }
+  if (bandInput) {
+    bandInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        handleBandSubmit();
+      }
+      e.stopPropagation();
+    });
+  }
+
+  if (djConfirmBtn) {
+    djConfirmBtn.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      handleDjSubmit();
+    });
+  }
 }
 
 // --- WIRING BOTTONI SESSIONE / REVIEW ---
 function wireSessionButtons() {
-  $("#btn-session-start").addEventListener("click", (e) => {
-    e.preventDefault();
-    sessionStart();
-  });
-
-  $("#btn-session-pause").addEventListener("click", (e) => {
-    e.preventDefault();
-    sessionPause();
-  });
-
-  $("#btn-session-stop").addEventListener("click", (e) => {
-    e.preventDefault();
-    sessionStop();
-  });
-
+  const btnStart = $("#btn-session-start");
+  const btnPause = $("#btn-session-pause");
+  const btnStop = $("#btn-session-stop");
   const btnReset = $("#btn-session-reset");
-  if (btnReset) {
-    btnReset.addEventListener("click", (e) => {
+
+  if (btnStart) {
+    btnStart.addEventListener("click", (e) => {
       e.preventDefault();
+      sessionStart();
+    });
+  }
+
+  if (btnPause) {
+    btnPause.addEventListener("click", (e) => {
+      e.preventDefault();
+      sessionPause();
+    });
+  }
+
+  if (btnStop) {
+    btnStop.addEventListener("click", async (e) => {
+      e.preventDefault();
+      const ok = await showConfirm(
+        "Vuoi fermare la sessione e passare alla review?"
+      );
+      if (!ok) return;
+      sessionStop();
+    });
+  }
+
+  if (btnReset) {
+    btnReset.addEventListener("click", async (e) => {
+      e.preventDefault();
+      const ok = await showConfirm(
+        "Vuoi resettare la sessione e cancellare il log corrente?"
+      );
+      if (!ok) return;
       sessionReset();
     });
   }
 
-  $("#btn-generate").addEventListener("click", (e) => {
-    e.preventDefault();
-    alert("TODO: Generazione PDF / CSV");
-  });
+  const btnGenerate = $("#btn-generate");
+  if (btnGenerate) {
+    btnGenerate.addEventListener("click", (e) => {
+      e.preventDefault();
+      alert("TODO: Generazione PDF / CSV");
+    });
+  }
 
   const btnUndo = $("#btn-undo");
   if (btnUndo) {
@@ -704,4 +1035,5 @@ document.addEventListener("DOMContentLoaded", () => {
   showView("#view-welcome");
   initWelcome();
   wireSessionButtons();
+  buildVisualizer();
 });
