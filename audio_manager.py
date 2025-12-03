@@ -27,7 +27,6 @@ class AudioManager:
 
         # --- CONFIGURAZIONE SESSIONE HTTP ---
         self.session = requests.Session()
-        # NESSUN RETRY: Se fallisce, fallisce subito per passare a LowQ
         retry_strategy = Retry(
             total=0,
             backoff_factor=0,
@@ -84,7 +83,6 @@ class AudioManager:
         if not text: return ""
         clean = re.sub(r"[\(\[].*?[\)\]]", "", text)
         clean = re.sub(r"(?i)\b(feat\.|ft\.|remix|edit|version|karaoke|live|mixed)\b.*", "", clean)
-        # Pulizia aggressiva per raggruppare i duplicati
         clean = re.sub(r"[^a-zA-Z0-9\s]", "", clean)
         return clean.strip().lower()
 
@@ -107,7 +105,6 @@ class AudioManager:
             return True
 
     def _process_window(self):
-        # 1. CONTROLLO ANTI-INGORGO
         if not self.upload_lock.acquire(blocking=False):
             print("⏳ Rete lenta: Salto finestra.")
             return
@@ -123,7 +120,6 @@ class AudioManager:
 
             processed_audio = self._preprocess_audio_chunk(full_recording)
             
-            # --- 2. LOGICA QUALITÀ ADATTIVA ---
             if self.low_quality_mode:
                 TARGET_RATE = 8000
                 num_samples = int(len(processed_audio) * TARGET_RATE / self.sample_rate)
@@ -148,23 +144,27 @@ class AudioManager:
 
             if api_result.get('status') == 'multiple_results':
                 tracks = api_result['tracks']
-                best_track = tracks[0]
-
-                found_better = False
+                
+                # --- MODIFICA 2: Selezione Automatica Bias (Priorità Assoluta) ---
+                # Se tra i risultati validi c'è un brano che ha ricevuto il boost bias, vince lui.
+                bias_winner = None
                 if self.target_artist_bias:
-                    for track in tracks:
-                        if (self.target_artist_bias.lower() in track['artist'].lower() 
-                            and self._is_mostly_latin(track['title'])):
-                            best_track = track
-                            found_better = True
-                            break
-                if not found_better:
-                    for track in tracks:
-                        score_diff = tracks[0]['score'] - track['score']
-                        if self._is_mostly_latin(track['title']) and score_diff < 10:
-                            best_track = track
+                    for t in tracks:
+                        # Controlliamo se è un brano "boostato" (score > 100 o flag interno se lo avessimo)
+                        # Qui usiamo la logica: se corrisponde all'artista target e ha score alto, è lui.
+                        artist_clean = self._normalize_text(t['artist'])
+                        bias_clean = self._normalize_text(self.target_artist_bias)
+                        if bias_clean in artist_clean and t['score'] >= 70:
+                            bias_winner = t
+                            print(f"🏆 Bias Winner Scelto: {t['title']} ({t['score']}%)")
                             break
                 
+                if bias_winner:
+                    best_track = bias_winner
+                else:
+                    # Fallback standard: il primo della lista (che è già ordinata per score)
+                    best_track = tracks[0]
+
                 best_track['title'] = self._clean_title_for_display(best_track['title'])
                 clean_id_title = self._normalize_text(best_track['title'])
                 clean_id_artist = self._normalize_text(best_track['artist'])
@@ -177,7 +177,6 @@ class AudioManager:
             self.history_buffer.append(normalized_identifier)
 
             if best_track_data:
-                # --- LOGICA STABILITÀ ---
                 count_exact = self.history_buffer.count(normalized_identifier)
                 count_title_only = len([x for x in self.history_buffer if x.startswith(clean_id_title + " -")])
 
@@ -237,7 +236,6 @@ class AudioManager:
         start_time = time.time()
         
         try:
-            # Timeout 10s
             response = self.session.post(f"https://{self.host}/v1/identify", files=files, data=data, timeout=10)
             elapsed = time.time() - start_time
             
@@ -258,14 +256,34 @@ class AudioManager:
                 all_found = []
                 def norm(sc): return int(sc * 100) if sc <= 1.0 else int(sc)
 
-                # --- LOGICA DI ELABORAZIONE ---
+                # --- 1. Aggregazione Risultati ---
+                def aggregate_tracks(raw_list):
+                    grouped = {}
+                    for t in raw_list:
+                        key = (self._normalize_text(t.get('title')), self._normalize_text(t['artists'][0]['name'] if t.get('artists') else ""))
+                        if key not in grouped:
+                            grouped[key] = t
+                            grouped[key]['score'] = norm(t.get('score', 0))
+                        else:
+                            # Se esiste già, prendiamo lo score massimo o lo rafforziamo
+                            existing_score = grouped[key]['score']
+                            new_score = norm(t.get('score', 0))
+                            grouped[key]['score'] = max(existing_score, new_score) + 5
+                            
+                            # --- STAMPA DI DEBUG AGGIUNTA ---
+                            print(f"🔗 AGGREGAZIONE: '{t.get('title')}' (Sc: {new_score}) unito a esistente. Nuovo Score: {grouped[key]['score']}")
+                            
+                    return list(grouped.values())
+
                 def process_section(track_list, threshold, type_label):
-                    # Calcola il Bonus Dinamico
-                    results_count = len(track_list)
+                    aggregated_list = aggregate_tracks(track_list)
+                    
+                    results_count = len(aggregated_list)
+                    # Bonus dinamico: 50 se risultato unico, 25 se multipli
                     current_bonus_val = 50 if results_count == 1 else 25
 
-                    for t in track_list:
-                        raw_score = norm(t.get('score', 0))
+                    for t in aggregated_list:
+                        raw_score = t.get('score')
                         final_score = raw_score
                         
                         title = t.get('title', 'Sconosciuto')
@@ -280,61 +298,34 @@ class AudioManager:
                              title_lower = title.lower()
                              main_artist_lower = artist_name.lower()
                              
-                             # DEBUG
-                             print(f"\n🔍 ANALISI BIAS su: '{title}' (Score: {raw_score}%)")
-                             print(f"   Target: '{bias_clean}'")
+                             # print(f"\n🔍 ANALISI BIAS su: '{title}' (Score: {raw_score}%)")
                              
                              is_match = False
+                             if bias_clean in main_artist_lower: is_match = True
+                             if not is_match and bias_clean in title_lower: is_match = True
                              
-                             # A. Cerca nell'artista principale
-                             if bias_clean in main_artist_lower: 
-                                 is_match = True
-                                 print(f"   > Check Artista Main ('{main_artist_lower}'): SI")
-                             else:
-                                 print(f"   > Check Artista Main ('{main_artist_lower}'): NO")
-                             
-                             # B. Cerca nel titolo
-                             if not is_match:
-                                 if bias_clean in title_lower: 
-                                     is_match = True
-                                     print(f"   > Check Titolo ('{title_lower}'): SI")
-                                 else:
-                                     print(f"   > Check Titolo ('{title_lower}'): NO")
-                             
-                             # C. Cerca nella lista artisti completa
                              if not is_match:
                                  artist_list_str = [a['name'].lower() for a in artists]
                                  for art_str in artist_list_str:
                                      if bias_clean in art_str:
                                          is_match = True
                                          break
-                                 print(f"   > Check Lista Artisti {artist_list_str}: {'SI' if is_match else 'NO'}")
 
-                             # D. NUOVO CHECK: Cerca nei METADATA ESTESI (Spotify, YouTube, ecc.)
                              if not is_match and 'external_metadata' in t:
-                                 # Trasformiamo tutto il blocco metadata in una stringa e cerchiamo lì dentro.
-                                 # È un metodo "brute force" ma efficacissimo per trovare i featuring nascosti.
                                  ext_meta_dump = json.dumps(t['external_metadata']).lower()
-                                 
                                  if bias_clean in ext_meta_dump:
                                      is_match = True
-                                     print(f"   > Check External Metadata (Spotify/YT): SI (Trovato nei dati estesi!)")
-                                 else:
-                                     print(f"   > Check External Metadata: NO")
 
                              if is_match:
-                                applied_bonus = 40 
+                                applied_bonus = current_bonus_val 
                                 final_score += applied_bonus
-                                print(f"   ✅ MATCH CONFERMATO! Applico bonus +{applied_bonus}")
-                             else:
-                                print(f"   ❌ NESSUN MATCH RILEVATO.")
+                                # print(f"   ✅ MATCH! Bonus +{applied_bonus}")
 
-                        # Logica di accettazione
                         if final_score >= threshold:
                             if raw_score < threshold:
-                                print(f"🚀 BOOST DECISIVO (+{applied_bonus}): '{title}' (Raw: {raw_score}% -> Final: {final_score}%)")
+                                print(f"🚀 BOOST DECISIVO (+{applied_bonus}): '{title}' ({raw_score}% -> {final_score}%)")
                             elif applied_bonus > 0:
-                                print(f"✨ Boost applicato (+{applied_bonus}): '{title}' (Era già valido: {raw_score}%)")
+                                print(f"✨ Boost applicato (+{applied_bonus}): '{title}'")
                                 
                             all_found.append({
                                 "status": "success", "type": type_label,
@@ -346,8 +337,8 @@ class AudioManager:
                                 "upc": t.get('external_metadata', {}).get('upc')
                             })
                         else:
-                            bias_msg = f" (Bias '{bias_artist}' fallito)" if bias_artist and applied_bonus == 0 else ""
-                            print(f"📉 SCARTATO: '{title}' - Artista: '{artist_name}' - Score: {final_score}%{bias_msg}")
+                            bias_msg = f" (Bias fallito)" if bias_artist and applied_bonus == 0 else ""
+                            print(f"📉 SCARTATO: '{title}' - Score: {final_score}%{bias_msg}")
 
                 if 'music' in metadata:
                     process_section(metadata['music'], THRESHOLD_MUSIC, "Original")
@@ -356,10 +347,10 @@ class AudioManager:
 
                 if all_found: 
                     all_found.sort(key=lambda x: x['score'], reverse=True)
-                    print(f"✅ TROVATO: {all_found[0]['title']} - {all_found[0]['artist']} (Score: {all_found[0]['score']}%)")
+                    print(f"✅ TROVATO MIGLIORE: {all_found[0]['title']} ({all_found[0]['score']}%)")
                     return {"status": "multiple_results", "tracks": all_found}
                 
-                print(f"⚠️ Nessun risultato sopra soglia (Bias attivo: {bias_artist if bias_artist else 'No'}).")
+                print(f"⚠️ Nessun risultato sopra soglia.")
                 return {"status": "not_found"}
 
             elif status_code == 1001:
@@ -370,8 +361,7 @@ class AudioManager:
                 return {"status": "not_found"}
                 
         except Exception as e:
-            print(f"❌ Errore rete (Timeout/SSL): {e}")
+            print(f"❌ Errore rete: {e}")
             if not self.low_quality_mode:
-                print("⚠️ Attivo modalità RISPARMIO DATI (8kHz) per recuperare.")
                 self.low_quality_mode = True
             return {"status": "error"}
