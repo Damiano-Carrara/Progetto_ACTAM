@@ -1,66 +1,744 @@
+:root {
+  --bg: #0b0c10;
+  --panel: #12151a;
+  --text: #e6eef8;
+  --muted: #9fb0c2;
+  --border: #1f242d;
+  --primary: #7c3aed;
+}
+
+/* RESET BASE */
+* {
+  box-sizing: border-box;
+}
+
+html,
 body {
-    background-color: #121212;
-    color: #e0e0e0;
-    font-family: sans-serif;
-    margin: 0;
-    padding: 20px;
+  height: 100%;
 }
 
-.container {
-    max-width: 800px;
-    margin: 0 auto;
+body {
+  margin: 0;
+  font-family: "Arial", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  background: linear-gradient(180deg, #0b0c10, #0e1116);
+  color: var(--text);
 }
 
-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    border-bottom: 1px solid #333;
-    padding-bottom: 20px;
+/* no scroll per welcome + session */
+body.no-scroll {
+  overflow: hidden;
 }
 
-.status-box {
-    padding: 10px 20px;
-    border-radius: 5px;
-    font-weight: bold;
+#app {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 24px 16px 260px; /* bottom ≈ altezza visualizer */
 }
-.recording { background-color: #d32f2f; color: white; animation: pulse 2s infinite;}
-.idle { background-color: #333; color: #aaa; }
-.error { background-color: #f57c00; color: black; }
 
-.controls { margin: 20px 0; display: flex; gap: 10px; }
-
-button {
-    padding: 15px 30px;
-    font-size: 16px;
-    cursor: pointer;
-    border: none;
-    border-radius: 5px;
-    background-color: #1976d2;
-    color: white;
+/* UTILITY */
+.hidden {
+  display: none !important;
 }
-button:disabled { background-color: #444; cursor: not-allowed; }
-#btn-stop { background-color: #d32f2f; }
 
-table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-th, td { padding: 12px; text-align: left; border-bottom: 1px solid #333; }
-th { background-color: #1e1e1e; color: #888; }
+/* VIEWS */
+.view {
+  display: none;
+}
 
+.view.view--active {
+  display: block;
+}
+
+/* HERO / TITOLI */
+.hero {
+  margin-bottom: 24px;
+}
+
+.hero--small {
+  margin-bottom: 12px;
+}
+
+.hero h1,
+.hero h2 {
+  margin: 0 0 4px;
+}
+
+.subtitle {
+  margin: 0;
+  color: var(--muted);
+}
+
+/* Card-hero in review: la facciamo diventare una card vera */
+#view-review .hero.hero--small {
+  padding: 16px 18px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.4);
+  background: var(--panel);
+}
+
+/* CARD GENERICA */
+.card {
+  background: var(--panel);
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  padding: 16px 18px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.4);
+}
+
+/* BUTTONS */
+.btn {
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  padding: 6px 14px;
+  font-size: 0.95rem;
+  background: #111827;
+  color: var(--text);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition:
+    transform 0.1s ease,
+    box-shadow 0.1s ease,
+    background 0.1s ease;
+}
+
+.btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
+}
+
+.btn--primary {
+  background: linear-gradient(135deg, #7c3aed, #5eead4);
+  border: none;
+  color: #0b0c10;
+  font-weight: 600;
+}
+
+.btn--small {
+  padding: 4px 10px;
+  font-size: 0.85rem;
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* BADGE / METADATI */
 .badge {
-    background-color: #333;
-    padding: 4px 8px;
-    border-radius: 4px;
-    font-size: 12px;
+  display: inline-block;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 0.9rem;
 }
 
-.btn-delete {
-    background: none;
-    padding: 5px;
-    font-size: 18px;
+/* === FACCIATA 1: SELEZIONE MODALITÀ === */
+
+.mode-page {
+  width: 100%;
+  padding: 24px;
 }
 
-@keyframes pulse {
-    0% { opacity: 1; }
-    50% { opacity: 0.5; }
-    100% { opacity: 1; }
+.mode-container {
+  max-width: 1100px;
+  margin: 0 auto;
+  text-align: center;
+}
+
+/* Titoli facciata 1 */
+.app-title {
+  font-size: 2.1rem;
+  margin-bottom: 0.5rem;
+}
+
+.app-subtitle {
+  font-size: 0.95rem;
+  color: #c7c7e0;
+  margin-bottom: 2.5rem;
+}
+
+/* Griglia delle card */
+.mode-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1.5rem;
+}
+
+/* Card modalità */
+.mode-card {
+  position: relative;
+  overflow: hidden;
+  border-radius: 18px;
+  cursor: pointer;
+  min-height: 220px;
+  outline: none;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35);
+  transform: translateY(0);
+  transition:
+    transform 0.25s ease,
+    box-shadow 0.25s ease,
+    outline 0.15s ease;
+  will-change: transform;
+}
+
+/* Sfondo "immagine" */
+.mode-bg {
+  position: absolute;
+  inset: 0;
+  background-size: cover;
+  background-position: center;
+  filter: grayscale(0.1) brightness(0.65);
+  transform: scale(1.02);
+  transition:
+    filter 0.25s ease,
+    transform 0.25s ease;
+  border-radius: inherit;
+}
+
+.mode-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    145deg,
+    rgba(5, 5, 15, 0.92),
+    rgba(88, 80, 180, 0.8)
+  );
+  mix-blend-mode: multiply;
+  transition: opacity 0.25s ease;
+  border-radius: inherit;
+}
+
+/* Contenuto testo */
+.mode-content {
+  position: relative;
+  z-index: 1;
+  padding: 1.4rem 1.5rem;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  height: 100%;
+}
+
+.mode-content h2 {
+  font-size: 1.3rem;
+  margin-bottom: 0.35rem;
+}
+
+.mode-content p {
+  font-size: 0.9rem;
+  color: #d6d6f0;
+}
+
+/* Hover, focus */
+.mode-card:hover,
+.mode-card:focus-visible {
+  transform: translateY(-8px);
+  box-shadow: 0 22px 50px rgba(0, 0, 0, 0.55);
+}
+
+.mode-card:hover .mode-bg,
+.mode-card:focus-visible .mode-bg {
+  filter: grayscale(0) brightness(0.9);
+  transform: scale(1.06);
+}
+
+.mode-card:hover .mode-overlay,
+.mode-card:focus-visible .mode-overlay {
+  opacity: 0.5;
+}
+
+.mode-card:focus-visible {
+  outline: 2px solid #f4bfff;
+}
+
+/* Varianti di sfondo */
+.bg-dj {
+  background-image: radial-gradient(circle at 20% 0%, #ff8a00, #1b0033);
+}
+
+.bg-live {
+  background-image: radial-gradient(circle at 80% 0%, #00ffc3, #002b36);
+}
+
+.bg-concerto {
+  background-image: radial-gradient(circle at 50% 100%, #ff3f6a, #1a0030);
+}
+
+/* Card selezionata */
+.mode-card.mode-card--selected {
+  outline: 2px solid #f4bfff;
+}
+
+/* Card concerto attiva */
+.mode-card-concerto.active {
+  outline: 2px solid #ff8ad4;
+}
+
+/* Input artista / conferma */
+.artist-input-wrapper {
+  margin-top: 1rem;
+  padding-top: 0.8rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.18);
+  display: none;
+}
+
+.artist-input-wrapper.visible {
+  display: block;
+}
+
+.artist-input-wrapper label {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #f6d7ff;
+  display: inline-block;
+  margin-bottom: 0.35rem;
+}
+
+.artist-input-row {
+  display: flex;
+  gap: 0.6rem;
+  align-items: stretch;
+}
+
+#artistInput,
+#bandArtistInput {
+  flex: 1 1 auto;
+  min-width: 0;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  background: rgba(8, 8, 25, 0.85);
+  padding: 0.5rem 0.9rem;
+  color: #ffffff;
+  font-size: 0.9rem;
+}
+
+#artistInput::placeholder,
+#bandArtistInput::placeholder {
+  color: #a9a9d8;
+}
+
+#artistInput:focus,
+#bandArtistInput:focus {
+  outline: none;
+  border-color: #ffbfea;
+  box-shadow: 0 0 0 1px rgba(255, 191, 234, 0.6);
+}
+
+/* Placeholder per DJ (riempie lo spazio dell'input per avere stessa struttura) */
+.artist-placeholder {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* Bottoni Invia (DJ, band, concerto) – TUTTI UGUALI e "cicciotti" */
+#artistConfirmBtn,
+#bandConfirmBtn,
+#djConfirmBtn {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  border: none;
+  padding: 0.45rem 0.9rem;     /* più padding verticale */
+  min-height: 38px;            /* altezza minima uguale per tutti */
+  font-size: 0.9rem;
+  font-weight: 600;
+  background: linear-gradient(135deg, #ff8ad4, #ffc46a);
+  color: #21021e;
+  cursor: pointer;
+  width: 110px;                /* larghezza identica per tutti e tre */
+  text-align: center;
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.15s ease,
+    filter 0.15s ease;
+}
+
+#artistConfirmBtn:hover,
+#bandConfirmBtn:hover,
+#djConfirmBtn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
+  filter: brightness(1.05);
+}
+
+#artistConfirmBtn:active,
+#bandConfirmBtn:active,
+#djConfirmBtn:active {
+  transform: translateY(1px);
+  box-shadow: none;
+}
+
+.artist-error {
+  margin-top: 0.3rem;
+  font-size: 0.8rem;
+  color: #ffc7d5;
+}
+
+/* Responsive prima schermata */
+@media (max-width: 880px) {
+  .mode-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .mode-card {
+    min-height: 190px;
+  }
+
+  .mode-content {
+    padding: 1.3rem 1.3rem 1.4rem;
+  }
+}
+
+/* === FACCIATA 2: SESSIONE === */
+
+#view-session.view--active {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: calc(100vh - 48px);
+}
+
+/* Sessione + log in colonna */
+.session-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+}
+
+/* card "Sessione" */
+.session-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.session-panel .meta {
+  color: var(--muted);
+  margin-top: 4px;
+}
+
+.session-panel .left {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* Log live card (sotto) – resta neutra */
+.log-card {
+  display: flex;
+  flex-direction: column;
+  height: 280px; /* ~7 righe, poi scroll interno */
+}
+
+.log-head,
+.log-row {
+  display: grid;
+  grid-template-columns: 110px 1fr 1fr 100px;
+  gap: 8px;
+  font-size: 0.9rem;
+}
+
+.log-head {
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 6px;
+  color: var(--muted);
+}
+
+.log-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow: auto;
+}
+
+.log-row .status-ok {
+  color: #22c55e;
+}
+
+.log-row .status-same {
+  color: #9fb0c2;
+}
+
+.log-row .status-new {
+  color: #eab308;
+}
+
+/* VISUALIZER FULL WIDTH */
+.visualizer-strip {
+  position: fixed;
+  left: 50%;
+  bottom: 0;
+  transform: translateX(-50%);
+  width: 100vw;
+  margin: 0;
+  padding: 0;
+  z-index: 5;
+}
+
+.visualizer-grid {
+  display: flex;
+  width: 100%;
+  gap: 2px;
+  height: 220px;
+  align-items: flex-end;
+  overflow: hidden;
+}
+
+.vis-col {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 2px;
+}
+
+.vis-cell {
+  width: 100%;
+  height: 10px;
+  border-radius: 2px;
+  background: #11151f;
+  opacity: 0.15;
+  transition:
+    opacity 0.4s ease,
+    background 0.4s ease,
+    transform 0.2s ease;
+}
+
+.vis-cell.active {
+  opacity: 1;
+  background: linear-gradient(180deg, #7c3aed, #5eead4);
+  transform: translateY(-1px);
+}
+
+/* Responsive seconda schermata */
+@media (max-width: 900px) {
+  #view-session.view--active {
+    min-height: auto;
+  }
+
+  .session-panel {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .controls {
+    width: 100%;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    display: flex;
+    gap: 8px;
+  }
+}
+
+/* === FACCIATA 3: REVIEW === */
+
+.review-card {
+  display: flex;
+  flex-direction: column;
+  height: 460px; /* come se contenesse ~8 righe */
+}
+
+.review-table {
+  margin-top: 12px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.review-rows-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+/* Tabelle */
+.table {
+  margin-top: 12px;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 1.2fr 1.4fr auto;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.row--head {
+  font-size: 0.9rem;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+/* intestazioni colonna tutte a sinistra */
+.row--head span {
+  text-align: left;
+  padding-left: 8px;
+}
+
+.row .tools {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.actions {
+  margin-top: 14px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+input.inline {
+  width: 100%;
+  background: #0d1117;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 8px;
+  font-size: 0.9rem;
+}
+
+.row.row--confirmed input.inline {
+  border-style: solid;
+  border-color: #22c55e; /* override dal tema sotto */
+}
+
+/* SCROLLBAR LEGGERA */
+.log-body::-webkit-scrollbar,
+.review-rows-body::-webkit-scrollbar,
+body::-webkit-scrollbar {
+  width: 8px;
+}
+
+.log-body::-webkit-scrollbar-thumb,
+.review-rows-body::-webkit-scrollbar-thumb,
+body::-webkit-scrollbar-thumb {
+  background: #111827;
+  border-radius: 999px;
+}
+
+/* MODAL DI CONFERMA */
+.modal {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal--hidden {
+  display: none;
+}
+
+.modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+}
+
+.modal-dialog {
+  position: relative;
+  min-width: 260px;
+  max-width: 420px;
+  text-align: center;
+}
+
+.modal-message {
+  margin: 4px 0 16px;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+/* === TEMA: colori coerenti tra schermate === */
+
+/* DJ set */
+#app.theme-dj .btn--primary {
+  background: linear-gradient(135deg, #ff8a00, #ffca4d);
+  color: #140616;
+}
+
+#app.theme-dj .vis-cell.active {
+  background: linear-gradient(180deg, #ff8a00, #ffca4d);
+}
+
+#app.theme-dj .row.row--confirmed input.inline {
+  border-color: #ff8a00;
+}
+
+/* card in alto (sessione + hero review) con gradiente DJ */
+#app.theme-dj .session-panel,
+#app.theme-dj #view-review .hero.hero--small {
+  background-image:
+    /* velo leggermente scuro da sinistra per migliorare il contrasto del testo */
+    linear-gradient(90deg, rgba(0, 0, 0, 0.40), rgba(0, 0, 0, 0.05) 55%, rgba(0, 0, 0, 0) 100%),
+    radial-gradient(circle at 20% 0%, #ff8a00, #1b0033);
+  border-color: #ff8a00;
+}
+
+/* Live band */
+#app.theme-band .btn--primary {
+  /* azzurro più scuro sul secondo colore */
+  background: linear-gradient(135deg, #00ffc3, #007c9f);
+  color: #021315;
+}
+
+#app.theme-band .vis-cell.active {
+  background: linear-gradient(180deg, #00ffc3, #007c9f);
+}
+
+#app.theme-band .row.row--confirmed input.inline {
+  border-color: #00ffc3;
+}
+
+/* card in alto (sessione + hero review) con gradiente band leggermente più scuro */
+#app.theme-band .session-panel {
+  background-image: radial-gradient(circle at 80% 0%, #00ffc3, #003848);
+  border-color: #00ffc3;
+}
+
+#app.theme-band #view-review .hero.hero--small {
+  background-image: radial-gradient(circle at 80% 0%, #00ffc3, #003848);
+  border-color: #00ffc3;
+}
+
+/* Concerto */
+#app.theme-concert .btn--primary {
+  background: linear-gradient(135deg, #ff3f6a, #ff9ad7);
+  color: #21021e;
+}
+
+#app.theme-concert .vis-cell.active {
+  background: linear-gradient(180deg, #ff3f6a, #ff9ad7);
+}
+
+#app.theme-concert .row.row--confirmed input.inline {
+  border-color: #ff3f6a;
+}
+
+/* card in alto (sessione + hero review) con gradiente concerto */
+#app.theme-concert .session-panel {
+  background-image: radial-gradient(circle at 50% 100%, #ff3f6a, #1a0030);
+  border-color: #ff3f6a;
+}
+
+#app.theme-concert #view-review .hero.hero--small {
+  background-image: radial-gradient(circle at 50% 100%, #ff3f6a, #1a0030);
+  border-color: #ff3f6a;
 }
