@@ -561,13 +561,12 @@ body.no-scroll {
 
 /* Tutte le intestazioni: aggiungiamo padding sinistro per allineare al testo degli input */
 .row--head span {
-  padding-left: 9px; /* CORREZIONE GIALLA: allinea il titolo al testo dell'input */
+  padding-left: 9px; /* allinea il titolo al testo dell'input */
   text-align: left !important;
 }
 
 /* Specifico per la colonna "Azioni" (3a colonna) */
 .row--head span:nth-child(3) {
-  /* CORREZIONE BLU: Spinge la scritta Azioni tutta a sinistra nella sua colonna */
   justify-self: flex-start;
   display: flex;
   justify-content: flex-start; 
@@ -577,7 +576,6 @@ body.no-scroll {
 .row .tools {
   display: flex;
   gap: 8px;
-  /* CORREZIONE BLU: Spinge i bottoni a sinistra per seguire la scritta Azioni */
   justify-content: flex-start;
   flex-wrap: wrap;
 }
@@ -595,7 +593,7 @@ input.inline {
   color: var(--text);
   border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 6px 8px; /* Ecco perché sopra ho messo padding-left: 9px */
+  padding: 6px 8px;
   font-size: 0.9rem;
 }
 
@@ -699,35 +697,67 @@ body::-webkit-scrollbar-thumb {
 
 /* ============================================================
    FIX DEFINITIVO ALLINEAMENTO TABELLA
-   Incolla questo alla FINE del file style.css
    ============================================================ */
 
 /* 1. REGOLA LA GRIGLIA */
-/* Rendo la colonna azioni un po' più larga e fissa per evitare che collassi */
 .review-table .row {
-    grid-template-columns: 1.2fr 1.4fr 240px !important;
+  grid-template-columns: 1.2fr 1.4fr 240px !important;
 }
 
-/* 2. TITOLO (Segno Giallo) */
-/* Aggiungo 10px di spazio a sinistra alla scritta "Titolo" 
-   perché corrisponda esattamente al padding interno dell'input sotto */
+/* 2. TITOLO */
 .review-table .row--head span:nth-child(2) {
-    padding-left: 10px !important; 
-    text-align: left !important;
-    justify-self: start !important;
+  padding-left: 10px !important;
+  text-align: left !important;
+  justify-self: start !important;
 }
 
-/* 3. AZIONI (Segno Blu - Intestazione) */
-/* La scritta "Azioni" viene forzata a sinistra */
+/* 3. AZIONI (Intestazione) */
 .review-table .row--head span:nth-child(3) {
-    text-align: left !important;
-    justify-self: start !important; /* Si attacca all'inizio della colonna */
-    padding-left: 0 !important;
+  text-align: left !important;
+  justify-self: start !important;
+  padding-left: 0 !important;
 }
 
-/* 4. AZIONI (Segno Blu - Bottoni) */
-/* Anche i bottoni vengono forzati a sinistra per allinearsi alla scritta */
+/* 4. AZIONI (Bottoni) */
 .review-table .row .tools {
-    justify-content: flex-start !important;
-    gap: 8px !important;
+  justify-content: flex-start !important;
+  gap: 8px !important;
+}
+
+/* === NOTE SESSIONE === */
+
+#notes-textarea {
+  width: 100%;
+  min-height: 120px;
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: #0d1117;
+  color: var(--text);
+  resize: vertical;
+  font-family: inherit;
+  font-size: 0.9rem;
+}
+
+/* Box note in review */
+.review-notes {
+  margin-top: 10px;
+  margin-bottom: 8px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px dashed var(--border);
+  background: rgba(15, 23, 42, 0.7);
+}
+
+.review-notes h4 {
+  margin: 0 0 4px;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.review-notes-text {
+  margin: 0;
+  font-size: 0.9rem;
+  white-space: pre-wrap; /* mantiene gli a capo */
 }

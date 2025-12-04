@@ -56,15 +56,13 @@
                 <h2>Live band</h2>
                 <p>Per band con strumenti dal vivo e voce.</p>
 
-                <!-- Input artista (opzionale), grafica come concerto -->
-                                <!-- Conferma Live band: solo tasto Invia, nessun campo artista -->
+                <!-- Conferma Live band: solo tasto Invia, nessun campo artista -->
                 <div class="artist-input-wrapper" id="bandArtistWrapper">
                   <div class="artist-input-row">
                     <div class="artist-placeholder"></div>
                     <button type="button" id="bandConfirmBtn">Invia</button>
                   </div>
                 </div>
-
               </div>
             </div>
 
@@ -122,19 +120,21 @@
             <button id="btn-session-pause" class="btn" disabled>Pause</button>
             <button id="btn-session-stop" class="btn" disabled>Stop</button>
             <button id="btn-session-reset" class="btn">Reset</button>
+            <button id="btn-session-notes" class="btn btn--small">Note</button>
           </div>
         </section>
 
         <!-- Card log live -->
-       <section class="card log-card">
-            <h3>Log live</h3>
-            <div class="log-head">
-                <span>Brano</span>
-                <span>Compositore</span>
-                <span>Artista</span>
-            </div>
-            <div id="live-log" class="log-body"></div>
+        <section class="card log-card">
+          <h3>Log live</h3>
+          <div class="log-head">
+            <span>Brano</span>
+            <span>Compositore</span>
+            <span>Artista</span>
+          </div>
+          <div id="live-log" class="log-body"></div>
         </section>
+      </div>
 
       <!-- Visualizer a quadratini FULL WIDTH -->
       <section class="visualizer-strip">
@@ -153,6 +153,11 @@
 
       <div class="card review-card">
         <h3>Playlist della serata</h3>
+
+        <div class="review-notes">
+          <h4>Note dalla sessione</h4>
+          <p id="review-notes-view" class="review-notes-text">—</p>
+        </div>
 
         <div class="table review-table">
           <div class="row row--head">
@@ -184,6 +189,22 @@
         </div>
       </div>
     </section>
+
+    <!-- MODAL NOTE SESSIONE -->
+    <div id="notes-modal" class="modal modal--hidden">
+      <div class="modal-backdrop"></div>
+      <div class="modal-dialog card notes-dialog">
+        <h3>Note sessione</h3>
+        <p class="modal-message">
+          Segna qui eventuali mismatch o errori da correggere in review.
+        </p>
+        <textarea id="notes-textarea" placeholder="Es: Brano 3: autore errato, controllare..."></textarea>
+        <div class="modal-actions">
+          <button id="notes-cancel" class="btn btn--small">Chiudi</button>
+          <button id="notes-save" class="btn btn--small btn--primary">Salva</button>
+        </div>
+      </div>
+    </div>
 
     <!-- MODAL DI CONFERMA GENERICA -->
     <div id="confirm-modal" class="modal modal--hidden">

@@ -3,7 +3,8 @@ const state = {
   mode: null, // "dj" | "band" | "concert"
   route: "welcome", // "welcome" | "session" | "review"
   concertArtist: "",
-  bandArtist: "", // artista opzionale per live band
+  bandArtist: "", // artista opzionale per live band (ora non più richiesto)
+  notes: "", // note su mismatch/errori dalla sessione
 };
 
 // playlist locale (frontend)
@@ -124,15 +125,14 @@ function updateVisualizer() {
     let current = visLevels[colIndex] || 0;
 
     // target con bias ancora più forte verso zero (valor medio più basso)
-    let base = Math.pow(Math.random(), 3.2); // prima 2.2 -> ora molte più colonne "basse"
+    let base = Math.pow(Math.random(), 3.2);
     let target = base * VIS_ROWS * 0.9;
 
-    // ogni tanto un picco alto (tipo colpo di cassa), che mantiene la sensazione di "botta"
+    // ogni tanto un picco alto
     if (Math.random() < 0.1) {
-      target = VIS_ROWS * (0.55 + 0.45 * Math.random()); // 55–100% dell'altezza
+      target = VIS_ROWS * (0.55 + 0.45 * Math.random());
     }
 
-    // easing salita/discesa (rimasti uguali: manteniamo il fading che ti piaceva)
     const speedUp = 0.45;
     const speedDown = 0.12;
     if (target > current) {
@@ -141,10 +141,9 @@ function updateVisualizer() {
       current += (target - current) * speedDown;
     }
 
-    // damping morbido: residuo che resta un po' di più
+    // damping morbido
     current *= 0.985;
 
-    // clamp
     if (current < 0) current = 0;
     if (current > VIS_ROWS) current = VIS_ROWS;
 
@@ -440,7 +439,6 @@ async function pollPlaylistOnce() {
 function startPlaylistPolling() {
   if (playlistPollInterval) return;
   pollPlaylistOnce(); // prima chiamata immediata
-  // intervallo più rapido (2s) come nella versione funzionante del tuo amico
   playlistPollInterval = setInterval(pollPlaylistOnce, 2000);
 }
 
@@ -603,6 +601,36 @@ function backToSessionFromReview() {
   showView("#view-session");
 }
 
+// --- NOTE SESSIONE ---
+function syncReviewNotes() {
+  const view = $("#review-notes-view");
+  if (!view) return;
+  const text = (state.notes || "").trim();
+  view.textContent = text || "—";
+}
+
+function openNotesModal() {
+  const modal = $("#notes-modal");
+  const textarea = $("#notes-textarea");
+  if (!modal || !textarea) return;
+
+  textarea.value = state.notes || "";
+  modal.classList.remove("modal--hidden");
+}
+
+function closeNotesModal(save) {
+  const modal = $("#notes-modal");
+  const textarea = $("#notes-textarea");
+  if (!modal || !textarea) return;
+
+  if (save) {
+    state.notes = textarea.value || "";
+    syncReviewNotes();
+  }
+
+  modal.classList.add("modal--hidden");
+}
+
 // --- MODAL DI CONFERMA ---
 function showConfirm(message) {
   return new Promise((resolve) => {
@@ -743,6 +771,7 @@ function renderReview() {
 
   updateGenerateState();
   updateUndoButton();
+  syncReviewNotes();
 }
 
 // --- WELCOME / MODALITÀ + CAMPI ARTISTA / DOPPIO CLICK ---
@@ -871,7 +900,7 @@ function initWelcome() {
   function handleBandSubmit() {
     const name = bandInput ? bandInput.value.trim() : "";
     state.mode = "band";
-    state.bandArtist = name; // facoltativo, può essere vuoto
+    state.bandArtist = name; // facoltativo, ora può essere vuoto e nessun input
     applyTheme();
     goToSession();
   }
@@ -1027,6 +1056,32 @@ function wireSessionButtons() {
       backToWelcome();
     });
   }
+
+  // NOTE SESSIONE
+  const btnNotes = $("#btn-session-notes");
+  if (btnNotes) {
+    btnNotes.addEventListener("click", (e) => {
+      e.preventDefault();
+      openNotesModal();
+    });
+  }
+
+  const notesCancel = $("#notes-cancel");
+  const notesSave = $("#notes-save");
+
+  if (notesCancel) {
+    notesCancel.addEventListener("click", (e) => {
+      e.preventDefault();
+      closeNotesModal(false);
+    });
+  }
+
+  if (notesSave) {
+    notesSave.addEventListener("click", (e) => {
+      e.preventDefault();
+      closeNotesModal(true);
+    });
+  }
 }
 
 // --- AVVIO ---
@@ -1036,4 +1091,5 @@ document.addEventListener("DOMContentLoaded", () => {
   initWelcome();
   wireSessionButtons();
   buildVisualizer();
+  syncReviewNotes();
 });
