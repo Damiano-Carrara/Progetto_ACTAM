@@ -420,8 +420,8 @@ body.no-scroll {
 .log-head,
 .log-row {
   display: grid;
-  /* Brano | Compositore | Artista */
-  grid-template-columns: 2fr 1.5fr 1.2fr;
+  /* # | Brano | Compositore | Artista */
+  grid-template-columns: 0.3fr 2fr 1.8fr 1.5fr; /* # ancora più stretta */
   gap: 8px;
   font-size: 0.9rem;
 }
@@ -431,6 +431,11 @@ body.no-scroll {
   border-bottom: 1px solid var(--border);
   margin-bottom: 6px;
   color: var(--muted);
+}
+
+.log-head span:first-child,
+.log-row .col-index {
+  text-align: right;
 }
 
 .log-body {
@@ -516,12 +521,24 @@ body.no-scroll {
 }
 
 /* === FACCIATA 3: REVIEW E TABELLE === */
-/* Qui ci sono le modifiche per i tuoi segni giallo/blu */
 
 .review-card {
   display: flex;
   flex-direction: column;
   height: 460px;
+}
+
+/* Titolo + tasto Note in alto a destra */
+.review-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.review-header-row h3 {
+  margin: 0;
 }
 
 .review-table {
@@ -544,12 +561,18 @@ body.no-scroll {
 
 .row {
   display: grid;
-  /* Le 3 colonne */
-  grid-template-columns: 1.2fr 1.4fr auto;
   gap: 8px;
   align-items: center;
   padding: 8px 0;
   border-bottom: 1px solid var(--border);
+}
+
+/* struttura 4 colonne: # | Compositore | Titolo | Azioni */
+/* struttura 4 colonne: # | Compositore | Titolo | Azioni */
+.review-table .row {
+  grid-template-columns: 0.2fr 1.5fr 1.3fr 300px;
+  /* # più stretta, Compositore un po' più largo, Titolo più stretto,
+     colonna Azioni più larga così i 4 tasti stanno comodi dentro la card */
 }
 
 /* INTESTAZIONI */
@@ -559,25 +582,39 @@ body.no-scroll {
   font-weight: 600;
 }
 
-/* Tutte le intestazioni: aggiungiamo padding sinistro per allineare al testo degli input */
+/* padding sinistro per allineare al testo degli input */
 .row--head span {
-  padding-left: 9px; /* allinea il titolo al testo dell'input */
+  padding-left: 9px;
   text-align: left !important;
 }
 
-/* Specifico per la colonna "Azioni" (3a colonna) */
-.row--head span:nth-child(3) {
-  justify-self: flex-start;
-  display: flex;
-  justify-content: flex-start; 
+/* Titolo (3a colonna) */
+.review-table .row--head span:nth-child(3) {
+  padding-left: 10px !important;
+  text-align: left !important;
+  justify-self: start !important;
+}
+
+/* Azioni (4a colonna) */
+.review-table .row--head span:nth-child(4) {
+  text-align: left !important;
+  justify-self: start !important;
+  padding-left: 0 !important;
 }
 
 /* Colonna bottoni (dentro le righe dati) */
-.row .tools {
+.review-table .row .tools {
   display: flex;
-  gap: 8px;
+  gap: 6px;
   justify-content: flex-start;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;      /* nessun a capo: tutti sulla stessa riga */
+}
+
+/* Bottoni piccoli in review leggermente compattati */
+.review-table .row .tools .btn.btn--small {
+  padding: 3px 8px;
+  font-size: 0.8rem;
+  white-space: nowrap;    /* il testo resta su una sola riga */
 }
 
 .actions {
@@ -695,35 +732,6 @@ body::-webkit-scrollbar-thumb {
   border-color: #ff3f6a;
 }
 
-/* ============================================================
-   FIX DEFINITIVO ALLINEAMENTO TABELLA
-   ============================================================ */
-
-/* 1. REGOLA LA GRIGLIA */
-.review-table .row {
-  grid-template-columns: 1.2fr 1.4fr 240px !important;
-}
-
-/* 2. TITOLO */
-.review-table .row--head span:nth-child(2) {
-  padding-left: 10px !important;
-  text-align: left !important;
-  justify-self: start !important;
-}
-
-/* 3. AZIONI (Intestazione) */
-.review-table .row--head span:nth-child(3) {
-  text-align: left !important;
-  justify-self: start !important;
-  padding-left: 0 !important;
-}
-
-/* 4. AZIONI (Bottoni) */
-.review-table .row .tools {
-  justify-content: flex-start !important;
-  gap: 8px !important;
-}
-
 /* === NOTE SESSIONE === */
 
 #notes-textarea {
@@ -740,8 +748,9 @@ body::-webkit-scrollbar-thumb {
   font-size: 0.9rem;
 }
 
-/* Box note in review */
+/* Box note in review: nascosto, solo mirror testo */
 .review-notes {
+  display: none;
   margin-top: 10px;
   margin-bottom: 8px;
   padding: 10px 12px;
@@ -760,4 +769,63 @@ body::-webkit-scrollbar-thumb {
   margin: 0;
   font-size: 0.9rem;
   white-space: pre-wrap; /* mantiene gli a capo */
+}
+
+/* --- TASTI NOTE --- */
+
+/* Page 2: tasto Note, più alto così non taglia la scritta */
+#btn-session-notes {
+  font-style: italic;
+  padding: 9px 18px 11px; /* top - right/left - bottom */
+  display: inline-flex;
+  align-items: center;
+}
+
+#btn-session-notes span {
+  font-style: inherit;
+  font-size: 0.9rem;
+  line-height: 1;
+}
+
+/* Gradiente testo tasto Note (page 2) in base alla modalità */
+#app.theme-dj #btn-session-notes span {
+  background: linear-gradient(135deg, #ff8a00, #ffca4d);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+#app.theme-band #btn-session-notes span {
+  background: linear-gradient(135deg, #00ffc3, #007c9f);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+#app.theme-concert #btn-session-notes span {
+  background: linear-gradient(135deg, #ff3f6a, #ff9ad7);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Page 3: tasto Note con gradiente pieno come i primary */
+#btn-review-notes {
+  font-weight: 600;
+  border: none;
+}
+
+#app.theme-dj #btn-review-notes {
+  background: linear-gradient(135deg, #ff8a00, #ffca4d);
+  color: #140616;
+}
+
+#app.theme-band #btn-review-notes {
+  background: linear-gradient(135deg, #00ffc3, #007c9f);
+  color: #021315;
+}
+
+#app.theme-concert #btn-review-notes {
+  background: linear-gradient(135deg, #ff3f6a, #ff9ad7);
+  color: #21021e;
 }

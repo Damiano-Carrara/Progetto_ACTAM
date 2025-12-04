@@ -120,7 +120,10 @@
             <button id="btn-session-pause" class="btn" disabled>Pause</button>
             <button id="btn-session-stop" class="btn" disabled>Stop</button>
             <button id="btn-session-reset" class="btn">Reset</button>
-            <button id="btn-session-notes" class="btn btn--small">Note</button>
+            <!-- Tasto Note: corsivo, testo in span (gradiente da CSS) -->
+            <button id="btn-session-notes" class="btn">
+              <span>Note</span>
+            </button>
           </div>
         </section>
 
@@ -128,6 +131,7 @@
         <section class="card log-card">
           <h3>Log live</h3>
           <div class="log-head">
+            <span>#</span>
             <span>Brano</span>
             <span>Compositore</span>
             <span>Artista</span>
@@ -152,8 +156,13 @@
       </header>
 
       <div class="card review-card">
-        <h3>Playlist della serata</h3>
+        <!-- Titolo + pulsante Note che apre il modal (solo lettura) -->
+        <div class="review-header-row">
+          <h3>Playlist della serata</h3>
+          <button id="btn-review-notes" class="btn btn--small">Note</button>
+        </div>
 
+        <!-- Box note: solo mirror testo, tenuto nascosto -->
         <div class="review-notes">
           <h4>Note dalla sessione</h4>
           <p id="review-notes-view" class="review-notes-text">—</p>
@@ -161,6 +170,7 @@
 
         <div class="table review-table">
           <div class="row row--head">
+            <span>#</span>
             <span>Compositore</span>
             <span>Titolo</span>
             <span>Azioni</span>
@@ -170,12 +180,14 @@
 
           <template id="review-row-template">
             <div class="row">
+              <span class="review-index"></span>
               <input class="inline" data-field="composer" />
               <input class="inline" data-field="title" />
               <div class="tools">
                 <button class="btn btn--small btn-confirm">Conferma</button>
                 <button class="btn btn--small btn-edit">Modifica</button>
                 <button class="btn btn--small btn-delete">Delete</button>
+                <button class="btn btn--small btn-add">Aggiungi ↓</button>
               </div>
             </div>
           </template>
