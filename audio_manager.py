@@ -13,7 +13,7 @@ from dotenv import load_dotenv
 import threading
 import io
 import re
-import unicodedata # <--- NUOVO IMPORT
+import unicodedata 
 from collections import deque, Counter
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
@@ -82,15 +82,22 @@ class AudioManager:
         return (normalized * 32767).astype(np.int16)
 
     def _normalize_text(self, text):
-        """Pulisce e rimuove accenti (Unicode NFD)"""
+        """Pulisce e rimuove accenti (AGGRESSIVO - Per Deduplica)"""
         if not text: return ""
+        # Rimuove parentesi e featuring per normalizzare il titolo base
         clean = re.sub(r"[\(\[].*?[\)\]]", "", text)
         clean = re.sub(r"(?i)\b(feat\.|ft\.|remix|edit|version|karaoke|live|mixed|spanish|italian)\b.*", "", clean)
         
-        # Gestione Accenti
         clean = unicodedata.normalize('NFD', clean).encode('ascii', 'ignore').decode("utf-8")
-        
         clean = re.sub(r"[^a-zA-Z0-9\s]", "", clean)
+        return clean.strip().lower()
+
+    def _normalize_for_match(self, text):
+        """Pulisce accenti ma MANTIENE i featuring (GENTILE - Per Bias Matching)"""
+        if not text: return ""
+        # Qui NON rimuoviamo "feat.", "live", ecc. perché contengono l'artista che cerchiamo!
+        clean = unicodedata.normalize('NFD', text).encode('ascii', 'ignore').decode("utf-8")
+        clean = re.sub(r"[^a-zA-Z0-9\s]", "", clean) # Rimuove solo simboli strani (!, ?, -)
         return clean.strip().lower()
 
     def _clean_title_for_display(self, text):
@@ -107,7 +114,7 @@ class AudioManager:
         if not text: return False
         try:
             ascii_count = len([c for c in text if ord(c) < 128])
-            return (ascii_count / len(text)) > 0.8
+            return (ascii_count / len(text)) > 0.5
         except:
             return True
 
@@ -119,6 +126,7 @@ class AudioManager:
         return ""
 
     def _are_tracks_equivalent(self, t1, t2):
+        # Usa la normalizzazione AGGRESSIVA (ignora i feat per capire se è lo stesso brano)
         art1 = self._normalize_text(self._get_artist_name(t1))
         art2 = self._normalize_text(self._get_artist_name(t2))
         
@@ -130,15 +138,12 @@ class AudioManager:
 
         similarity = SequenceMatcher(None, tit1, tit2).ratio()
 
-        # 1. SAFETY FLOOR
         if similarity < 0.40:
             return False
 
-        # 2. MATCH SICURO (> 0.60)
         if similarity > 0.60:
             return True
             
-        # 3. ZONA CRITICA (0.40 - 0.60)
         try:
             dur1 = int(t1.get('duration_ms', 0) or 0)
             dur2 = int(t2.get('duration_ms', 0) or 0)
@@ -147,10 +152,7 @@ class AudioManager:
 
         if dur1 > 30000 and dur2 > 30000:
             diff = abs(dur1 - dur2)
-            
-            # Tolleranza ridotta a 200ms (0.2s)
-            # Separa "Molotov" vs "Morto Mai" (375ms)
-            if diff < 200:
+            if diff < 1200:
                 return True
 
         return False
@@ -199,26 +201,41 @@ class AudioManager:
                 bias_winner = None
                 if self.target_artist_bias:
                     for t in tracks:
-                        artist_clean = self._normalize_text(self._get_artist_name(t))
-                        bias_clean = self._normalize_text(self.target_artist_bias)
+                        # Usa normalizzazione GENTILE per trovare il bias (mantiene i feat)
+                        artist_clean = self._normalize_for_match(self._get_artist_name(t))
+                        title_clean = self._normalize_for_match(t.get('title'))
+                        
+                        bias_clean = self._normalize_for_match(self.target_artist_bias)
+                        
                         try:
                             score_val = float(t.get('score', 0))
                         except:
                             score_val = 0
-                            
-                        if bias_clean in artist_clean and score_val >= 70:
+                        
+                        # Cerca il bias sia nell'artista che nel titolo
+                        is_bias_present = (bias_clean in artist_clean) or (bias_clean in title_clean)
+                        
+                        if is_bias_present and score_val >= 70:
                             bias_winner = t
                             print(f"🏆 Bias Winner Scelto: {t['title']} ({score_val}%)")
                             break
                 
-                best_track_data = bias_winner if bias_winner else tracks[0]
-                best_track_data['display_title'] = self._clean_title_for_display(best_track_data['title'])
-                
-                current_obj = {
-                    'title': best_track_data['title'],
-                    'artist': self._get_artist_name(best_track_data),
-                    'duration_ms': best_track_data.get('duration_ms', 0)
-                }
+                best_track = bias_winner if bias_winner else tracks[0]
+
+                if not self._is_mostly_latin(best_track['title']):
+                    print(f"🐉 Scartato brano non-Latin (Falso Positivo): {best_track['title']}")
+                    current_obj = None
+                else:
+                    best_track_data = best_track
+                    best_track_data['display_title'] = self._clean_title_for_display(best_track_data['title'])
+                    
+                    current_obj = {
+                        'title': best_track_data['title'],
+                        'artist': self._get_artist_name(best_track_data),
+                        'duration_ms': best_track_data.get('duration_ms', 0)
+                    }
+            else:
+                current_obj = None
 
             if current_obj:
                 self.history_buffer.append(current_obj)
@@ -311,6 +328,7 @@ class AudioManager:
                 def aggregate_tracks(raw_list):
                     grouped = []
                     for t in raw_list:
+                        # Deduplica: usa normalizzazione AGGRESSIVA
                         t['artist_norm'] = self._normalize_text(self._get_artist_name(t))
                         t['title_norm'] = self._normalize_text(t.get('title'))
                         merged = False
@@ -339,12 +357,15 @@ class AudioManager:
                         applied_bonus = 0
                         
                         if bias_artist:
-                             bias_norm_str = self._normalize_text(bias_artist)
+                             # Bias Matching: Usa normalizzazione GENTILE (tiene i feat)
+                             bias_norm_str = self._normalize_for_match(bias_artist)
                              bias_tokens = set(bias_norm_str.split())
                              
                              def check_match_smart(text_to_check):
                                  if not text_to_check: return False
-                                 text_norm = self._normalize_text(text_to_check)
+                                 # Matching GENTILE
+                                 text_norm = self._normalize_for_match(text_to_check)
+                                 
                                  if bias_norm_str in text_norm: return True
                                  target_tokens = set(text_norm.split())
                                  if bias_tokens.issubset(target_tokens): return True
@@ -362,7 +383,8 @@ class AudioManager:
 
                              if not is_match and 'external_metadata' in t:
                                  ext_meta_dump = json.dumps(t['external_metadata'])
-                                 if self._normalize_text(bias_artist) in self._normalize_text(ext_meta_dump):
+                                 # Anche qui gentile, altrimenti non troviamo i feat nel dump
+                                 if self._normalize_for_match(bias_artist) in self._normalize_for_match(ext_meta_dump):
                                      is_match = True
 
                              if is_match:
