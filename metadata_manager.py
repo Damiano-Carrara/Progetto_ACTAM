@@ -1,214 +1,230 @@
 import musicbrainzngs
-import time # Importiamo il tempo
+import time
 import re
+import requests
+import json
+from difflib import SequenceMatcher
 
 class MetadataManager:
     def __init__(self):
-        musicbrainzngs.set_useragent("SIAE_Project_Univ", "0.1", "tuamail@esempio.com")
-        print("📚 Metadata Manager (MusicBrainz) Inizializzato")
+        musicbrainzngs.set_useragent("SIAE_Project_Univ", "0.5", "tuamail@esempio.com")
+        self.itunes_url = "https://itunes.apple.com/search"
+        self.deezer_search_url = "https://api.deezer.com/search"
+        print("📚 Metadata Manager (IT Store Forced) Pronto.")
 
-    def find_composer(self, title, detected_artist, isrc=None, upc=None, setlist_artist=None):
-        """
-        Strategia Ibrida: ISRC > UPC > Setlist Bias > Detected Artist > Solo Titolo
-        """
-        # 1. Codici univoci (Vittoria facile)
-        if isrc:
-            res = self._search_by_isrc(isrc)
-            if res: return res
-            time.sleep(1.0)
-        if upc:
-            res = self._search_by_upc(upc, title)
-            if res: return res
-            time.sleep(1.0)
+    def _clean_string(self, text):
+        if not text: return ""
+        return re.sub(r"[^a-zA-Z0-9\s]", "", text).lower().strip()
 
-        # Pulizia titolo (Fondamentale per i live)
-        clean_title = self._clean_title(title)
-        # Se la pulizia ha tolto tutto (es. titolo era "(Live)"), usa l'originale
-        search_title = clean_title if len(clean_title) > 2 else title
-        
-        print(f"🔎 Ricerca Compositore per: '{search_title}'")
-
-        # 2. TENTATIVO BIAS (Setlist)
-        # Se sappiamo chi è sul palco, proviamo prima con lui!
-        if setlist_artist:
-            print(f"🎯 [Bias] Provo con Artista Scaletta: {setlist_artist}")
-            res = self._perform_text_query(search_title, setlist_artist)
-            if res != "Sconosciuto":
-                return res
-            # Se fallisce, NON ci fermiamo. È il "cortocircuito" evitato.
-            print("⚠️ Bias fallito (forse è una cover?). Passo al fallback.")
-            time.sleep(1.0)
-
-        # 3. TENTATIVO STANDARD (Artista Rilevato)
-        # Usiamo quello che ha sentito ACRCloud (es. "Domenico Modugno")
-        if detected_artist != setlist_artist:
-            print(f"🎤 [Standard] Provo con Artista Rilevato: {detected_artist}")
-            res = self._perform_text_query(search_title, detected_artist)
-            if res != "Sconosciuto":
-                return res
-            time.sleep(1.0)
-
-        # 4. TENTATIVO DISPERATO (Solo Opera)
-        print("🧩 [Fallback] Cerco solo l'Opera...")
-        return self._fallback_search_work(search_title)
-
-    # ---------------------------------------------------------
-    # METODI HELPER SPECIFICI
-    # ---------------------------------------------------------
-
-    def _search_by_isrc(self, isrc):
-        try:
-            # PASSAGGIO 1: Otteniamo l'ID della registrazione
-            res = musicbrainzngs.get_recordings_by_isrc(isrc, includes=[])
-            
-            if 'isrc' in res and res['isrc']['recording-list']:
-                rec_stub = res['isrc']['recording-list'][0]
-                rec_id = rec_stub['id']
-                
-                time.sleep(0.5) # Pausa di sicurezza interna
-                
-                # PASSAGGIO 2: Chiediamo i dettagli completi Work-Relations
-                rec_details = musicbrainzngs.get_recording_by_id(rec_id, includes=['work-rels'])
-                
-                return self._extract_composer_from_recording(rec_details['recording'])
-                
-        except Exception as e:
-            print(f"⚠️ Errore ISRC: {e}")
-        return None
-
-    def _search_by_upc(self, upc, target_title):
-        try:
-            # Cerca la "Release" (Album) tramite Barcode
-            res = musicbrainzngs.search_releases(query=f'barcode:{upc}', limit=1)
-            
-            if not res['release-list']:
-                return None
-                
-            release = res['release-list'][0]
-            release_id = release['id']
-            
-            time.sleep(0.5) # Pausa di sicurezza interna
-            
-            # Scarica le tracce di questa release
-            rel_details = musicbrainzngs.get_release_by_id(release_id, includes=['recordings'])
-            
-            found_recording_id = None
-            for medium in rel_details['release']['medium-list']:
-                for track in medium['track-list']:
-                    track_title = track['recording']['title']
-                    if target_title.lower() in track_title.lower() or track_title.lower() in target_title.lower():
-                        found_recording_id = track['recording']['id']
-                        break
-                if found_recording_id: break
-            
-            if found_recording_id:
-                time.sleep(0.5) # Pausa di sicurezza interna
-                rec_details = musicbrainzngs.get_recording_by_id(found_recording_id, includes=['work-rels'])
-                return self._extract_composer_from_recording(rec_details['recording'])
-
-        except Exception as e:
-            print(f"⚠️ Errore UPC: {e}")
-        return None
-
-        
     def _clean_title(self, title):
-        """Rimuove (Live), (Remaster) ecc. per trovare l'opera originale."""
-        # Toglie tutto tra parentesi
         clean = re.sub(r"[\(\[].*?[\)\]]", "", title)
-        # Toglie parole chiave comuni nei live
-        patterns = [r"-\s*live", r"live\s*at", r"remaster", r"version"]
+        patterns = [r"-\s*live", r"live\s*at", r"remaster", r"version", r"edit"]
         for p in patterns:
             clean = re.sub(p, "", clean, flags=re.IGNORECASE)
         return clean.strip()
 
-    def _search_by_text(self, title, artist):
-        """
-        Prova la ricerca esatta. Se fallisce, pulisce il titolo e riprova.
-        """
-        # 1. Primo tentativo: Titolo esatto
-        composer = self._perform_text_query(title, artist)
-        if composer != "Sconosciuto":
-            return composer
-
-        # 2. Secondo tentativo: Titolo "pulito" (senza Remix/Feat)
-        cleaned_title = self._clean_title(title)
+    def find_composer(self, title, detected_artist, isrc=None, upc=None, setlist_artist=None, raw_acr_meta=None):
+        clean_title = self._clean_title(title)
+        search_title = clean_title if len(clean_title) > 2 else title
         
-        # Se il titolo pulito è diverso dall'originale (es. avevamo parentesi)
-        if cleaned_title != title and len(cleaned_title) > 0:
-            print(f"🧹 [Meta] Nessun risultato. Riprovo con titolo pulito: '{cleaned_title}'")
-            time.sleep(1.0) # Pausa gentilezza
-            composer = self._perform_text_query(cleaned_title, artist)
-            if composer != "Sconosciuto":
-                return composer
+        print(f"\n🔎 [META] Cerco Compositore: '{search_title}' (Art: '{detected_artist}')")
+
+        if raw_acr_meta and 'contributors' in raw_acr_meta:
+            composers_list = raw_acr_meta['contributors'].get('composers', [])
+            if composers_list:
+                res_str = ", ".join(composers_list)
+                print(f"   💎 ACRCloud Native Match: {res_str}")
+                return res_str
+
+        artists_to_try = []
+        if setlist_artist: artists_to_try.append(setlist_artist)
+        if detected_artist and detected_artist != setlist_artist: artists_to_try.append(detected_artist)
+
+        # 1. MUSICBRAINZ (ISRC)
+        if isrc:
+            res = self._search_mb_by_isrc(isrc)
+            if res: return res
+
+        # 2. MUSICBRAINZ (Testo)
+        for artist in artists_to_try:
+            res = self._strategy_musicbrainz(search_title, artist)
+            if res: return res
+
+        # 3. ITUNES (DEBUGGATO & LOCALIZZATO)
+        print("🍏 [Apple] Provo iTunes (Store IT)...")
+        for artist in artists_to_try:
+            res = self._search_itunes(search_title, artist)
+            if res: return f"{res} (Apple)"
+
+        # 4. DEEZER
+        print("🎵 [Deezer] Provo Deezer...")
+        for artist in artists_to_try:
+            res = self._search_deezer(search_title, artist)
+            if res: return f"{res} (Deezer)"
+
+        # 5. SPOTIFY RAW (Fallback)
+        if raw_acr_meta and 'spotify' in raw_acr_meta:
+            print("🟢 [Spotify Raw] Analizzo metadati grezzi...")
+            try:
+                spotify_data = raw_acr_meta['spotify'] # <--- Accesso diretto alla chiave 'spotify'
+                spotify_artists = spotify_data.get('artists', [])
+                names = [a.get('name') for a in spotify_artists if 'name' in a]
+                
+                filtered_names = []
+                target_norm = self._clean_string(detected_artist)
+                
+                for n in names:
+                    if self._clean_string(n) not in target_norm:
+                        filtered_names.append(n)
+                
+                if filtered_names:
+                    res_str = ", ".join(filtered_names)
+                    print(f"   ✅ Spotify Raw Contributors: {res_str}")
+                    return f"{res_str} (Spotify Raw)"
+            except: pass
 
         return "Sconosciuto"
 
-    def _perform_text_query(self, title, artist):
-        """
-        Esegue la chiamata effettiva a MusicBrainz per testo
-        """
+    # ---------------------------------------------------------
+    # ITUNES (Logica Potenziata)
+    # ---------------------------------------------------------
+    def _search_itunes(self, title, artist):
         try:
-            # Cerca Recordings
-            # Usa 'strict=False' implicito o rimuovi AND per essere più lasco se serve
+            # Pulizia leggera per la query
+            simple_artist = re.sub(r"(?i)\b(feat\.|ft\.|&|the)\b.*", "", artist).strip()
+            
+            # --- TENTATIVO 1: Query Specifica ---
+            params = {
+                'term': f"{title} {simple_artist}", 
+                'media': 'music', 
+                'entity': 'song', 
+                'limit': 10,
+                'country': 'IT' # <--- FONDAMENTALE
+            }
+            
+            # DEBUG URL
+            # print(f"   ► URL iTunes: {self.itunes_url}?term={params['term']}&country=IT")
+            
+            resp = requests.get(self.itunes_url, params=params, timeout=5)
+            results = resp.json().get('results', []) if resp.status_code == 200 else []
+
+            # --- TENTATIVO 2: Solo Titolo (Se 1 fallisce) ---
+            if not results:
+                print(f"   -> Nessun risultato specifico. Provo solo titolo: '{title}'")
+                params['term'] = title
+                resp = requests.get(self.itunes_url, params=params, timeout=5)
+                results = resp.json().get('results', []) if resp.status_code == 200 else []
+
+            target_norm = self._clean_string(artist)
+            
+            for i, res in enumerate(results):
+                track_name = res.get('trackName', '')
+                artist_name = res.get('artistName', '')
+                
+                # Check Titolo (Fuzzy > 60%)
+                if SequenceMatcher(None, title.lower(), track_name.lower()).ratio() < 0.6:
+                    # print(f"     X Scartato Titolo: {track_name}")
+                    continue
+                
+                # Check Artista (Flessibile)
+                found_art_clean = self._clean_string(artist_name)
+                
+                # Se l'artista combacia (Lazza in Lazza / Lazza in Lazza & Sfera)
+                if target_norm in found_art_clean or found_art_clean in target_norm:
+                    if 'composerName' in res:
+                        comp = res['composerName']
+                        print(f"   ✅ iTunes Match: {comp}")
+                        return comp
+                    else:
+                        print(f"     ⚠️ Trovato brano '{track_name}' ma campo composer vuoto.")
+                else:
+                    # print(f"     X Scartato Artista: {artist_name} (Cercavo: {artist})")
+                    pass
+                    
+        except Exception as e:
+            print(f"   ⚠️ Errore iTunes: {e}")
+        return None
+
+    # ---------------------------------------------------------
+    # DEEZER
+    # ---------------------------------------------------------
+    def _search_deezer(self, title, artist):
+        try:
+            query = f'{title} {artist}'
+            params = {'q': query, 'limit': 3}
+            
+            resp = requests.get(self.deezer_search_url, params=params, timeout=5)
+            if resp.status_code != 200: return None
+            data = resp.json()
+            
+            target_norm = self._clean_string(artist)
+            title_norm = self._clean_string(title)
+
+            for res in data.get('data', []):
+                found_title = self._clean_string(res.get('title', ''))
+                if SequenceMatcher(None, title_norm, found_title).ratio() < 0.6: continue
+                
+                found_artist = self._clean_string(res.get('artist', {}).get('name', ''))
+                if target_norm not in found_artist and found_artist not in target_norm: continue
+
+                track_resp = requests.get(f"https://api.deezer.com/track/{res['id']}", timeout=5)
+                if track_resp.status_code == 200:
+                    contributors = track_resp.json().get('contributors', [])
+                    composers = []
+                    for p in contributors:
+                        if p.get('role') in ['Composer', 'Writer', 'Author']:
+                            composers.append(p.get('name'))
+                    
+                    if composers:
+                        return ", ".join(list(set(composers)))
+        except: pass
+        return None
+
+    # ---------------------------------------------------------
+    # MUSICBRAINZ UTILS
+    # ---------------------------------------------------------
+    def _strategy_musicbrainz(self, title, artist):
+        try:
             query = f'recording:"{title}" AND artist:"{artist}"'
             res = musicbrainzngs.search_recordings(query=query, limit=3)
+            if res.get('recording-list'):
+                for r in res['recording-list']:
+                    c = self._get_comp(r['id'])
+                    if c: return c
             
-            if not res['recording-list']:
-                # Fallback immediato sull'opera (Work) se non trova la registrazione
-                return self._fallback_search_work(title)
-            
-            rec = res['recording-list'][0]
             time.sleep(0.5)
-            
-            # Dettagli recording + work-rels
-            rec_details = musicbrainzngs.get_recording_by_id(rec['id'], includes=['work-rels'])
-            val = self._extract_composer_from_recording(rec_details['recording'])
-            
-            if val == "Sconosciuto":
-                return self._fallback_search_work(title)
-            
-            return val
+            query_w = f'work:"{title}" AND artist:"{artist}"'
+            res_w = musicbrainzngs.search_works(query=query_w, limit=3)
+            if res_w.get('work-list'):
+                return self._extract_comp(res_w['work-list'][0])
+        except: pass
+        return None
 
-        except Exception as e:
-            print(f"⚠️ Errore ricerca testo: {e}")
-            return "Sconosciuto"
-
-    def _extract_composer_from_recording(self, recording_data):
-        """Estrae i compositori dati i dettagli di una registrazione"""
+    def _search_mb_by_isrc(self, isrc):
         try:
-            if 'work-relation-list' not in recording_data:
-                return "Sconosciuto"
-            
-            work_id = recording_data['work-relation-list'][0]['work']['id']
-            
-            # ⭐ PAUSA CRITICA: Prima dell'ultima e più complessa chiamata
-            time.sleep(0.5) 
-            
-            work_details = musicbrainzngs.get_work_by_id(work_id, includes=['artist-rels'])
-            
-            composers = []
-            if 'artist-relation-list' in work_details['work']:
-                for relation in work_details['work']['artist-relation-list']:
-                    if relation['type'] in ['composer', 'writer']:
-                        composers.append(relation['artist']['name'])
-            
-            return ", ".join(composers) if composers else "Sconosciuto"
-        except Exception:
-            return "Sconosciuto"
+            res = musicbrainzngs.get_recordings_by_isrc(isrc, includes=['work-rels', 'artist-rels'])
+            if res.get('isrc', {}).get('recording-list'):
+                return self._extract_comp(res['isrc']['recording-list'][0])
+        except: return None
 
-    def _fallback_search_work(self, title):
+    def _get_comp(self, rid):
         try:
-            res = musicbrainzngs.search_works(query=f'work:"{title}"', limit=1)
-            if res['work-list']:
-                work_id = res['work-list'][0]['id']
-                time.sleep(0.5) 
-                work_details = musicbrainzngs.get_work_by_id(work_id, includes=['artist-rels'])
-                composers = []
-                if 'artist-relation-list' in work_details['work']:
-                    for relation in work_details['work']['artist-relation-list']:
-                        if relation['type'] in ['composer', 'writer']:
-                            composers.append(relation['artist']['name'])
-                return ", ".join(composers) if composers else "Sconosciuto"
-        except:
-            pass
-        return "Sconosciuto"
+            time.sleep(0.5)
+            rec = musicbrainzngs.get_recording_by_id(rid, includes=['work-rels', 'artist-rels'])
+            return self._extract_comp(rec['recording'])
+        except: return None
+
+    def _extract_comp(self, data):
+        comps = set()
+        if 'artist-relation-list' in data:
+            for r in data['artist-relation-list']:
+                if r['type'] in ['composer', 'writer']: comps.add(r['artist']['name'])
+        if not comps and 'work-relation-list' in data:
+            try:
+                wid = data['work-relation-list'][0]['work']['id']
+                w = musicbrainzngs.get_work_by_id(wid, includes=['artist-rels'])['work']
+                if 'artist-relation-list' in w:
+                    for r in w['artist-relation-list']:
+                        if r['type'] in ['composer', 'writer', 'lyricist']: comps.add(r['artist']['name'])
+            except: pass
+        return ", ".join(comps) if comps else None

@@ -25,7 +25,7 @@ class SessionManager:
 
     def _are_songs_equivalent(self, new_s, existing_s):
         """
-        Controlla se due brani sono lo stesso con LOGICA "TAGLIO NETTO".
+        Controlla duplicati con SOGLIE INNALZATE (Fix: I Belong to You vs Più Bella Cosa).
         """
         # 1. CONTROLLO ARTISTA (Rigido)
         art_new = self._normalize_string(new_s['artist'])
@@ -39,18 +39,11 @@ class SessionManager:
         tit_ex = self._normalize_string(existing_s['title'])
         similarity = SequenceMatcher(None, tit_new, tit_ex).ratio()
 
-        # --- IL "TAGLIO NETTO" (Risolve Madonna vs Ogni Volta) ---
-        # Se i titoli si somigliano meno del 50%, sono canzoni diverse.
-        # Ignoriamo la durata, anche se fosse identica.
-        if similarity < 0.50:
-            return False
-
-        # 3. CASO DUPLICATO SICURO (Titoli quasi uguali)
-        if similarity > 0.80: 
+        # CASO A: Titoli Praticamente Uguali -> Duplicato sicuro
+        if similarity > 0.82: 
             return True
 
-        # 4. CONTROLLO DURATA (Solo per similarità tra 50% e 80%)
-        # Qui gestiamo "Favola" vs "Fabula" (sim ~66%)
+        # 3. CONTROLLO DURATA (Con validazione rigorosa)
         try:
             dur_new = int(new_s.get('duration_ms', 0) or 0)
             dur_ex = int(existing_s.get('duration_ms', 0) or 0)
@@ -62,13 +55,19 @@ class SessionManager:
         if dur_new > MIN_VALID_DURATION and dur_ex > MIN_VALID_DURATION:
             diff = abs(dur_new - dur_ex)
             
-            # Siamo nella fascia "Zona Grigia" (50% - 80% similarità)
-            # Usiamo una tolleranza molto ampia (12s) per gestire intro/outro diverse
-            # o versioni in lingua diversa che hanno la stessa base.
-            tolerance = 12000 
+            # --- LOGICA TOLLERANZA (SOGLIA ALZATA A 0.60) ---
+            # Abbiamo eliminato la fascia "media" (0.45-0.60) che causava falsi positivi.
+            
+            if similarity > 0.60:
+                # Simili / Traduzioni (es. Favola/Fabula ~0.66) -> Tolleranza ampia
+                tolerance = 12000 
+            else:
+                # Diversi (es. I belong to you/Più bella cosa ~0.50) -> Tolleranza ZERO.
+                # Devono essere identici al decimo di secondo (stesso file) per essere uniti.
+                tolerance = 100 
             
             if diff < tolerance:
-                print(f"🔄 Duplicato (Sim: {similarity:.2f}): '{tit_new}' == '{tit_ex}' (Diff: {diff}ms)")
+                print(f"🔄 Duplicato (Livello {similarity:.2f}): '{tit_new}' == '{tit_ex}' (Diff: {diff}ms)")
                 return True
         
         return False
@@ -108,6 +107,11 @@ class SessionManager:
                 upc = song_data.get('upc')
                 status_enrichment = "Pending"
 
+            raw_meta_package = {
+                "spotify": song_data.get('external_metadata', {}).get('spotify', {}),
+                "contributors": song_data.get('contributors', {}) # <--- AGGIUNTO QUI
+            }
+
             new_entry = {
                 "id": self._next_id, 
                 "title": title,
@@ -121,7 +125,8 @@ class SessionManager:
                 "isrc": isrc, 
                 "upc": upc,
                 "_raw_isrc": isrc,
-                "_raw_upc": upc
+                "_raw_upc": upc,
+                "_raw_meta": raw_meta_package # <--- NUOVO CAMPO FONDAMENTALE
             }
 
             self.playlist.append(new_entry) 
@@ -152,7 +157,8 @@ class SessionManager:
                     detected_artist=entry['artist'],
                     isrc=entry.get('_raw_isrc'),
                     upc=entry.get('_raw_upc'),
-                    setlist_artist=target_artist
+                    setlist_artist=target_artist,
+                    raw_acr_meta=entry.get('_raw_meta') # <--- PASSIAMO I DATI GREZZI
                 )
                 success = True
                 break 

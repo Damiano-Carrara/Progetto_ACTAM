@@ -113,10 +113,11 @@ class AudioManager:
             return track_data['artists'][0]['name']
         return ""
 
-    # --- FUNZIONE DI SIMILARITÀ (CORRETTA) ---
+    # --- FUNZIONE DI SIMILARITÀ ---
     def _are_tracks_equivalent(self, t1, t2):
         """
         Determina se due tracce sono equivalenti.
+        Soglie allineate al SessionManager.
         """
         art1 = self._normalize_text(self._get_artist_name(t1))
         art2 = self._normalize_text(self._get_artist_name(t2))
@@ -127,27 +128,30 @@ class AudioManager:
         tit1 = self._normalize_text(t1['title'])
         tit2 = self._normalize_text(t2['title'])
 
-        # Calcolo Similarità
         similarity = SequenceMatcher(None, tit1, tit2).ratio()
 
-        # 1. TAGLIO NETTO: Se < 50%, sono diversi.
-        if similarity < 0.50:
-            return False
-
-        # 2. Titoli quasi identici
-        if similarity > 0.80:
+        # 1. Match Sicuro
+        if similarity > 0.82:
             return True
             
-        # 3. Zona Grigia (50% - 80%): Controllo Durata
+        # 2. Controllo Durata
         try:
             dur1 = int(t1.get('duration_ms', 0) or 0)
             dur2 = int(t2.get('duration_ms', 0) or 0)
         except (ValueError, TypeError):
             dur1, dur2 = 0, 0
 
+        # Richiediamo durata valida
         if dur1 > 30000 and dur2 > 30000:
-            # Tolleranza ampia per questa fascia
-            if abs(dur1 - dur2) < 12000:
+            diff = abs(dur1 - dur2)
+            
+            # Soglia alzata a 0.60 per evitare falsi positivi su titoli diversi
+            if similarity > 0.60: 
+                tolerance = 12000
+            else:
+                tolerance = 100 # Stretto per titoli diversi (sim < 0.60)
+
+            if diff < tolerance:
                 return True
 
         return False
@@ -192,13 +196,11 @@ class AudioManager:
             if api_result.get('status') == 'multiple_results':
                 tracks = api_result['tracks']
                 
-                # Selezione Winner (Bias o Score)
                 bias_winner = None
                 if self.target_artist_bias:
                     for t in tracks:
                         artist_clean = self._normalize_text(self._get_artist_name(t))
                         bias_clean = self._normalize_text(self.target_artist_bias)
-                        # Safe score check
                         try:
                             score_val = float(t.get('score', 0))
                         except:
@@ -307,14 +309,11 @@ class AudioManager:
                 all_found = []
                 def norm(sc): return int(float(sc) * 100) if float(sc) <= 1.0 else int(float(sc))
 
-                # --- 1. Aggregazione Risultati Intelligente ---
                 def aggregate_tracks(raw_list):
                     grouped = []
                     for t in raw_list:
-                        # Normalizziamo per confronto base
                         t['artist_norm'] = self._normalize_text(self._get_artist_name(t))
                         t['title_norm'] = self._normalize_text(t.get('title'))
-                        
                         merged = False
                         for g in grouped:
                             if self._are_tracks_equivalent(t, g):
@@ -324,27 +323,22 @@ class AudioManager:
                                 print(f"🔗 AGGREGAZIONE: '{t.get('title')}' -> '{g.get('title')}'")
                                 merged = True
                                 break
-                        
                         if not merged:
                             grouped.append(t)
                     return grouped
 
                 def process_section(track_list, threshold, type_label):
                     aggregated_list = aggregate_tracks(track_list)
-                    
                     results_count = len(aggregated_list)
                     current_bonus_val = 50 if results_count == 1 else 40
 
                     for t in aggregated_list:
                         raw_score = norm(t.get('score', 0))
                         final_score = raw_score
-                        
                         title = t.get('title', 'Sconosciuto')
                         artist_name = self._get_artist_name(t)
-                        
                         applied_bonus = 0
                         
-                        # --- CONTROLLO BIAS POTENZIATO ---
                         if bias_artist:
                              bias_norm_str = self._normalize_text(bias_artist)
                              bias_tokens = set(bias_norm_str.split())
@@ -389,7 +383,9 @@ class AudioManager:
                                 "score": final_score, 
                                 "duration_ms": t.get('duration_ms'), 
                                 "isrc": t.get('external_ids', {}).get('isrc'),
-                                "upc": t.get('external_metadata', {}).get('upc')
+                                "upc": t.get('external_metadata', {}).get('upc'),
+                                "external_metadata": t.get('external_metadata', {}),
+                                "contributors": t.get('contributors', {}) # <--- NUOVO CAMPO (La miniera d'oro)
                             })
                         else:
                             bias_msg = f" (Bias fallito)" if bias_artist and applied_bonus == 0 else ""
