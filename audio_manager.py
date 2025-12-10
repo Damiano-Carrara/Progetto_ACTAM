@@ -15,7 +15,8 @@ import io
 import re
 from collections import deque, Counter
 from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry 
+from urllib3.util.retry import Retry
+from difflib import SequenceMatcher 
 
 load_dotenv()
 
@@ -27,7 +28,6 @@ class AudioManager:
 
         # --- CONFIGURAZIONE SESSIONE HTTP ---
         self.session = requests.Session()
-        # NESSUN RETRY: Se fallisce, fallisce subito per passare a LowQ
         retry_strategy = Retry(
             total=0,
             backoff_factor=0,
@@ -56,7 +56,7 @@ class AudioManager:
         self.low_quality_mode = False 
         self.upload_lock = threading.Lock() 
 
-        print(f"🎤 Audio Manager Pronto. Timeout: 10s | Super-Bias: ATTIVO (+30pt)")
+        print(f"🎤 Audio Manager Pronto. Timeout: 10s | Super-Bias: ATTIVO (+40/50pt)")
 
     def _audio_callback(self, indata, frames, time, status):
         if status:
@@ -82,9 +82,14 @@ class AudioManager:
 
     def _normalize_text(self, text):
         if not text: return ""
+        # 1. Rimuove tutto ciò che è tra parentesi tonde o quadre (es. "(Cover)")
         clean = re.sub(r"[\(\[].*?[\)\]]", "", text)
-        clean = re.sub(r"(?i)\b(feat\.|ft\.|remix|edit|version|karaoke|live|mixed)\b.*", "", clean)
-        # Pulizia aggressiva per raggruppare i duplicati
+        
+        # 2. Rimuove parole chiave specifiche (ORA INCLUDE "COVER")
+        # Ho aggiunto "cover" alla lista qui sotto
+        clean = re.sub(r"(?i)\b(feat\.|ft\.|remix|edit|version|karaoke|live|mixed|spanish|italian|cover)\b.*", "", clean)
+        
+        # 3. Rimuove caratteri speciali rimasti
         clean = re.sub(r"[^a-zA-Z0-9\s]", "", clean)
         return clean.strip().lower()
 
@@ -106,8 +111,54 @@ class AudioManager:
         except:
             return True
 
+    # --- HELPER SICURO PER ESTRARRE ARTISTA ---
+    def _get_artist_name(self, track_data):
+        if 'artist' in track_data:
+            return track_data['artist']
+        if 'artists' in track_data and track_data['artists']:
+            return track_data['artists'][0]['name']
+        return ""
+
+    # --- FUNZIONE DI SIMILARITÀ (CORRETTA) ---
+    def _are_tracks_equivalent(self, t1, t2):
+        """
+        Determina se due tracce sono equivalenti.
+        """
+        art1 = self._normalize_text(self._get_artist_name(t1))
+        art2 = self._normalize_text(self._get_artist_name(t2))
+        
+        if art1 != art2 and art1 not in art2 and art2 not in art1:
+            return False
+
+        tit1 = self._normalize_text(t1['title'])
+        tit2 = self._normalize_text(t2['title'])
+
+        # Calcolo Similarità
+        similarity = SequenceMatcher(None, tit1, tit2).ratio()
+
+        # 1. TAGLIO NETTO: Se < 50%, sono diversi.
+        if similarity < 0.50:
+            return False
+
+        # 2. Titoli quasi identici
+        if similarity > 0.80:
+            return True
+            
+        # 3. Zona Grigia (50% - 80%): Controllo Durata
+        try:
+            dur1 = int(t1.get('duration_ms', 0) or 0)
+            dur2 = int(t2.get('duration_ms', 0) or 0)
+        except (ValueError, TypeError):
+            dur1, dur2 = 0, 0
+
+        if dur1 > 30000 and dur2 > 30000:
+            # Tolleranza ampia per questa fascia
+            if abs(dur1 - dur2) < 12000:
+                return True
+
+        return False
+
     def _process_window(self):
-        # 1. CONTROLLO ANTI-INGORGO
         if not self.upload_lock.acquire(blocking=False):
             print("⏳ Rete lenta: Salto finestra.")
             return
@@ -123,7 +174,6 @@ class AudioManager:
 
             processed_audio = self._preprocess_audio_chunk(full_recording)
             
-            # --- 2. LOGICA QUALITÀ ADATTIVA ---
             if self.low_quality_mode:
                 TARGET_RATE = 8000
                 num_samples = int(len(processed_audio) * TARGET_RATE / self.sample_rate)
@@ -143,50 +193,56 @@ class AudioManager:
             
             api_result = self._call_acr_api(wav_buffer, bias_artist=self.target_artist_bias)
             
-            normalized_identifier = None
             best_track_data = None
-
+            
             if api_result.get('status') == 'multiple_results':
                 tracks = api_result['tracks']
-                best_track = tracks[0]
-
-                found_better = False
+                
+                # Selezione Winner (Bias o Score)
+                bias_winner = None
                 if self.target_artist_bias:
-                    for track in tracks:
-                        if (self.target_artist_bias.lower() in track['artist'].lower() 
-                            and self._is_mostly_latin(track['title'])):
-                            best_track = track
-                            found_better = True
-                            break
-                if not found_better:
-                    for track in tracks:
-                        score_diff = tracks[0]['score'] - track['score']
-                        if self._is_mostly_latin(track['title']) and score_diff < 10:
-                            best_track = track
+                    for t in tracks:
+                        artist_clean = self._normalize_text(self._get_artist_name(t))
+                        bias_clean = self._normalize_text(self.target_artist_bias)
+                        # Safe score check
+                        try:
+                            score_val = float(t.get('score', 0))
+                        except:
+                            score_val = 0
+                            
+                        if bias_clean in artist_clean and score_val >= 70:
+                            bias_winner = t
+                            print(f"🏆 Bias Winner Scelto: {t['title']} ({score_val}%)")
                             break
                 
-                best_track['title'] = self._clean_title_for_display(best_track['title'])
-                clean_id_title = self._normalize_text(best_track['title'])
-                clean_id_artist = self._normalize_text(best_track['artist'])
+                best_track_data = bias_winner if bias_winner else tracks[0]
+                best_track_data['display_title'] = self._clean_title_for_display(best_track_data['title'])
                 
-                normalized_identifier = f"{clean_id_title} - {clean_id_artist}"
-                best_track_data = best_track
+                current_obj = {
+                    'title': best_track_data['title'],
+                    'artist': self._get_artist_name(best_track_data),
+                    'duration_ms': best_track_data.get('duration_ms', 0)
+                }
             else:
-                normalized_identifier = "silence_or_unknown"
+                current_obj = None
 
-            self.history_buffer.append(normalized_identifier)
+            self.history_buffer.append(current_obj)
 
-            if best_track_data:
-                # --- LOGICA STABILITÀ ---
-                count_exact = self.history_buffer.count(normalized_identifier)
-                count_title_only = len([x for x in self.history_buffer if x.startswith(clean_id_title + " -")])
-
-                if count_exact >= 2 or count_title_only >= 2:
-                    method = "Esatta" if count_exact >= 2 else "Titolo"
-                    print(f"🛡️ Conferma stabilità ({method}): {best_track_data['title']} (Artist: {best_track_data['artist']})")
+            if current_obj:
+                stability_count = 0
+                for historical_item in self.history_buffer:
+                    if historical_item is None: continue
+                    if self._are_tracks_equivalent(current_obj, historical_item):
+                        stability_count += 1
+                
+                if stability_count >= 2:
+                    print(f"🛡️ Conferma stabilità ({stability_count}/10): {best_track_data['display_title']} (Artist: {self._get_artist_name(best_track_data)})")
                     
                     if self.result_callback:
-                        self.result_callback(best_track_data, target_artist=self.target_artist_bias)
+                        final_data = best_track_data.copy()
+                        final_data['title'] = best_track_data['display_title']
+                        final_data['artist'] = self._get_artist_name(best_track_data)
+                        self.result_callback(final_data, target_artist=self.target_artist_bias)
         
         finally:
             self.upload_lock.release()
@@ -223,8 +279,8 @@ class AudioManager:
         return True
 
     def _call_acr_api(self, audio_buffer, bias_artist=None):
-        THRESHOLD_MUSIC = 70
-        THRESHOLD_HUMMING = 70 
+        THRESHOLD_MUSIC = 72
+        THRESHOLD_HUMMING = 72 
         
         http_method = "POST"; http_uri = "/v1/identify"; data_type = "audio"; signature_version = "1"
         timestamp = str(int(time.time()))
@@ -237,7 +293,6 @@ class AudioManager:
         start_time = time.time()
         
         try:
-            # Timeout 10s
             response = self.session.post(f"https://{self.host}/v1/identify", files=files, data=data, timeout=10)
             elapsed = time.time() - start_time
             
@@ -256,39 +311,83 @@ class AudioManager:
             if status_code == 0:
                 metadata = result.get('metadata', {})
                 all_found = []
-                def norm(sc): return int(sc * 100) if sc <= 1.0 else int(sc)
+                def norm(sc): return int(float(sc) * 100) if float(sc) <= 1.0 else int(float(sc))
 
-                # --- LOGICA DI ELABORAZIONE ---
+                # --- 1. Aggregazione Risultati Intelligente ---
+                def aggregate_tracks(raw_list):
+                    grouped = []
+                    for t in raw_list:
+                        # Normalizziamo per confronto base
+                        t['artist_norm'] = self._normalize_text(self._get_artist_name(t))
+                        t['title_norm'] = self._normalize_text(t.get('title'))
+                        
+                        merged = False
+                        for g in grouped:
+                            if self._are_tracks_equivalent(t, g):
+                                existing_score = norm(g.get('score', 0))
+                                new_score = norm(t.get('score', 0))
+                                g['score'] = max(existing_score, new_score) + 5
+                                print(f"🔗 AGGREGAZIONE: '{t.get('title')}' -> '{g.get('title')}'")
+                                merged = True
+                                break
+                        
+                        if not merged:
+                            grouped.append(t)
+                    return grouped
+
                 def process_section(track_list, threshold, type_label):
-                    # Calcola il Bonus Dinamico
-                    results_count = len(track_list)
-                    # MODIFICA 1: Alzato da 15 a 20 il bonus per risultati multipli
-                    current_bonus_val = 50 if results_count == 1 else 25
+                    aggregated_list = aggregate_tracks(track_list)
+                    
+                    results_count = len(aggregated_list)
+                    current_bonus_val = 50 if results_count == 1 else 40
 
-                    for t in track_list:
+                    for t in aggregated_list:
                         raw_score = norm(t.get('score', 0))
                         final_score = raw_score
+                        
                         title = t.get('title', 'Sconosciuto')
-                        artists = t.get('artists', [])
-                        artist_name = artists[0]['name'] if artists else "Unknown"
-
+                        artist_name = self._get_artist_name(t)
+                        
+                        applied_bonus = 0
+                        
+                        # --- CONTROLLO BIAS POTENZIATO ---
                         if bias_artist:
-                             is_in_artist = bias_artist.lower() in artist_name.lower()
-                             is_in_title = bias_artist.lower() in title.lower()
+                             bias_norm_str = self._normalize_text(bias_artist)
+                             bias_tokens = set(bias_norm_str.split())
                              
-                             if is_in_artist or is_in_title:
-                                # Applica il bonus
-                                final_score += current_bonus_val
-                                
-                                # MODIFICA 2: Log differenziati
-                                if final_score >= threshold and raw_score < threshold:
-                                    # CASO DECISIVO: Il brano è stato salvato grazie al bias
-                                    print(f"🚀 BOOST DECISIVO (+{current_bonus_val}): '{title}' salvato! ({raw_score}% -> {final_score}%)")
-                                else:
-                                    # CASO GENERICO: Il boost è stato applicato (ma era già buono o è rimasto scarso)
-                                    print(f"✨ Boost applicato (+{current_bonus_val}): '{title}' ({raw_score}% -> {final_score}%)")
+                             def check_match_smart(text_to_check):
+                                 if not text_to_check: return False
+                                 text_norm = self._normalize_text(text_to_check)
+                                 if bias_norm_str in text_norm: return True
+                                 target_tokens = set(text_norm.split())
+                                 if bias_tokens.issubset(target_tokens): return True
+                                 return False
+
+                             is_match = False
+                             if check_match_smart(artist_name): is_match = True
+                             if not is_match and check_match_smart(title): is_match = True
+                             
+                             if not is_match and 'artists' in t:
+                                 for art in t['artists']:
+                                     if check_match_smart(art['name']):
+                                         is_match = True
+                                         break
+
+                             if not is_match and 'external_metadata' in t:
+                                 ext_meta_dump = json.dumps(t['external_metadata'])
+                                 if self._normalize_text(bias_artist) in self._normalize_text(ext_meta_dump):
+                                     is_match = True
+
+                             if is_match:
+                                applied_bonus = current_bonus_val
+                                final_score += applied_bonus
 
                         if final_score >= threshold:
+                            if raw_score < threshold:
+                                print(f"🚀 BOOST DECISIVO (+{applied_bonus}): '{title}' ({raw_score}% -> {final_score}%)")
+                            elif applied_bonus > 0:
+                                print(f"✨ Boost applicato (+{applied_bonus}): '{title}'")
+                                
                             all_found.append({
                                 "status": "success", "type": type_label,
                                 "title": title, "artist": artist_name,
@@ -299,8 +398,8 @@ class AudioManager:
                                 "upc": t.get('external_metadata', {}).get('upc')
                             })
                         else:
-                            # Stampa lo scarto solo se non è stato "silenziosamente" boostato
-                            print(f"📉 SCARTATO: '{title}' - Artista: '{artist_name}' - Score: {final_score}%")
+                            bias_msg = f" (Bias fallito)" if bias_artist and applied_bonus == 0 else ""
+                            print(f"📉 SCARTATO: '{title}' - Score: {final_score}%{bias_msg}")
 
                 if 'music' in metadata:
                     process_section(metadata['music'], THRESHOLD_MUSIC, "Original")
@@ -309,10 +408,10 @@ class AudioManager:
 
                 if all_found: 
                     all_found.sort(key=lambda x: x['score'], reverse=True)
-                    print(f"✅ TROVATO: {all_found[0]['title']} - {all_found[0]['artist']} (Score: {all_found[0]['score']}%)")
+                    print(f"✅ TROVATO MIGLIORE: {all_found[0]['title']} ({all_found[0]['score']}%)")
                     return {"status": "multiple_results", "tracks": all_found}
                 
-                print("⚠️ Nessun risultato ha superato la soglia.")
+                print(f"⚠️ Nessun risultato sopra soglia.")
                 return {"status": "not_found"}
 
             elif status_code == 1001:
@@ -323,8 +422,7 @@ class AudioManager:
                 return {"status": "not_found"}
                 
         except Exception as e:
-            print(f"❌ Errore rete (Timeout/SSL).")
+            print(f"❌ Errore rete: {e}")
             if not self.low_quality_mode:
-                print("⚠️ Attivo modalità RISPARMIO DATI (8kHz) per recuperare.")
                 self.low_quality_mode = True
             return {"status": "error"}

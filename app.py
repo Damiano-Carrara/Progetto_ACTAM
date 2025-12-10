@@ -55,6 +55,14 @@ def delete_song():
         return jsonify({"status": "deleted"})
     return jsonify({"status": "error"})
 
+# --- API 5: RESET TOTALE SESSIONE ---
+@app.route('/api/reset_session', methods=['POST'])
+def reset_session():
+    if session_bot.clear_session():
+        return jsonify({"status": "cleared", "message": "Sessione resettata."})
+    else:
+        return jsonify({"status": "error", "message": "Errore nel reset DB."})
+
 def cleanup_on_exit():
     audio_bot.stop_continuous_recognition()
 
