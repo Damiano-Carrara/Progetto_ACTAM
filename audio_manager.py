@@ -271,8 +271,8 @@ class AudioManager:
         return True
 
     def _call_acr_api(self, audio_buffer, bias_artist=None):
-        THRESHOLD_MUSIC = 75
-        THRESHOLD_HUMMING = 75 
+        THRESHOLD_MUSIC = 72
+        THRESHOLD_HUMMING = 72 
         
         http_method = "POST"; http_uri = "/v1/identify"; data_type = "audio"; signature_version = "1"
         timestamp = str(int(time.time()))
