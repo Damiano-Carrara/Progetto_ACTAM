@@ -1,10 +1,10 @@
 // --- STATO APP ---
 const state = {
-  mode: null, // "dj" | "band" | "concert"
-  route: "welcome", // "welcome" | "session" | "review"
+  mode: null,          // "dj" | "band" | "concert"
+  route: "welcome",    // "welcome" | "session" | "review"
   concertArtist: "",
-  bandArtist: "", // artista opzionale per live band
-  notes: "", // note su mismatch/errori dalla sessione
+  bandArtist: "",      // artista opzionale per live band
+  notes: ""            // note su mismatch/errori dalla sessione
 };
 
 // playlist locale (frontend)
@@ -36,6 +36,7 @@ let waveMode = "idle"; // "idle" | "playing" | "paused"
 // --- VISUALIZER: equalizzatore continuo full-width ---
 const VIS_COLS = 96;
 const VIS_ROWS = 16;
+
 let visTick = null;
 let visLevels = new Array(VIS_COLS).fill(0);
 
@@ -81,8 +82,8 @@ function applyTheme() {
 // --- NAVIGAZIONE / ROUTE ---
 function setRoute(route) {
   state.route = route;
-
   const body = document.body;
+
   if (body) {
     if (route === "welcome" || route === "session") {
       body.classList.add("no-scroll");
@@ -96,6 +97,7 @@ function showView(id) {
   document
     .querySelectorAll(".view")
     .forEach((v) => v.classList.remove("view--active"));
+
   const el = document.querySelector(id);
   if (el) el.classList.add("view--active");
 }
@@ -106,6 +108,7 @@ function buildVisualizer() {
   if (!container) return;
 
   container.innerHTML = "";
+
   for (let c = 0; c < VIS_COLS; c++) {
     const col = document.createElement("div");
     col.className = "vis-col";
@@ -115,6 +118,7 @@ function buildVisualizer() {
       cell.className = "vis-cell";
       col.appendChild(cell);
     }
+
     container.appendChild(col);
   }
 }
@@ -126,21 +130,26 @@ function updateVisualizer() {
   for (let colIndex = 0; colIndex < cols.length; colIndex++) {
     let current = visLevels[colIndex] || 0;
 
+    // base casuale, con coda più bassa (più "movimento" in basso)
     let base = Math.pow(Math.random(), 3.2);
     let target = base * VIS_ROWS * 0.9;
 
+    // ogni tanto un impulso più alto
     if (Math.random() < 0.1) {
       target = VIS_ROWS * (0.55 + 0.45 * Math.random());
     }
 
+    // salita più rapida, discesa più lenta
     const speedUp = 0.45;
     const speedDown = 0.12;
+
     if (target > current) {
       current += (target - current) * speedUp;
     } else {
       current += (target - current) * speedDown;
     }
 
+    // leggero smorzamento
     current *= 0.985;
 
     if (current < 0) current = 0;
@@ -233,7 +242,9 @@ function pushLog({ id, index, title, composer, artist }) {
 // --- TIMER SESSIONE ---
 function startSessionTimer() {
   if (sessionTick) return;
+
   sessionStartMs = Date.now();
+
   sessionTick = setInterval(() => {
     const elapsed = sessionAccumulatedMs + (Date.now() - sessionStartMs);
     const el = $("#session-timer");
@@ -243,6 +254,7 @@ function startSessionTimer() {
 
 function pauseSessionTimer() {
   if (!sessionTick) return;
+
   clearInterval(sessionTick);
   sessionTick = null;
   sessionAccumulatedMs += Date.now() - sessionStartMs;
@@ -253,6 +265,7 @@ function resetSessionTimer() {
   sessionTick = null;
   sessionStartMs = 0;
   sessionAccumulatedMs = 0;
+
   const el = $("#session-timer");
   if (el) el.textContent = "00:00";
 }
@@ -261,9 +274,11 @@ function resetSessionTimer() {
 function pushUndoState() {
   const snapshot = songs.map((s) => ({ ...s }));
   undoStack.push(snapshot);
+
   if (undoStack.length > 5) {
     undoStack.shift();
   }
+
   updateUndoButton();
 }
 
@@ -275,6 +290,7 @@ function updateUndoButton() {
 
 function undoLast() {
   if (!undoStack.length) return;
+
   const snapshot = undoStack.pop();
   songs = snapshot.map((s) => ({ ...s }));
   renderReview();
@@ -284,8 +300,8 @@ function undoLast() {
 // --- BACKEND START/STOP RICONOSCIMENTO ---
 async function startBackendRecognition() {
   const body = {};
-
   let targetArtist = null;
+
   if (state.mode === "concert" && state.concertArtist) {
     targetArtist = state.concertArtist;
   } else if (state.mode === "band" && state.bandArtist) {
@@ -300,12 +316,14 @@ async function startBackendRecognition() {
     const res = await fetch("/api/start_recognition", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+      body: JSON.stringify(body)
     });
+
     if (!res.ok) {
       console.error("Errore HTTP /api/start_recognition:", res.status);
       return;
     }
+
     const data = await res.json();
     console.log("start_recognition:", data);
   } catch (err) {
@@ -318,12 +336,14 @@ async function stopBackendRecognition() {
     const res = await fetch("/api/stop_recognition", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({}),
+      body: JSON.stringify({})
     });
+
     if (!res.ok) {
       console.error("Errore HTTP /api/stop_recognition:", res.status);
       return;
     }
+
     const data = await res.json();
     console.log("stop_recognition:", data);
   } catch (err) {
@@ -339,6 +359,7 @@ async function pollPlaylistOnce() {
       console.error("Errore HTTP /api/get_playlist:", res.status);
       return;
     }
+
     const data = await res.json();
     const playlist = Array.isArray(data.playlist) ? data.playlist : [];
 
@@ -352,6 +373,7 @@ async function pollPlaylistOnce() {
       const existing = songs.find((t) => t.id === id);
 
       if (!existing) {
+        // nuovo brano
         if (id > lastMaxSongId) {
           const track = {
             id,
@@ -365,7 +387,7 @@ async function pollPlaylistOnce() {
             upc: song.upc || null,
             ms: song.duration_ms || 0,
             confirmed: false,
-            timestamp: song.timestamp || null,
+            timestamp: song.timestamp || null
           };
 
           songs.push(track);
@@ -377,10 +399,11 @@ async function pollPlaylistOnce() {
             index: track.order,
             title: track.title,
             composer: track.composer,
-            artist: track.artist,
+            artist: track.artist
           });
         }
       } else {
+        // aggiornamento di un brano già esistente
         const oldComposer = existing.composer;
         const oldArtist = existing.artist;
 
@@ -403,12 +426,16 @@ async function pollPlaylistOnce() {
             setNow(existing.title, existing.composer);
           }
 
-          const logRow = document.querySelector(`.log-row[data-id="${id}"]`);
+          const logRow = document.querySelector(
+            `.log-row[data-id="${id}"]`
+          );
+
           if (logRow) {
             const composerSpan = logRow.querySelector(".col-composer");
             if (composerSpan) {
               composerSpan.textContent = existing.composer;
             }
+
             const artistSpan = logRow.querySelector(".col-artist");
             if (artistSpan) {
               artistSpan.textContent = existing.artist || "—";
@@ -422,6 +449,7 @@ async function pollPlaylistOnce() {
 
     lastMaxSongId = maxIdSeen;
 
+    // se siamo in review, aggiorna tabella
     if (updatedExisting && state.route === "review") {
       renderReview();
     }
@@ -432,12 +460,14 @@ async function pollPlaylistOnce() {
 
 function startPlaylistPolling() {
   if (playlistPollInterval) return;
+
   pollPlaylistOnce();
   playlistPollInterval = setInterval(pollPlaylistOnce, 2000);
 }
 
 function stopPlaylistPolling() {
   if (!playlistPollInterval) return;
+
   clearInterval(playlistPollInterval);
   playlistPollInterval = null;
 }
@@ -497,17 +527,19 @@ async function sessionStop() {
   await stopBackendRecognition();
   stopPlaylistPolling();
 
+  // un ultimo fetch per catturare eventuali brani appena finiti
   await pollPlaylistOnce();
 
   resetSessionTimer();
   currentSongId = null;
   setNow("In ascolto", "—");
 
+  // passaggio a review
   undoStack = [];
   renderReview();
-
   setRoute("review");
   showView("#view-review");
+
   stopVisualizer();
 }
 
@@ -529,6 +561,7 @@ async function sessionReset() {
   const liveLog = $("#live-log");
   if (liveLog) liveLog.innerHTML = "";
 
+  // aggiorna lastMaxSongId in base alla playlist corrente
   try {
     const res = await fetch("/api/get_playlist");
     if (res.ok) {
@@ -559,8 +592,10 @@ function restoreSessionFromSnapshot() {
   if (!lastSessionSnapshot) return;
 
   songs = lastSessionSnapshot.songs.map((s) => ({ ...s }));
+
   const snapshotCurrentId = lastSessionSnapshot.currentSongId ?? null;
   currentSongId = snapshotCurrentId;
+
   sessionAccumulatedMs = lastSessionSnapshot.sessionAccumulatedMs || 0;
   sessionStartMs = 0;
   sessionTick = null;
@@ -598,6 +633,7 @@ function backToSessionFromReview() {
 function syncReviewNotes() {
   const view = $("#review-notes-view");
   if (!view) return;
+
   const text = (state.notes || "").trim();
   view.textContent = text || "—";
 }
@@ -612,6 +648,7 @@ function openNotesModal(context = "session") {
   textarea.value = state.notes || "";
 
   if (context === "review") {
+    // in review solo lettura
     textarea.readOnly = true;
     if (saveBtn) saveBtn.classList.add("hidden");
   } else {
@@ -649,7 +686,6 @@ function showConfirm(message) {
     }
 
     msgEl.textContent = message || "Sei sicuro?";
-
     modal.classList.remove("modal--hidden");
 
     function cleanup(result) {
@@ -679,6 +715,7 @@ function renderReview() {
   const container = $("#review-rows");
   const template = $("#review-row-template");
   const btnGenerate = $("#btn-generate");
+
   if (!container || !template || !btnGenerate) return;
 
   container.innerHTML = "";
@@ -726,7 +763,6 @@ function renderReview() {
     // CONFERMA
     btnConfirm.addEventListener("click", (e) => {
       e.preventDefault();
-
       pushUndoState();
 
       song.composer = inputComposer.value || "";
@@ -735,7 +771,6 @@ function renderReview() {
 
       inputComposer.readOnly = true;
       inputTitle.readOnly = true;
-
       node.classList.add("row--confirmed");
       updateGenerateState();
     });
@@ -756,7 +791,7 @@ function renderReview() {
           await fetch("/api/delete_song", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ id: song.id }),
+            body: JSON.stringify({ id: song.id })
           });
         } catch (err) {
           console.error("Errore delete:", err);
@@ -791,11 +826,10 @@ function renderReview() {
           ms: 0,
           confirmed: false,
           timestamp: null,
-          manual: true,
+          manual: true
         };
 
         songs.splice(insertPos, 0, newSong);
-
         renderReview();
       });
     }
@@ -828,10 +862,8 @@ function syncWelcomeModeRadios() {
 
   const artistWrapper = document.getElementById("artistInputWrapper");
   const artistInput = document.getElementById("artistInput");
-
   const bandWrapper = document.getElementById("bandArtistWrapper");
   const bandInput = document.getElementById("bandArtistInput");
-
   const djWrapper = document.getElementById("djConfirmWrapper");
 
   if (artistWrapper) artistWrapper.classList.remove("visible");
@@ -919,6 +951,7 @@ function initWelcome() {
 
   function handleConcertSubmit() {
     if (!artistInput) return;
+
     const name = artistInput.value.trim();
     if (!name) {
       if (artistError) {
@@ -927,6 +960,7 @@ function initWelcome() {
       }
       return;
     }
+
     if (artistError) artistError.textContent = "";
 
     state.mode = "concert";
@@ -983,6 +1017,7 @@ function initWelcome() {
       handleConcertSubmit();
     });
   }
+
   if (artistInput) {
     artistInput.addEventListener("keydown", (e) => {
       if (e.key === "Enter") {
@@ -1000,6 +1035,7 @@ function initWelcome() {
       handleBandSubmit();
     });
   }
+
   if (bandInput) {
     bandInput.addEventListener("keydown", (e) => {
       if (e.key === "Enter") {

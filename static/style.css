@@ -24,7 +24,12 @@ body {
   color: var(--text);
 }
 
-/* no scroll per welcome + session */
+/* tutti i bottoni usano lo stesso font dell'app */
+button {
+  font-family: inherit;
+}
+
+/* no scroll per welcome + session + review */
 body.no-scroll {
   overflow: hidden;
 }
@@ -32,7 +37,13 @@ body.no-scroll {
 #app {
   max-width: 960px;
   margin: 0 auto;
-  padding: 24px 16px 260px; /* bottom ≈ altezza visualizer */
+  /* di base niente padding gigante in fondo */
+  padding: 24px 16px 24px;
+}
+
+/* padding extra solo quando c'è il visualizer (sessione) */
+body.has-visualizer #app {
+  padding-bottom: 260px; /* ≈ altezza visualizer */
 }
 
 /* UTILITY */
@@ -334,8 +345,7 @@ body.no-scroll {
   min-height: 38px;
   font-size: 0.9rem;
   font-weight: 600;
-  background: linear-gradient(135deg, #ff8ad4, #ffc46a);
-  color: #21021e;
+  font-family: inherit;
   cursor: pointer;
   width: 110px;
   text-align: center;
@@ -343,6 +353,22 @@ body.no-scroll {
     transform 0.15s ease,
     box-shadow 0.15s ease,
     filter 0.15s ease;
+}
+
+/* Gradiente coerente con le card in facciata 1 */
+#djConfirmBtn {
+  background: linear-gradient(135deg, #ff8a00, #ffca4d);
+  color: #140616;
+}
+
+#bandConfirmBtn {
+  background: linear-gradient(135deg, #00ffc3, #007c9f);
+  color: #021315;
+}
+
+#artistConfirmBtn {
+  background: linear-gradient(135deg, #ff3f6a, #ff9ad7);
+  color: #21021e;
 }
 
 #artistConfirmBtn:hover,
@@ -370,9 +396,11 @@ body.no-scroll {
   .mode-grid {
     grid-template-columns: 1fr;
   }
+
   .mode-card {
     min-height: 190px;
   }
+
   .mode-content {
     padding: 1.3rem 1.3rem 1.4rem;
   }
@@ -411,10 +439,34 @@ body.no-scroll {
   gap: 4px;
 }
 
+/* Tasti Start / Pause / Stop / Reset: stessa dimensione */
+.session-panel .controls {
+  display: flex;
+  gap: 8px;
+}
+
+.session-panel .controls .btn {
+  width: 110px; /* tutti uguali in larghezza */
+  justify-content: center;
+}
+
 .log-card {
   display: flex;
   flex-direction: column;
   height: 280px;
+}
+
+/* Header log live + tasto Note (page 2) */
+.log-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.log-header-row h3 {
+  margin: 0;
 }
 
 .log-head,
@@ -433,7 +485,12 @@ body.no-scroll {
   color: var(--muted);
 }
 
-.log-head span:first-child,
+/* Header "#" allineato all'inizio della card */
+.log-head span:first-child {
+  text-align: left;
+}
+
+/* Indici numerici delle righe possono restare a destra */
 .log-row .col-index {
   text-align: right;
 }
@@ -446,9 +503,17 @@ body.no-scroll {
   overflow: auto;
 }
 
-.log-row .status-ok { color: #22c55e; }
-.log-row .status-same { color: #9fb0c2; }
-.log-row .status-new { color: #eab308; }
+.log-row .status-ok {
+  color: #22c55e;
+}
+
+.log-row .status-same {
+  color: #9fb0c2;
+}
+
+.log-row .status-new {
+  color: #eab308;
+}
 
 .visualizer-strip {
   position: fixed;
@@ -506,11 +571,13 @@ body.no-scroll {
   #view-session.view--active {
     min-height: auto;
   }
+
   .session-panel {
     flex-direction: column;
     align-items: flex-start;
     gap: 12px;
   }
+
   .controls {
     width: 100%;
     justify-content: flex-start;
@@ -568,11 +635,8 @@ body.no-scroll {
 }
 
 /* struttura 4 colonne: # | Compositore | Titolo | Azioni */
-/* struttura 4 colonne: # | Compositore | Titolo | Azioni */
 .review-table .row {
   grid-template-columns: 0.2fr 1.5fr 1.3fr 300px;
-  /* # più stretta, Compositore un po' più largo, Titolo più stretto,
-     colonna Azioni più larga così i 4 tasti stanno comodi dentro la card */
 }
 
 /* INTESTAZIONI */
@@ -607,14 +671,14 @@ body.no-scroll {
   display: flex;
   gap: 6px;
   justify-content: flex-start;
-  flex-wrap: nowrap;      /* nessun a capo: tutti sulla stessa riga */
+  flex-wrap: nowrap;
 }
 
 /* Bottoni piccoli in review leggermente compattati */
 .review-table .row .tools .btn.btn--small {
   padding: 3px 8px;
   font-size: 0.8rem;
-  white-space: nowrap;    /* il testo resta su una sola riga */
+  white-space: nowrap;
 }
 
 .actions {
@@ -645,6 +709,7 @@ input.inline {
 body::-webkit-scrollbar {
   width: 8px;
 }
+
 .log-body::-webkit-scrollbar-thumb,
 .review-rows-body::-webkit-scrollbar-thumb,
 body::-webkit-scrollbar-thumb {
@@ -661,19 +726,28 @@ body::-webkit-scrollbar-thumb {
   justify-content: center;
   z-index: 1000;
 }
-.modal--hidden { display: none; }
+
+.modal--hidden {
+  display: none;
+}
+
 .modal-backdrop {
   position: absolute;
   inset: 0;
   background: rgba(0, 0, 0, 0.65);
 }
+
 .modal-dialog {
   position: relative;
   min-width: 260px;
   max-width: 420px;
   text-align: center;
 }
-.modal-message { margin: 4px 0 16px; }
+
+.modal-message {
+  margin: 4px 0 16px;
+}
+
 .modal-actions {
   display: flex;
   justify-content: flex-end;
@@ -686,14 +760,29 @@ body::-webkit-scrollbar-thumb {
   background: linear-gradient(135deg, #ff8a00, #ffca4d);
   color: #140616;
 }
+
 #app.theme-dj .vis-cell.active {
-  background: linear-gradient(180deg, rgba(255, 138, 0, 0.00), rgba(255, 138, 0, 0.45), rgba(255, 202, 77, 0.85));
+  background: linear-gradient(
+    180deg,
+    rgba(255, 138, 0, 0),
+    rgba(255, 138, 0, 0.45),
+    rgba(255, 202, 77, 0.85)
+  );
 }
-#app.theme-dj .row.row--confirmed input.inline { border-color: #ff8a00; }
+
+#app.theme-dj .row.row--confirmed input.inline {
+  border-color: #ff8a00;
+}
+
 #app.theme-dj .session-panel,
 #app.theme-dj #view-review .hero.hero--small {
   background-image:
-    linear-gradient(90deg, rgba(0, 0, 0, 0.40), rgba(0, 0, 0, 0.05) 55%, rgba(0, 0, 0, 0) 100%),
+    linear-gradient(
+      90deg,
+      rgba(0, 0, 0, 0.4),
+      rgba(0, 0, 0, 0.05) 55%,
+      rgba(0, 0, 0, 0) 100%
+    ),
     radial-gradient(circle at 20% 0%, #ff8a00, #1b0033);
   border-color: #ff8a00;
 }
@@ -702,14 +791,25 @@ body::-webkit-scrollbar-thumb {
   background: linear-gradient(135deg, #00ffc3, #007c9f);
   color: #021315;
 }
+
 #app.theme-band .vis-cell.active {
-  background: linear-gradient(180deg, rgba(0, 255, 195, 0.00), rgba(0, 255, 195, 0.50), rgba(0, 124, 159, 0.85));
+  background: linear-gradient(
+    180deg,
+    rgba(0, 255, 195, 0),
+    rgba(0, 255, 195, 0.5),
+    rgba(0, 124, 159, 0.85)
+  );
 }
-#app.theme-band .row.row--confirmed input.inline { border-color: #00ffc3; }
+
+#app.theme-band .row.row--confirmed input.inline {
+  border-color: #00ffc3;
+}
+
 #app.theme-band .session-panel {
   background-image: radial-gradient(circle at 80% 0%, #00ffc3, #003848);
   border-color: #00ffc3;
 }
+
 #app.theme-band #view-review .hero.hero--small {
   background-image: radial-gradient(circle at 80% 0%, #00ffc3, #003848);
   border-color: #00ffc3;
@@ -719,17 +819,81 @@ body::-webkit-scrollbar-thumb {
   background: linear-gradient(135deg, #ff3f6a, #ff9ad7);
   color: #21021e;
 }
+
 #app.theme-concert .vis-cell.active {
-  background: linear-gradient(180deg, rgba(255, 63, 106, 0.00), rgba(255, 63, 106, 0.50), rgba(255, 154, 215, 0.90));
+  background: linear-gradient(
+    180deg,
+    rgba(255, 63, 106, 0),
+    rgba(255, 63, 106, 0.5),
+    rgba(255, 154, 215, 0.9)
+  );
 }
-#app.theme-concert .row.row--confirmed input.inline { border-color: #ff3f6a; }
+
+#app.theme-concert .row.row--confirmed input.inline {
+  border-color: #ff3f6a;
+}
+
 #app.theme-concert .session-panel {
   background-image: radial-gradient(circle at 50% 100%, #ff3f6a, #1a0030);
   border-color: #ff3f6a;
 }
+
 #app.theme-concert #view-review .hero.hero--small {
   background-image: radial-gradient(circle at 50% 100%, #ff3f6a, #1a0030);
   border-color: #ff3f6a;
+}
+
+/* === TOOLTIP SU BOTTONI CON data-tooltip === */
+
+.btn[data-tooltip] {
+  position: relative;
+}
+
+.btn[data-tooltip]::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 8px);
+  transform: translateX(-50%);
+  white-space: nowrap;   /* <<< tutto in orizzontale */
+  max-width: none;       /* <<< niente limite di larghezza */
+  padding: 6px 8px;
+  border-radius: 8px;
+  font-size: 0.75rem;
+  line-height: 1.3;
+  background: rgba(15, 23, 42, 0.95);
+  color: var(--text);
+  border: 1px solid var(--border);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  z-index: 50;
+}
+
+.btn[data-tooltip]::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: 100%;
+  transform: translateX(-50%);
+  border-width: 6px;
+  border-style: solid;
+  border-color: transparent transparent rgba(15, 23, 42, 0.95) transparent;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  z-index: 50;
+}
+
+.btn[data-tooltip]:hover::after,
+.btn[data-tooltip]:focus-visible::after {
+  opacity: 1;
+  transform: translateX(-50%) translateY(-2px);
+}
+
+.btn[data-tooltip]:hover::before,
+.btn[data-tooltip]:focus-visible::before {
+  opacity: 1;
 }
 
 /* === NOTE SESSIONE === */
@@ -768,63 +932,31 @@ body::-webkit-scrollbar-thumb {
 .review-notes-text {
   margin: 0;
   font-size: 0.9rem;
-  white-space: pre-wrap; /* mantiene gli a capo */
+  white-space: pre-wrap;
 }
 
-/* --- TASTI NOTE --- */
+/* --- TASTI NOTE (page 2 + page 3) --- */
 
-/* Page 2: tasto Note, più alto così non taglia la scritta */
-#btn-session-notes {
-  font-style: italic;
-  padding: 9px 18px 11px; /* top - right/left - bottom */
-  display: inline-flex;
-  align-items: center;
-}
-
-#btn-session-notes span {
-  font-style: inherit;
-  font-size: 0.9rem;
-  line-height: 1;
-}
-
-/* Gradiente testo tasto Note (page 2) in base alla modalità */
-#app.theme-dj #btn-session-notes span {
-  background: linear-gradient(135deg, #ff8a00, #ffca4d);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-}
-
-#app.theme-band #btn-session-notes span {
-  background: linear-gradient(135deg, #00ffc3, #007c9f);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-}
-
-#app.theme-concert #btn-session-notes span {
-  background: linear-gradient(135deg, #ff3f6a, #ff9ad7);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-}
-
-/* Page 3: tasto Note con gradiente pieno come i primary */
+#btn-session-notes,
 #btn-review-notes {
   font-weight: 600;
   border: none;
 }
 
+/* Gradiente pieno per entrambi i tasti Note, in base alla modalità */
+#app.theme-dj #btn-session-notes,
 #app.theme-dj #btn-review-notes {
   background: linear-gradient(135deg, #ff8a00, #ffca4d);
   color: #140616;
 }
 
+#app.theme-band #btn-session-notes,
 #app.theme-band #btn-review-notes {
   background: linear-gradient(135deg, #00ffc3, #007c9f);
   color: #021315;
 }
 
+#app.theme-concert #btn-session-notes,
 #app.theme-concert #btn-review-notes {
   background: linear-gradient(135deg, #ff3f6a, #ff9ad7);
   color: #21021e;
