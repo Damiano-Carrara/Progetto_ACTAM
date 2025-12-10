@@ -8,7 +8,6 @@
   </head>
   <body>
     <main id="app">
-      <!-- FACCIATA 1: WELCOME -->
       <section id="view-welcome" class="view view--active">
         <div class="mode-page">
           <div class="mode-container">
@@ -18,7 +17,6 @@
             </p>
 
             <div class="mode-grid">
-              <!-- DJ SET -->
               <div
                 class="mode-card"
                 data-mode="dj"
@@ -29,10 +27,11 @@
                 <div class="mode-bg bg-dj"></div>
                 <div class="mode-overlay"></div>
                 <div class="mode-content">
-                  <h2>DJ set</h2>
-                  <p>Per serate con uno o più DJ, mashup e remix.</p>
+                  <div class="mode-text-group">
+                    <h2>DJ set</h2>
+                    <p>Per serate con uno o più DJ, mashup e remix.</p>
+                  </div>
 
-                  <!-- Conferma DJ: solo tasto Invia, nessuna label -->
                   <div class="artist-input-wrapper" id="djConfirmWrapper">
                     <div class="artist-input-row">
                       <div class="artist-placeholder"></div>
@@ -42,7 +41,6 @@
                 </div>
               </div>
 
-              <!-- LIVE BAND -->
               <div
                 class="mode-card"
                 data-mode="band"
@@ -53,10 +51,11 @@
                 <div class="mode-bg bg-live"></div>
                 <div class="mode-overlay"></div>
                 <div class="mode-content">
-                  <h2>Live band</h2>
-                  <p>Per band con strumenti dal vivo e voce.</p>
+                  <div class="mode-text-group">
+                    <h2>Live band</h2>
+                    <p>Per band con strumenti dal vivo e voce.</p>
+                  </div>
 
-                  <!-- Conferma Live band: solo tasto Invia, nessun campo artista -->
                   <div class="artist-input-wrapper" id="bandArtistWrapper">
                     <div class="artist-input-row">
                       <div class="artist-placeholder"></div>
@@ -66,7 +65,6 @@
                 </div>
               </div>
 
-              <!-- CONCERTO -->
               <div
                 class="mode-card mode-card-concerto"
                 data-mode="concert"
@@ -77,10 +75,11 @@
                 <div class="mode-bg bg-concerto"></div>
                 <div class="mode-overlay"></div>
                 <div class="mode-content">
-                  <h2>Concerto (o Tribute Band)</h2>
-                  <p>Per le date di un tour o concerti singoli.</p>
+                  <div class="mode-text-group">
+                    <h2>Concerto (o Tribute Band)</h2>
+                    <p>Per le date di un tour o concerti singoli.</p>
+                  </div>
 
-                  <!-- Input artista obbligatorio -->
                   <div class="artist-input-wrapper" id="artistInputWrapper">
                     <label for="artistInput">Nome artista</label>
                     <div class="artist-input-row">
@@ -101,10 +100,8 @@
         </div>
       </section>
 
-      <!-- FACCIATA 2: SESSION -->
       <section id="view-session" class="view">
         <div class="session-grid">
-          <!-- Card con titolo sessione e controlli -->
           <section class="card session-panel">
             <div class="left">
               <h2>Sessione</h2>
@@ -123,9 +120,7 @@
             </div>
           </section>
 
-          <!-- Card log live -->
           <section class="card log-card">
-            <!-- Header con titolo + tasto Note (con tooltip) -->
             <div class="log-header-row">
               <h3>Log live</h3>
               <button
@@ -147,13 +142,11 @@
           </section>
         </div>
 
-        <!-- Visualizer a quadratini FULL WIDTH -->
         <section class="visualizer-strip">
           <div id="visualizer" class="visualizer-grid" aria-hidden="true"></div>
         </section>
       </section>
 
-      <!-- FACCIATA 3: REVIEW -->
       <section id="view-review" class="view">
         <header class="hero hero--small">
           <h2>Review borderò</h2>
@@ -163,13 +156,11 @@
         </header>
 
         <div class="card review-card">
-          <!-- Titolo + pulsante Note che apre il modal (solo lettura) -->
           <div class="review-header-row">
             <h3>Playlist della serata</h3>
             <button id="btn-review-notes" class="btn btn--small">Note</button>
           </div>
 
-          <!-- Box note: solo mirror testo, tenuto nascosto -->
           <div class="review-notes">
             <h4>Note dalla sessione</h4>
             <p id="review-notes-view" class="review-notes-text">—</p>
@@ -209,7 +200,6 @@
         </div>
       </section>
 
-      <!-- MODAL NOTE SESSIONE -->
       <div id="notes-modal" class="modal modal--hidden">
         <div class="modal-backdrop"></div>
         <div class="modal-dialog card notes-dialog">
@@ -230,7 +220,6 @@
         </div>
       </div>
 
-      <!-- MODAL DI CONFERMA GENERICA -->
       <div id="confirm-modal" class="modal modal--hidden">
         <div class="modal-backdrop"></div>
         <div class="modal-dialog card">
@@ -240,7 +229,7 @@
           <div class="modal-actions">
             <button id="confirm-cancel" class="btn btn--small">Annulla</button>
             <button id="confirm-ok" class="btn btn--small btn--primary">
-              OK
+              Ok
             </button>
           </div>
         </div>
