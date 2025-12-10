@@ -134,7 +134,7 @@ class AudioManager:
         if similarity < 0.40:
             return False
 
-        # 2. MATCH SICURO (> 60% grazie alla normalizzazione accenti)
+        # 2. MATCH SICURO (> 0.60)
         if similarity > 0.60:
             return True
             
@@ -147,7 +147,10 @@ class AudioManager:
 
         if dur1 > 30000 and dur2 > 30000:
             diff = abs(dur1 - dur2)
-            if diff < 1200:
+            
+            # Tolleranza ridotta a 200ms (0.2s)
+            # Separa "Molotov" vs "Morto Mai" (375ms)
+            if diff < 200:
                 return True
 
         return False

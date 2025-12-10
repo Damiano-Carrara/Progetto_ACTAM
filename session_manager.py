@@ -39,7 +39,7 @@ class SessionManager:
 
     def _are_songs_equivalent(self, new_s, existing_s):
         """
-        Controlla se due brani sono lo stesso (LOGICA 3 LIVELLI).
+        Controlla se due brani sono lo stesso (SOGLIE HIP-HOP FIX).
         """
         # 1. CONTROLLO ARTISTA
         art_new = self._normalize_string(new_s['artist'])
@@ -48,23 +48,22 @@ class SessionManager:
         if art_new != art_ex and art_new not in art_ex and art_ex not in art_new:
             return False
 
-        # 2. SIMILARITÀ TITOLO
+        # 2. CALCOLO SIMILARITÀ TITOLO
         tit_new = self._normalize_string(new_s['title'])
         tit_ex = self._normalize_string(existing_s['title'])
         similarity = SequenceMatcher(None, tit_new, tit_ex).ratio()
 
-        # 1. SAFETY FLOOR (Es. Madonna vs Ogni Volta = 0.29)
+        # 1. SAFETY FLOOR
         if similarity < 0.40:
             return False
 
-        # 2. MATCH SICURO (Es. Favola vs Fabula ~0.66)
-        # Ora che normalizziamo gli accenti, il 66% è garantito.
+        # 2. MATCH SICURO (> 0.60)
+        # Es. Favola/Fabula (0.66). Accettiamo tutto.
         if similarity > 0.60: 
             return True
 
         # 3. ZONA CRITICA (0.40 - 0.60)
-        # Es: "Cosa mas bella" vs "Più bella cosa" (~0.50)
-        # Es: "I belong to you" vs "Più bella cosa" (~0.50)
+        # Es: Morto Mai (9 chars) vs Re Mida (7 chars) -> Sim ~0.50
         try:
             dur_new = int(new_s.get('duration_ms', 0) or 0)
             dur_ex = int(existing_s.get('duration_ms', 0) or 0)
@@ -76,9 +75,12 @@ class SessionManager:
         if dur_new > MIN_VALID_DURATION and dur_ex > MIN_VALID_DURATION:
             diff = abs(dur_new - dur_ex)
             
-            # Tolleranza stretta (1.2s). 
-            # Separa "I belong to you" (diff 1.5s) da "Più bella cosa".
-            if diff < 1200:
+            # --- FIX: TOLLERANZA RIDOTTA A 200ms ---
+            # Se la similarità è bassa (0.50), i brani devono avere la STESSA durata (stesso master).
+            # 1.2s era troppo largo per brani diversi dello stesso artista.
+            tolerance = 200
+            
+            if diff < tolerance:
                 print(f"🔄 Duplicato (Zona Critica {similarity:.2f}): '{tit_new}' == '{tit_ex}' (Diff: {diff}ms)")
                 return True
         
