@@ -1,6 +1,7 @@
 import threading
 import time
 import re
+import unicodedata # <--- NUOVO IMPORT IMPORTANTE
 from datetime import datetime
 from threading import Lock
 from metadata_manager import MetadataManager
@@ -13,37 +14,57 @@ class SessionManager:
         self.meta_bot = MetadataManager()
         self._next_id = 1 
         self.lock = Lock()
-        print("📝 Session Manager Inizializzato (Strict Dedup)")
+        print("📝 Session Manager Inizializzato (Accent-Insensitive)")
 
     def _normalize_string(self, text):
-        """Pulisce le stringhe per il confronto duplicati"""
+        """
+        Pulisce le stringhe rimuovendo accenti e caratteri speciali.
+        Es: "Fàbula" -> "fabula"
+        """
         if not text: return ""
-        clean = re.sub(r"[\(\[].*?[\)\]]", "", text)
-        clean = re.sub(r"(?i)\b(feat\.|ft\.|remix|edit|version|karaoke|live)\b.*", "", clean)
-        clean = re.sub(r"[^a-zA-Z0-9\s]", "", clean)
+        
+        # 1. Rimozione parentesi
+        text = re.sub(r"[\(\[].*?[\)\]]", "", text)
+        
+        # 2. Rimozione Keyword
+        text = re.sub(r"(?i)\b(feat\.|ft\.|remix|edit|version|karaoke|live)\b.*", "", text)
+        
+        # 3. Normalizzazione Accenti (UNICODE NFD)
+        # Trasforma 'à' in 'a' + accento, poi butta via l'accento
+        text = unicodedata.normalize('NFD', text).encode('ascii', 'ignore').decode("utf-8")
+        
+        # 4. Solo alfanumerici
+        clean = re.sub(r"[^a-zA-Z0-9\s]", "", text)
         return clean.strip().lower()
 
     def _are_songs_equivalent(self, new_s, existing_s):
         """
-        Controlla duplicati con SOGLIE INNALZATE (Fix: I Belong to You vs Più Bella Cosa).
+        Controlla se due brani sono lo stesso (LOGICA 3 LIVELLI).
         """
-        # 1. CONTROLLO ARTISTA (Rigido)
+        # 1. CONTROLLO ARTISTA
         art_new = self._normalize_string(new_s['artist'])
         art_ex = self._normalize_string(existing_s['artist'])
         
         if art_new != art_ex and art_new not in art_ex and art_ex not in art_new:
             return False
 
-        # 2. CALCOLO SIMILARITÀ TITOLO
+        # 2. SIMILARITÀ TITOLO
         tit_new = self._normalize_string(new_s['title'])
         tit_ex = self._normalize_string(existing_s['title'])
         similarity = SequenceMatcher(None, tit_new, tit_ex).ratio()
 
-        # CASO A: Titoli Praticamente Uguali -> Duplicato sicuro
-        if similarity > 0.82: 
+        # 1. SAFETY FLOOR (Es. Madonna vs Ogni Volta = 0.29)
+        if similarity < 0.40:
+            return False
+
+        # 2. MATCH SICURO (Es. Favola vs Fabula ~0.66)
+        # Ora che normalizziamo gli accenti, il 66% è garantito.
+        if similarity > 0.60: 
             return True
 
-        # 3. CONTROLLO DURATA (Con validazione rigorosa)
+        # 3. ZONA CRITICA (0.40 - 0.60)
+        # Es: "Cosa mas bella" vs "Più bella cosa" (~0.50)
+        # Es: "I belong to you" vs "Più bella cosa" (~0.50)
         try:
             dur_new = int(new_s.get('duration_ms', 0) or 0)
             dur_ex = int(existing_s.get('duration_ms', 0) or 0)
@@ -55,23 +76,14 @@ class SessionManager:
         if dur_new > MIN_VALID_DURATION and dur_ex > MIN_VALID_DURATION:
             diff = abs(dur_new - dur_ex)
             
-            # --- LOGICA TOLLERANZA (SOGLIA ALZATA A 0.60) ---
-            # Abbiamo eliminato la fascia "media" (0.45-0.60) che causava falsi positivi.
-            
-            if similarity > 0.60:
-                # Simili / Traduzioni (es. Favola/Fabula ~0.66) -> Tolleranza ampia
-                tolerance = 12000 
-            else:
-                # Diversi (es. I belong to you/Più bella cosa ~0.50) -> Tolleranza ZERO.
-                # Devono essere identici al decimo di secondo (stesso file) per essere uniti.
-                tolerance = 100 
-            
-            if diff < tolerance:
-                print(f"🔄 Duplicato (Livello {similarity:.2f}): '{tit_new}' == '{tit_ex}' (Diff: {diff}ms)")
+            # Tolleranza stretta (1.2s). 
+            # Separa "I belong to you" (diff 1.5s) da "Più bella cosa".
+            if diff < 1200:
+                print(f"🔄 Duplicato (Zona Critica {similarity:.2f}): '{tit_new}' == '{tit_ex}' (Diff: {diff}ms)")
                 return True
         
         return False
-    
+
     def add_song(self, song_data, target_artist=None):
         with self.lock:
             if song_data.get('status') != 'success':
@@ -86,7 +98,6 @@ class SessionManager:
                 'duration_ms': song_data.get('duration_ms', 0)
             }
 
-            # Controlliamo gli ultimi 15 brani
             for existing_song in self.playlist[-15:]:
                 if self._are_songs_equivalent(candidate_song, existing_song):
                     print(f"♻️ Duplicato Scartato: {title}")
@@ -109,7 +120,7 @@ class SessionManager:
 
             raw_meta_package = {
                 "spotify": song_data.get('external_metadata', {}).get('spotify', {}),
-                "contributors": song_data.get('contributors', {}) # <--- AGGIUNTO QUI
+                "contributors": song_data.get('contributors', {})
             }
 
             new_entry = {
@@ -126,7 +137,7 @@ class SessionManager:
                 "upc": upc,
                 "_raw_isrc": isrc,
                 "_raw_upc": upc,
-                "_raw_meta": raw_meta_package # <--- NUOVO CAMPO FONDAMENTALE
+                "_raw_meta": raw_meta_package
             }
 
             self.playlist.append(new_entry) 
@@ -158,7 +169,7 @@ class SessionManager:
                     isrc=entry.get('_raw_isrc'),
                     upc=entry.get('_raw_upc'),
                     setlist_artist=target_artist,
-                    raw_acr_meta=entry.get('_raw_meta') # <--- PASSIAMO I DATI GREZZI
+                    raw_acr_meta=entry.get('_raw_meta')
                 )
                 success = True
                 break 

@@ -29,7 +29,10 @@ class MetadataManager:
         
         print(f"\n🔎 [META] Cerco Compositore: '{search_title}' (Art: '{detected_artist}')")
 
+        # 0. ACRCLOUD NATIVE (Nuova Miniera d'Oro)
+        # Se ACRCloud ha già i compositori nel suo DB, usiamoli subito!
         if raw_acr_meta and 'contributors' in raw_acr_meta:
+            # ACRCloud restituisce 'composers': ['Nome 1', 'Nome 2']
             composers_list = raw_acr_meta['contributors'].get('composers', [])
             if composers_list:
                 res_str = ", ".join(composers_list)
@@ -50,7 +53,7 @@ class MetadataManager:
             res = self._strategy_musicbrainz(search_title, artist)
             if res: return res
 
-        # 3. ITUNES (DEBUGGATO & LOCALIZZATO)
+        # 3. ITUNES (Potenziato)
         print("🍏 [Apple] Provo iTunes (Store IT)...")
         for artist in artists_to_try:
             res = self._search_itunes(search_title, artist)
@@ -66,7 +69,8 @@ class MetadataManager:
         if raw_acr_meta and 'spotify' in raw_acr_meta:
             print("🟢 [Spotify Raw] Analizzo metadati grezzi...")
             try:
-                spotify_data = raw_acr_meta['spotify'] # <--- Accesso diretto alla chiave 'spotify'
+                # Nota: raw_acr_meta['spotify'] è un dict, non una lista
+                spotify_data = raw_acr_meta['spotify']
                 spotify_artists = spotify_data.get('artists', [])
                 names = [a.get('name') for a in spotify_artists if 'name' in a]
                 

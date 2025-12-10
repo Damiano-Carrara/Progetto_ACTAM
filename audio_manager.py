@@ -13,6 +13,7 @@ from dotenv import load_dotenv
 import threading
 import io
 import re
+import unicodedata # <--- NUOVO IMPORT
 from collections import deque, Counter
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
@@ -81,9 +82,14 @@ class AudioManager:
         return (normalized * 32767).astype(np.int16)
 
     def _normalize_text(self, text):
+        """Pulisce e rimuove accenti (Unicode NFD)"""
         if not text: return ""
         clean = re.sub(r"[\(\[].*?[\)\]]", "", text)
         clean = re.sub(r"(?i)\b(feat\.|ft\.|remix|edit|version|karaoke|live|mixed|spanish|italian)\b.*", "", clean)
+        
+        # Gestione Accenti
+        clean = unicodedata.normalize('NFD', clean).encode('ascii', 'ignore').decode("utf-8")
+        
         clean = re.sub(r"[^a-zA-Z0-9\s]", "", clean)
         return clean.strip().lower()
 
@@ -105,7 +111,6 @@ class AudioManager:
         except:
             return True
 
-    # --- HELPER SICURO PER ESTRARRE ARTISTA ---
     def _get_artist_name(self, track_data):
         if 'artist' in track_data:
             return track_data['artist']
@@ -113,12 +118,7 @@ class AudioManager:
             return track_data['artists'][0]['name']
         return ""
 
-    # --- FUNZIONE DI SIMILARITÀ ---
     def _are_tracks_equivalent(self, t1, t2):
-        """
-        Determina se due tracce sono equivalenti.
-        Soglie allineate al SessionManager.
-        """
         art1 = self._normalize_text(self._get_artist_name(t1))
         art2 = self._normalize_text(self._get_artist_name(t2))
         
@@ -130,28 +130,24 @@ class AudioManager:
 
         similarity = SequenceMatcher(None, tit1, tit2).ratio()
 
-        # 1. Match Sicuro
-        if similarity > 0.82:
+        # 1. SAFETY FLOOR
+        if similarity < 0.40:
+            return False
+
+        # 2. MATCH SICURO (> 60% grazie alla normalizzazione accenti)
+        if similarity > 0.60:
             return True
             
-        # 2. Controllo Durata
+        # 3. ZONA CRITICA (0.40 - 0.60)
         try:
             dur1 = int(t1.get('duration_ms', 0) or 0)
             dur2 = int(t2.get('duration_ms', 0) or 0)
         except (ValueError, TypeError):
             dur1, dur2 = 0, 0
 
-        # Richiediamo durata valida
         if dur1 > 30000 and dur2 > 30000:
             diff = abs(dur1 - dur2)
-            
-            # Soglia alzata a 0.60 per evitare falsi positivi su titoli diversi
-            if similarity > 0.60: 
-                tolerance = 12000
-            else:
-                tolerance = 100 # Stretto per titoli diversi (sim < 0.60)
-
-            if diff < tolerance:
+            if diff < 1200:
                 return True
 
         return False
@@ -192,6 +188,7 @@ class AudioManager:
             api_result = self._call_acr_api(wav_buffer, bias_artist=self.target_artist_bias)
             
             best_track_data = None
+            current_obj = None 
             
             if api_result.get('status') == 'multiple_results':
                 tracks = api_result['tracks']
@@ -219,27 +216,26 @@ class AudioManager:
                     'artist': self._get_artist_name(best_track_data),
                     'duration_ms': best_track_data.get('duration_ms', 0)
                 }
-            else:
-                current_obj = None
-
-            self.history_buffer.append(current_obj)
 
             if current_obj:
+                self.history_buffer.append(current_obj)
+
                 stability_count = 0
                 for historical_item in self.history_buffer:
-                    if historical_item is None: continue
                     if self._are_tracks_equivalent(current_obj, historical_item):
                         stability_count += 1
                 
                 if stability_count >= 2:
-                    print(f"🛡️ Conferma stabilità ({stability_count}/10): {best_track_data['display_title']} (Artist: {self._get_artist_name(best_track_data)})")
+                    print(f"🛡️ Conferma stabilità ({stability_count}/10 validi): {best_track_data['display_title']} (Artist: {self._get_artist_name(best_track_data)})")
                     
                     if self.result_callback:
                         final_data = best_track_data.copy()
                         final_data['title'] = best_track_data['display_title']
                         final_data['artist'] = self._get_artist_name(best_track_data)
                         self.result_callback(final_data, target_artist=self.target_artist_bias)
-        
+            else:
+                pass 
+
         finally:
             self.upload_lock.release()
 
@@ -385,7 +381,7 @@ class AudioManager:
                                 "isrc": t.get('external_ids', {}).get('isrc'),
                                 "upc": t.get('external_metadata', {}).get('upc'),
                                 "external_metadata": t.get('external_metadata', {}),
-                                "contributors": t.get('contributors', {}) # <--- NUOVO CAMPO (La miniera d'oro)
+                                "contributors": t.get('contributors', {})
                             })
                         else:
                             bias_msg = f" (Bias fallito)" if bias_artist and applied_bonus == 0 else ""
