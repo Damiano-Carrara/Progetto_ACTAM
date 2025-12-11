@@ -1,9 +1,11 @@
 import threading
 import time
 import re
+import unicodedata # <--- NUOVO IMPORT IMPORTANTE
 from datetime import datetime
 from threading import Lock
 from metadata_manager import MetadataManager
+from difflib import SequenceMatcher 
 
 class SessionManager:
     def __init__(self):
@@ -12,27 +14,79 @@ class SessionManager:
         self.meta_bot = MetadataManager()
         self._next_id = 1 
         self.lock = Lock()
-        print("📝 Session Manager Inizializzato (Async + Retry)")
+        print("📝 Session Manager Inizializzato (Accent-Insensitive)")
 
     def _normalize_string(self, text):
-        """Pulisce le stringhe per il confronto duplicati"""
+        """
+        Pulisce le stringhe rimuovendo accenti e caratteri speciali.
+        Es: "Fàbula" -> "fabula"
+        """
         if not text: return ""
-        clean = re.sub(r"[\(\[].*?[\)\]]", "", text)
-        clean = re.sub(r"(?i)\b(feat\.|ft\.|remix|edit|version|karaoke|live)\b.*", "", clean)
+        
+        # 1. Rimozione parentesi
+        text = re.sub(r"[\(\[].*?[\)\]]", "", text)
+        
+        # 2. Rimozione Keyword
+        text = re.sub(r"(?i)\b(feat\.|ft\.|remix|edit|version|karaoke|live)\b.*", "", text)
+        
+        # 3. Normalizzazione Accenti (UNICODE NFD)
+        # Trasforma 'à' in 'a' + accento, poi butta via l'accento
+        text = unicodedata.normalize('NFD', text).encode('ascii', 'ignore').decode("utf-8")
+        
+        # 4. Solo alfanumerici
+        clean = re.sub(r"[^a-zA-Z0-9\s]", "", text)
         return clean.strip().lower()
 
-    def _is_karaoke_or_cover(self, title, artist):
-        """Identifica brani palesemente fake/karaoke"""
-        keywords = ['karaoke', 'backing version', 'made popular by', 'tribute to', 'instrumental', 'cover', 'ameritz', 'party hit']
-        full_text = (title + " " + artist).lower()
-        return any(k in full_text for k in keywords)
+    def _are_songs_equivalent(self, new_s, existing_s):
+        """
+        Controlla se due brani sono lo stesso (SOGLIE HIP-HOP FIX).
+        """
+        # 1. CONTROLLO ARTISTA
+        art_new = self._normalize_string(new_s['artist'])
+        art_ex = self._normalize_string(existing_s['artist'])
+        
+        if art_new != art_ex and art_new not in art_ex and art_ex not in art_new:
+            return False
+
+        # 2. CALCOLO SIMILARITÀ TITOLO
+        tit_new = self._normalize_string(new_s['title'])
+        tit_ex = self._normalize_string(existing_s['title'])
+        similarity = SequenceMatcher(None, tit_new, tit_ex).ratio()
+
+        # 1. SAFETY FLOOR
+        if similarity < 0.40:
+            return False
+
+        # 2. MATCH SICURO (> 0.60)
+        # Es. Favola/Fabula (0.66). Accettiamo tutto.
+        if similarity > 0.60: 
+            return True
+
+        # 3. ZONA CRITICA (0.40 - 0.60)
+        # Es: Morto Mai (9 chars) vs Re Mida (7 chars) -> Sim ~0.50
+        try:
+            dur_new = int(new_s.get('duration_ms', 0) or 0)
+            dur_ex = int(existing_s.get('duration_ms', 0) or 0)
+        except:
+            dur_new, dur_ex = 0, 0
+
+        MIN_VALID_DURATION = 30000 
+
+        if dur_new > MIN_VALID_DURATION and dur_ex > MIN_VALID_DURATION:
+            diff = abs(dur_new - dur_ex)
+            
+            # --- FIX: TOLLERANZA RIDOTTA A 200ms ---
+            # Se la similarità è bassa (0.50), i brani devono avere la STESSA durata (stesso master).
+            # 1.2s era troppo largo per brani diversi dello stesso artista.
+            tolerance = 200
+            
+            if diff < tolerance:
+                print(f"🔄 Duplicato (Zona Critica {similarity:.2f}): '{tit_new}' == '{tit_ex}' (Diff: {diff}ms)")
+                return True
+        
+        return False
 
     def add_song(self, song_data, target_artist=None):
-        """
-        Aggiunge un brano alla lista.
-        Restituisce SUBITO il controllo, avviando l'arricchimento dati in background.
-        """
-        # 1. Acquisiamo il lucchetto per leggere/scrivere la lista in sicurezza
         with self.lock:
             if song_data.get('status') != 'success':
                 return {"added": False, "reason": "No match"}
@@ -40,27 +94,18 @@ class SessionManager:
             title = song_data['title']
             artist = song_data['artist']
             
-            clean_new_title = self._normalize_string(title)
-            clean_new_artist = self._normalize_string(artist)
+            candidate_song = {
+                'title': title,
+                'artist': artist,
+                'duration_ms': song_data.get('duration_ms', 0)
+            }
 
-            # --- LOGICA DUPLICATI (Invariata) ---
             for existing_song in self.playlist[-15:]:
-                clean_ex_title = self._normalize_string(existing_song['title'])
-                clean_ex_artist = self._normalize_string(existing_song['artist'])
+                if self._are_songs_equivalent(candidate_song, existing_song):
+                    print(f"♻️ Duplicato Scartato: {title}")
+                    return {"added": False, "reason": "Duplicate (Smart Match)", "song": existing_song}
 
-                # CASO 1: Titoli identici
-                if clean_new_title == clean_ex_title and len(clean_new_title) > 3:
-                    print(f"🔄 Duplicato per Titolo Identico: '{clean_new_title}' (Artista ignorato: {artist})")
-                    return {"added": False, "reason": "Duplicate (Title Match)", "song": existing_song}
-                
-                # CASO 2: Match Esatto
-                if clean_new_title == clean_ex_title and clean_new_artist == clean_ex_artist:
-                     return {"added": False, "reason": "Duplicate (Exact match)", "song": existing_song}
-
-            # --- PREPARAZIONE DATI (Modificata per Async) ---
             track_key = f"{title} - {artist}".lower()
-            
-            # Controlliamo se lo abbiamo già in cache (risposta istantanea)
             cached_entry = self.known_songs_cache.get(track_key)
             
             if cached_entry:
@@ -70,11 +115,15 @@ class SessionManager:
                 upc = cached_entry.get('upc')
                 status_enrichment = "Done"
             else:
-                # Se è nuovo, mettiamo un segnaposto e attiviamo il thread
                 composer_name = "⏳ Ricerca..."
                 isrc = song_data.get('isrc')
                 upc = song_data.get('upc')
                 status_enrichment = "Pending"
+
+            raw_meta_package = {
+                "spotify": song_data.get('external_metadata', {}).get('spotify', {}),
+                "contributors": song_data.get('contributors', {})
+            }
 
             new_entry = {
                 "id": self._next_id, 
@@ -88,30 +137,25 @@ class SessionManager:
                 "type": song_data.get('type', 'Original'),
                 "isrc": isrc, 
                 "upc": upc,
-                # Salviamo i dati grezzi per il thread di background (nascosti all'utente)
                 "_raw_isrc": isrc,
-                "_raw_upc": upc
+                "_raw_upc": upc,
+                "_raw_meta": raw_meta_package
             }
 
             self.playlist.append(new_entry) 
             self._next_id += 1
 
-            # --- LANCIO THREAD DI BACKGROUND ---
             if status_enrichment == "Pending":
                 threading.Thread(
                     target=self._background_enrichment,
                     args=(new_entry, target_artist),
-                    daemon=True # Il thread muore se si chiude il programma
+                    daemon=True
                 ).start()
 
             print(f"✅ Aggiunto (Async): {title}")
             return {"added": True, "song": new_entry}
 
     def _background_enrichment(self, entry, target_artist):
-        """
-        Funzione eseguita in un thread separato.
-        Tenta di recuperare il compositore con logica Retry & Backoff.
-        """
         attempts = 0
         max_attempts = 3
         found_composer = "Sconosciuto"
@@ -121,48 +165,36 @@ class SessionManager:
 
         while attempts < max_attempts:
             try:
-                # Chiamata a MusicBrainz (potrebbe metterci tempo)
                 found_composer = self.meta_bot.find_composer(
                     title=entry['title'], 
                     detected_artist=entry['artist'],
                     isrc=entry.get('_raw_isrc'),
                     upc=entry.get('_raw_upc'),
-                    setlist_artist=target_artist
+                    setlist_artist=target_artist,
+                    raw_acr_meta=entry.get('_raw_meta')
                 )
-                
                 success = True
-                break # Usciamo dal ciclo while se ha funzionato
+                break 
 
             except Exception as e:
                 attempts += 1
-                print(f"⚠️ [Thread] Errore MusicBrainz ({attempts}/{max_attempts}): {e}")
-                
                 if attempts < max_attempts:
-                    # Backoff esponenziale: aspetta 2s, poi 4s...
-                    wait_time = 2 ** attempts
-                    time.sleep(wait_time)
+                    time.sleep(2 ** attempts)
                 else:
-                    print(f"❌ [Thread] Abbandono ricerca per: {entry['title']}")
                     found_composer = "Errore Conn."
 
-        # --- FASE DI AGGIORNAMENTO SICURO ---
-        # Dobbiamo riprendere il Lock per modificare la lista condivisa
         with self.lock:
-            # Cerchiamo l'oggetto originale nella lista tramite ID
-            # (Non usiamo 'entry' direttamente perché la lista potrebbe essere cambiata)
             target_song = next((s for s in self.playlist if s['id'] == entry['id']), None)
             
             if target_song:
                 target_song['composer'] = found_composer
                 print(f"📝 [Thread] Compositore aggiornato: {found_composer}")
                 
-                # Aggiorniamo la cache solo se abbiamo un dato valido
                 if success and found_composer not in ["Sconosciuto", "Errore Conn."]:
                     track_key = f"{target_song['title']} - {target_song['artist']}".lower()
                     self.known_songs_cache[track_key] = target_song.copy()
 
     def get_playlist(self):
-        # Restituisce la playlist (il frontend vedrà "⏳ Ricerca..." finché il thread non finisce)
         return self.playlist
 
     def delete_song(self, song_id):

@@ -24,7 +24,12 @@ body {
   color: var(--text);
 }
 
-/* no scroll per welcome + session */
+/* tutti i bottoni usano lo stesso font dell'app */
+button {
+  font-family: inherit;
+}
+
+/* no scroll per welcome + session + review */
 body.no-scroll {
   overflow: hidden;
 }
@@ -32,7 +37,13 @@ body.no-scroll {
 #app {
   max-width: 960px;
   margin: 0 auto;
-  padding: 24px 16px 260px; /* bottom ≈ altezza visualizer */
+  /* di base niente padding gigante in fondo */
+  padding: 24px 16px 24px;
+}
+
+/* padding extra solo quando c'è il visualizer (sessione) */
+body.has-visualizer #app {
+  padding-bottom: 260px; /* ≈ altezza visualizer */
 }
 
 /* UTILITY */
@@ -68,7 +79,7 @@ body.no-scroll {
   color: var(--muted);
 }
 
-/* Card-hero in review: la facciamo diventare una card vera */
+/* Card-hero in review */
 #view-review .hero.hero--small {
   padding: 16px 18px;
   border-radius: 16px;
@@ -148,7 +159,6 @@ body.no-scroll {
   text-align: center;
 }
 
-/* Titoli facciata 1 */
 .app-title {
   font-size: 2.1rem;
   margin-bottom: 0.5rem;
@@ -160,20 +170,19 @@ body.no-scroll {
   margin-bottom: 2.5rem;
 }
 
-/* Griglia delle card */
 .mode-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 1.5rem;
 }
 
-/* Card modalità */
+/* card modalità: alte abbastanza per contenere SEMPRE il blocco artista */
 .mode-card {
   position: relative;
   overflow: hidden;
   border-radius: 18px;
   cursor: pointer;
-  min-height: 220px;
+  min-height: 280px;
   outline: none;
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35);
   transform: translateY(0);
@@ -184,7 +193,6 @@ body.no-scroll {
   will-change: transform;
 }
 
-/* Sfondo "immagine" */
 .mode-bg {
   position: absolute;
   inset: 0;
@@ -211,7 +219,6 @@ body.no-scroll {
   border-radius: inherit;
 }
 
-/* Contenuto testo */
 .mode-content {
   position: relative;
   z-index: 1;
@@ -219,8 +226,13 @@ body.no-scroll {
   text-align: left;
   display: flex;
   flex-direction: column;
-  justify-content: flex-start;
+  /* justify-content rimosso per usare il text-group flex 1 */
   height: 100%;
+}
+
+/* === NUOVO: Gruppo testo che spinge il wrapper in basso === */
+.mode-text-group {
+  flex: 1;
 }
 
 .mode-content h2 {
@@ -233,7 +245,6 @@ body.no-scroll {
   color: #d6d6f0;
 }
 
-/* Hover, focus */
 .mode-card:hover,
 .mode-card:focus-visible {
   transform: translateY(-8px);
@@ -255,7 +266,6 @@ body.no-scroll {
   outline: 2px solid #f4bfff;
 }
 
-/* Varianti di sfondo */
 .bg-dj {
   background-image: radial-gradient(circle at 20% 0%, #ff8a00, #1b0033);
 }
@@ -268,26 +278,30 @@ body.no-scroll {
   background-image: radial-gradient(circle at 50% 100%, #ff3f6a, #1a0030);
 }
 
-/* Card selezionata */
 .mode-card.mode-card--selected {
   outline: 2px solid #f4bfff;
 }
 
-/* Card concerto attiva */
 .mode-card-concerto.active {
   outline: 2px solid #ff8ad4;
 }
 
-/* Input artista / conferma */
+/* === MODIFICA: Wrapper con altezza fissa e allineamento === */
 .artist-input-wrapper {
   margin-top: 1rem;
   padding-top: 0.8rem;
   border-top: 1px solid rgba(255, 255, 255, 0.18);
   display: none;
+  
+  /* Altezza fissa per accomodare il contenuto più alto (concerto) */
+  min-height: 95px;
+  flex-direction: column;
+  justify-content: flex-end; /* Allinea contenuto in basso */
 }
 
+/* Quando visibile diventa flex, non block */
 .artist-input-wrapper.visible {
-  display: block;
+  display: flex;
 }
 
 .artist-input-wrapper label {
@@ -329,32 +343,45 @@ body.no-scroll {
   box-shadow: 0 0 0 1px rgba(255, 191, 234, 0.6);
 }
 
-/* Placeholder per DJ (riempie lo spazio dell'input per avere stessa struttura) */
 .artist-placeholder {
   flex: 1 1 auto;
   min-width: 0;
 }
 
-/* Bottoni Invia (DJ, band, concerto) – TUTTI UGUALI e "cicciotti" */
 #artistConfirmBtn,
 #bandConfirmBtn,
 #djConfirmBtn {
   flex: 0 0 auto;
   border-radius: 999px;
   border: none;
-  padding: 0.45rem 0.9rem;     /* più padding verticale */
-  min-height: 38px;            /* altezza minima uguale per tutti */
+  padding: 0.45rem 0.9rem;
+  min-height: 38px;
   font-size: 0.9rem;
   font-weight: 600;
-  background: linear-gradient(135deg, #ff8ad4, #ffc46a);
-  color: #21021e;
+  font-family: inherit;
   cursor: pointer;
-  width: 110px;                /* larghezza identica per tutti e tre */
+  width: 110px;
   text-align: center;
   transition:
     transform 0.15s ease,
     box-shadow 0.15s ease,
     filter 0.15s ease;
+}
+
+/* Gradiente coerente con le card in facciata 1 */
+#djConfirmBtn {
+  background: linear-gradient(135deg, #ff8a00, #ffca4d);
+  color: #140616;
+}
+
+#bandConfirmBtn {
+  background: linear-gradient(135deg, #00ffc3, #007c9f);
+  color: #021315;
+}
+
+#artistConfirmBtn {
+  background: linear-gradient(135deg, #ff3f6a, #ff9ad7);
+  color: #21021e;
 }
 
 #artistConfirmBtn:hover,
@@ -378,14 +405,13 @@ body.no-scroll {
   color: #ffc7d5;
 }
 
-/* Responsive prima schermata */
 @media (max-width: 880px) {
   .mode-grid {
     grid-template-columns: 1fr;
   }
 
   .mode-card {
-    min-height: 190px;
+    min-height: 240px;
   }
 
   .mode-content {
@@ -402,7 +428,6 @@ body.no-scroll {
   min-height: calc(100vh - 48px);
 }
 
-/* Sessione + log in colonna */
 .session-grid {
   display: flex;
   flex-direction: column;
@@ -410,7 +435,6 @@ body.no-scroll {
   width: 100%;
 }
 
-/* card "Sessione" */
 .session-panel {
   display: flex;
   align-items: center;
@@ -428,17 +452,41 @@ body.no-scroll {
   gap: 4px;
 }
 
-/* Log live card (sotto) – resta neutra */
+/* Tasti Start / Pause / Stop / Reset: stessa dimensione */
+.session-panel .controls {
+  display: flex;
+  gap: 8px;
+}
+
+.session-panel .controls .btn {
+  width: 110px; /* tutti uguali in larghezza */
+  justify-content: center;
+}
+
 .log-card {
   display: flex;
   flex-direction: column;
-  height: 280px; /* ~7 righe, poi scroll interno */
+  height: 280px;
+}
+
+/* Header log live + tasto Note (page 2) */
+.log-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.log-header-row h3 {
+  margin: 0;
 }
 
 .log-head,
 .log-row {
   display: grid;
-  grid-template-columns: 110px 1fr 1fr 100px;
+  /* # | Brano | Compositore | Artista */
+  grid-template-columns: 0.3fr 2fr 1.8fr 1.5fr;
   gap: 8px;
   font-size: 0.9rem;
 }
@@ -448,6 +496,16 @@ body.no-scroll {
   border-bottom: 1px solid var(--border);
   margin-bottom: 6px;
   color: var(--muted);
+}
+
+/* Header "#" allineato all'inizio della card */
+.log-head span:first-child {
+  text-align: left;
+}
+
+/* Indici numerici delle righe possono restare a destra */
+.log-row .col-index {
+  text-align: right;
 }
 
 .log-body {
@@ -470,7 +528,6 @@ body.no-scroll {
   color: #eab308;
 }
 
-/* VISUALIZER FULL WIDTH */
 .visualizer-strip {
   position: fixed;
   left: 50%;
@@ -480,6 +537,8 @@ body.no-scroll {
   margin: 0;
   padding: 0;
   z-index: 5;
+  opacity: 0.75;
+  pointer-events: none;
 }
 
 .visualizer-grid {
@@ -502,8 +561,8 @@ body.no-scroll {
   width: 100%;
   height: 10px;
   border-radius: 2px;
-  background: #11151f;
-  opacity: 0.15;
+  background: #05070d;
+  opacity: 0.12;
   transition:
     opacity 0.4s ease,
     background 0.4s ease,
@@ -511,12 +570,16 @@ body.no-scroll {
 }
 
 .vis-cell.active {
-  opacity: 1;
-  background: linear-gradient(180deg, #7c3aed, #5eead4);
+  opacity: 0.85;
+  background: linear-gradient(
+    180deg,
+    rgba(124, 58, 237, 0.05),
+    rgba(124, 58, 237, 0.55),
+    rgba(94, 234, 212, 0.95)
+  );
   transform: translateY(-1px);
 }
 
-/* Responsive seconda schermata */
 @media (max-width: 900px) {
   #view-session.view--active {
     min-height: auto;
@@ -535,6 +598,41 @@ body.no-scroll {
     display: flex;
     gap: 8px;
   }
+}
+
+/* === FACCIATA 3: REVIEW E TABELLE === */
+
+.review-card {
+  display: flex;
+  flex-direction: column;
+  height: 460px;
+}
+
+/* Titolo + tasto Note in alto a destra */
+.review-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.review-header-row h3 {
+  margin: 0;
+}
+
+.review-table {
+  margin-top: 12px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.review-rows-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
 }
 
 /* === FACCIATA 3: REVIEW === */
@@ -566,30 +664,57 @@ body.no-scroll {
 
 .row {
   display: grid;
-  grid-template-columns: 1.2fr 1.4fr auto;
   gap: 8px;
   align-items: center;
   padding: 8px 0;
   border-bottom: 1px solid var(--border);
 }
 
+/* struttura 4 colonne: # | Compositore | Titolo | Azioni */
+.review-table .row {
+  grid-template-columns: 0.2fr 1.5fr 1.3fr 300px;
+}
+
+/* INTESTAZIONI */
 .row--head {
   font-size: 0.9rem;
   color: var(--muted);
   font-weight: 600;
 }
 
-/* intestazioni colonna tutte a sinistra */
+/* padding sinistro per allineare al testo degli input */
 .row--head span {
-  text-align: left;
-  padding-left: 8px;
+  padding-left: 9px;
+  text-align: left !important;
 }
 
-.row .tools {
+/* Titolo (3a colonna) */
+.review-table .row--head span:nth-child(3) {
+  padding-left: 10px !important;
+  text-align: left !important;
+  justify-self: start !important;
+}
+
+/* Azioni (4a colonna) */
+.review-table .row--head span:nth-child(4) {
+  text-align: left !important;
+  justify-self: start !important;
+  padding-left: 0 !important;
+}
+
+/* Colonna bottoni (dentro le righe dati) */
+.review-table .row .tools {
   display: flex;
-  gap: 8px;
-  justify-content: flex-end;
-  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-start;
+  flex-wrap: nowrap;
+}
+
+/* Bottoni piccoli in review leggermente compattati */
+.review-table .row .tools .btn.btn--small {
+  padding: 3px 8px;
+  font-size: 0.8rem;
+  white-space: nowrap;
 }
 
 .actions {
@@ -614,7 +739,7 @@ input.inline {
   border-color: #22c55e; /* override dal tema sotto */
 }
 
-/* SCROLLBAR LEGGERA */
+/* SCROLLBAR */
 .log-body::-webkit-scrollbar,
 .review-rows-body::-webkit-scrollbar,
 body::-webkit-scrollbar {
@@ -628,7 +753,7 @@ body::-webkit-scrollbar-thumb {
   border-radius: 999px;
 }
 
-/* MODAL DI CONFERMA */
+/* MODAL */
 .modal {
   position: fixed;
   inset: 0;
@@ -666,48 +791,68 @@ body::-webkit-scrollbar-thumb {
   margin-top: 8px;
 }
 
-/* === TEMA: colori coerenti tra schermate === */
+/* >>> bottoni Annulla / Ok stessa size */
+.modal-actions .btn {
+  min-width: 96px;
+  justify-content: center;
+}
 
-/* DJ set */
+/* Ok mantiene il gradiente ma NON è in grassetto */
+#confirm-ok {
+  font-weight: 500;
+  text-transform: none;
+}
+
+/* TEMA */
 #app.theme-dj .btn--primary {
   background: linear-gradient(135deg, #ff8a00, #ffca4d);
   color: #140616;
 }
 
 #app.theme-dj .vis-cell.active {
-  background: linear-gradient(180deg, #ff8a00, #ffca4d);
+  background: linear-gradient(
+    180deg,
+    rgba(255, 138, 0, 0),
+    rgba(255, 138, 0, 0.45),
+    rgba(255, 202, 77, 0.85)
+  );
 }
 
 #app.theme-dj .row.row--confirmed input.inline {
   border-color: #ff8a00;
 }
 
-/* card in alto (sessione + hero review) con gradiente DJ */
 #app.theme-dj .session-panel,
 #app.theme-dj #view-review .hero.hero--small {
   background-image:
-    /* velo leggermente scuro da sinistra per migliorare il contrasto del testo */
-    linear-gradient(90deg, rgba(0, 0, 0, 0.40), rgba(0, 0, 0, 0.05) 55%, rgba(0, 0, 0, 0) 100%),
+    linear-gradient(
+      90deg,
+      rgba(0, 0, 0, 0.4),
+      rgba(0, 0, 0, 0.05) 55%,
+      rgba(0, 0, 0, 0) 100%
+    ),
     radial-gradient(circle at 20% 0%, #ff8a00, #1b0033);
   border-color: #ff8a00;
 }
 
-/* Live band */
 #app.theme-band .btn--primary {
-  /* azzurro più scuro sul secondo colore */
   background: linear-gradient(135deg, #00ffc3, #007c9f);
   color: #021315;
 }
 
 #app.theme-band .vis-cell.active {
-  background: linear-gradient(180deg, #00ffc3, #007c9f);
+  background: linear-gradient(
+    180deg,
+    rgba(0, 255, 195, 0),
+    rgba(0, 255, 195, 0.5),
+    rgba(0, 124, 159, 0.85)
+  );
 }
 
 #app.theme-band .row.row--confirmed input.inline {
   border-color: #00ffc3;
 }
 
-/* card in alto (sessione + hero review) con gradiente band leggermente più scuro */
 #app.theme-band .session-panel {
   background-image: radial-gradient(circle at 80% 0%, #00ffc3, #003848);
   border-color: #00ffc3;
@@ -718,21 +863,24 @@ body::-webkit-scrollbar-thumb {
   border-color: #00ffc3;
 }
 
-/* Concerto */
 #app.theme-concert .btn--primary {
   background: linear-gradient(135deg, #ff3f6a, #ff9ad7);
   color: #21021e;
 }
 
 #app.theme-concert .vis-cell.active {
-  background: linear-gradient(180deg, #ff3f6a, #ff9ad7);
+  background: linear-gradient(
+    180deg,
+    rgba(255, 63, 106, 0),
+    rgba(255, 63, 106, 0.5),
+    rgba(255, 154, 215, 0.9)
+  );
 }
 
 #app.theme-concert .row.row--confirmed input.inline {
   border-color: #ff3f6a;
 }
 
-/* card in alto (sessione + hero review) con gradiente concerto */
 #app.theme-concert .session-panel {
   background-image: radial-gradient(circle at 50% 100%, #ff3f6a, #1a0030);
   border-color: #ff3f6a;
@@ -741,4 +889,123 @@ body::-webkit-scrollbar-thumb {
 #app.theme-concert #view-review .hero.hero--small {
   background-image: radial-gradient(circle at 50% 100%, #ff3f6a, #1a0030);
   border-color: #ff3f6a;
+}
+
+/* === TOOLTIP SU BOTTONI CON data-tooltip === */
+
+.btn[data-tooltip] {
+  position: relative;
+}
+
+.btn[data-tooltip]::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 8px);
+  transform: translateX(-50%);
+  white-space: nowrap;
+  max-width: none;
+  padding: 6px 8px;
+  border-radius: 8px;
+  font-size: 0.75rem;
+  line-height: 1.3;
+  background: rgba(15, 23, 42, 0.95);
+  color: var(--text);
+  border: 1px solid var(--border);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  z-index: 50;
+}
+
+.btn[data-tooltip]::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: 100%;
+  transform: translateX(-50%);
+  border-width: 6px;
+  border-style: solid;
+  border-color: transparent transparent rgba(15, 23, 42, 0.95) transparent;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  z-index: 50;
+}
+
+.btn[data-tooltip]:hover::after,
+.btn[data-tooltip]:focus-visible::after {
+  opacity: 1;
+  transform: translateX(-50%) translateY(-2px);
+}
+
+.btn[data-tooltip]:hover::before,
+.btn[data-tooltip]:focus-visible::before {
+  opacity: 1;
+}
+
+/* === NOTE SESSIONE === */
+
+#notes-textarea {
+  width: 100%;
+  min-height: 120px;
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: #0d1117;
+  color: var(--text);
+  resize: vertical;
+  font-family: inherit;
+  font-size: 0.9rem;
+}
+
+/* Box note in review: nascosto, solo mirror testo */
+.review-notes {
+  display: none;
+  margin-top: 10px;
+  margin-bottom: 8px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px dashed var(--border);
+  background: rgba(15, 23, 42, 0.7);
+}
+
+.review-notes h4 {
+  margin: 0 0 4px;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.review-notes-text {
+  margin: 0;
+  font-size: 0.9rem;
+  white-space: pre-wrap;
+}
+
+/* --- TASTI NOTE (page 2 + page 3) --- */
+
+#btn-session-notes,
+#btn-review-notes {
+  font-weight: 600;
+  border: none;
+}
+
+/* Gradiente pieno per entrambi i tasti Note, in base alla modalità */
+#app.theme-dj #btn-session-notes,
+#app.theme-dj #btn-review-notes {
+  background: linear-gradient(135deg, #ff8a00, #ffca4d);
+  color: #140616;
+}
+
+#app.theme-band #btn-session-notes,
+#app.theme-band #btn-review-notes {
+  background: linear-gradient(135deg, #00ffc3, #007c9f);
+  color: #021315;
+}
+
+#app.theme-concert #btn-session-notes,
+#app.theme-concert #btn-review-notes {
+  background: linear-gradient(135deg, #ff3f6a, #ff9ad7);
+  color: #21021e;
 }
