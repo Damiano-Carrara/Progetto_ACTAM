@@ -884,6 +884,7 @@ function syncWelcomeModeRadios() {
   }
 }
 
+// alias usato altrove
 function updateConcertArtistVisibility() {
   syncWelcomeModeRadios();
 }
@@ -1088,7 +1089,7 @@ function wireSessionButtons() {
   }
 
   if (btnReset) {
-    btnReset.addEventListener("click", (e) => {
+    btnReset.addEventListener("click", async (e) => {
       e.preventDefault();
       const msg =
         "Vuoi resettare la sessione e cancellare il log corrente?";

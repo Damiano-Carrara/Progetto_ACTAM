@@ -635,6 +635,29 @@ body.has-visualizer #app {
   overflow: auto;
 }
 
+/* === FACCIATA 3: REVIEW === */
+
+.review-card {
+  display: flex;
+  flex-direction: column;
+  height: 460px; /* come se contenesse ~8 righe */
+}
+
+.review-table {
+  margin-top: 12px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.review-rows-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+/* Tabelle */
 .table {
   margin-top: 12px;
 }
@@ -713,7 +736,7 @@ input.inline {
 
 .row.row--confirmed input.inline {
   border-style: solid;
-  border-color: #22c55e;
+  border-color: #22c55e; /* override dal tema sotto */
 }
 
 /* SCROLLBAR */
