@@ -226,11 +226,9 @@ body.has-visualizer #app {
   text-align: left;
   display: flex;
   flex-direction: column;
-  /* justify-content rimosso per usare il text-group flex 1 */
   height: 100%;
 }
 
-/* === NUOVO: Gruppo testo che spinge il wrapper in basso === */
 .mode-text-group {
   flex: 1;
 }
@@ -286,20 +284,17 @@ body.has-visualizer #app {
   outline: 2px solid #ff8ad4;
 }
 
-/* === MODIFICA: Wrapper con altezza fissa e allineamento === */
+/* === WRAPPER INPUT ARTISTA === */
 .artist-input-wrapper {
   margin-top: 1rem;
   padding-top: 0.8rem;
   border-top: 1px solid rgba(255, 255, 255, 0.18);
   display: none;
-  
-  /* Altezza fissa per accomodare il contenuto più alto (concerto) */
   min-height: 95px;
   flex-direction: column;
-  justify-content: flex-end; /* Allinea contenuto in basso */
+  justify-content: flex-end; 
 }
 
-/* Quando visibile diventa flex, non block */
 .artist-input-wrapper.visible {
   display: flex;
 }
@@ -368,7 +363,7 @@ body.has-visualizer #app {
     filter 0.15s ease;
 }
 
-/* Gradiente coerente con le card in facciata 1 */
+/* Gradiente coerente con le card */
 #djConfirmBtn {
   background: linear-gradient(135deg, #ff8a00, #ffca4d);
   color: #140616;
@@ -452,14 +447,13 @@ body.has-visualizer #app {
   gap: 4px;
 }
 
-/* Tasti Start / Pause / Stop / Reset: stessa dimensione */
 .session-panel .controls {
   display: flex;
   gap: 8px;
 }
 
 .session-panel .controls .btn {
-  width: 110px; /* tutti uguali in larghezza */
+  width: 110px;
   justify-content: center;
 }
 
@@ -469,7 +463,6 @@ body.has-visualizer #app {
   height: 280px;
 }
 
-/* Header log live + tasto Note (page 2) */
 .log-header-row {
   display: flex;
   align-items: center;
@@ -498,12 +491,10 @@ body.has-visualizer #app {
   color: var(--muted);
 }
 
-/* Header "#" allineato all'inizio della card */
 .log-head span:first-child {
   text-align: left;
 }
 
-/* Indici numerici delle righe possono restare a destra */
 .log-row .col-index {
   text-align: right;
 }
@@ -608,7 +599,6 @@ body.has-visualizer #app {
   height: 460px;
 }
 
-/* Titolo + tasto Note in alto a destra */
 .review-header-row {
   display: flex;
   align-items: center;
@@ -619,28 +609,6 @@ body.has-visualizer #app {
 
 .review-header-row h3 {
   margin: 0;
-}
-
-.review-table {
-  margin-top: 12px;
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-}
-
-.review-rows-body {
-  flex: 1;
-  min-height: 0;
-  overflow: auto;
-}
-
-/* === FACCIATA 3: REVIEW === */
-
-.review-card {
-  display: flex;
-  flex-direction: column;
-  height: 460px; /* come se contenesse ~8 righe */
 }
 
 .review-table {
@@ -675,34 +643,29 @@ body.has-visualizer #app {
   grid-template-columns: 0.2fr 1.5fr 1.3fr 300px;
 }
 
-/* INTESTAZIONI */
 .row--head {
   font-size: 0.9rem;
   color: var(--muted);
   font-weight: 600;
 }
 
-/* padding sinistro per allineare al testo degli input */
 .row--head span {
   padding-left: 9px;
   text-align: left !important;
 }
 
-/* Titolo (3a colonna) */
 .review-table .row--head span:nth-child(3) {
   padding-left: 10px !important;
   text-align: left !important;
   justify-self: start !important;
 }
 
-/* Azioni (4a colonna) */
 .review-table .row--head span:nth-child(4) {
   text-align: left !important;
   justify-self: start !important;
   padding-left: 0 !important;
 }
 
-/* Colonna bottoni (dentro le righe dati) */
 .review-table .row .tools {
   display: flex;
   gap: 6px;
@@ -710,7 +673,6 @@ body.has-visualizer #app {
   flex-wrap: nowrap;
 }
 
-/* Bottoni piccoli in review leggermente compattati */
 .review-table .row .tools .btn.btn--small {
   padding: 3px 8px;
   font-size: 0.8rem;
@@ -736,7 +698,7 @@ input.inline {
 
 .row.row--confirmed input.inline {
   border-style: solid;
-  border-color: #22c55e; /* override dal tema sotto */
+  border-color: #22c55e;
 }
 
 /* SCROLLBAR */
@@ -791,13 +753,11 @@ body::-webkit-scrollbar-thumb {
   margin-top: 8px;
 }
 
-/* >>> bottoni Annulla / Ok stessa size */
 .modal-actions .btn {
   min-width: 96px;
   justify-content: center;
 }
 
-/* Ok mantiene il gradiente ma NON è in grassetto */
 #confirm-ok {
   font-weight: 500;
   text-transform: none;
@@ -891,8 +851,7 @@ body::-webkit-scrollbar-thumb {
   border-color: #ff3f6a;
 }
 
-/* === TOOLTIP SU BOTTONI CON data-tooltip === */
-
+/* TOOLTIP */
 .btn[data-tooltip] {
   position: relative;
 }
@@ -960,7 +919,6 @@ body::-webkit-scrollbar-thumb {
   font-size: 0.9rem;
 }
 
-/* Box note in review: nascosto, solo mirror testo */
 .review-notes {
   display: none;
   margin-top: 10px;
@@ -983,15 +941,12 @@ body::-webkit-scrollbar-thumb {
   white-space: pre-wrap;
 }
 
-/* --- TASTI NOTE (page 2 + page 3) --- */
-
 #btn-session-notes,
 #btn-review-notes {
   font-weight: 600;
   border: none;
 }
 
-/* Gradiente pieno per entrambi i tasti Note, in base alla modalità */
 #app.theme-dj #btn-session-notes,
 #app.theme-dj #btn-review-notes {
   background: linear-gradient(135deg, #ff8a00, #ffca4d);
@@ -1008,4 +963,40 @@ body::-webkit-scrollbar-thumb {
 #app.theme-concert #btn-review-notes {
   background: linear-gradient(135deg, #ff3f6a, #ff9ad7);
   color: #21021e;
+}
+
+/* ==================================================== */
+/* ===  AGGIUNTE PER NUOVE FUNZIONALITÀ (QR / VIEWER / DB)  === */
+/* ==================================================== */
+
+/* 1. MODALITÀ SPETTATORE (Nasconde elementi di editing) */
+/* Quando main ha data-viewer="true", nascondi le azioni nelle tabelle JS */
+main[data-viewer="true"] .tools {
+  display: none !important;
+}
+
+/* Ribilancia le colonne della tabella se non ci sono i bottoni */
+main[data-viewer="true"] .review-table .row {
+  grid-template-columns: 0.2fr 1.5fr 2fr; /* Titolo prende più spazio */
+}
+
+/* Nascondi input editing e mostrali come testo read-only (opzionale, ma elegante) */
+main[data-viewer="true"] input.inline {
+  pointer-events: none;
+  border-color: transparent;
+  background: transparent;
+  padding-left: 0;
+}
+
+/* 2. QR CODE IMAGE */
+/* Assicura che l'immagine del QR stia dentro il box bianco */
+#qr-image {
+  display: block;
+  margin: 0 auto;
+}
+
+/* 3. RESTORE MODAL BUTTONS */
+/* Assicuriamoci che i tasti del restore siano allineati */
+#restore-modal .modal-actions button {
+  min-width: 140px; /* Un po' più larghi per il testo lungo */
 }

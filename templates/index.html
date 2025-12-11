@@ -7,7 +7,8 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
   </head>
   <body>
-    <main id="app">
+    <main id="app" data-viewer="{{ 'true' if viewer_mode else 'false' }}">
+      
       <section id="view-welcome" class="view view--active">
         <div class="mode-page">
           <div class="mode-container">
@@ -113,10 +114,15 @@
               </div>
             </div>
             <div class="controls">
-              <button id="btn-session-start" class="btn">Start</button>
-              <button id="btn-session-pause" class="btn" disabled>Pause</button>
-              <button id="btn-session-stop" class="btn" disabled>Stop</button>
-              <button id="btn-session-reset" class="btn">Reset</button>
+              {% if not viewer_mode %}
+                <button id="btn-session-start" class="btn">Start</button>
+                <button id="btn-session-pause" class="btn" disabled>Pause</button>
+                <button id="btn-session-stop" class="btn" disabled>Stop</button>
+                <button id="btn-session-reset" class="btn">Reset</button>
+                <button id="btn-show-qr" class="btn" style="margin-left: 10px;">📱 Share QR</button>
+              {% else %}
+                <span class="badge" style="background: #7c3aed; color: white;">Modalità Spettatore</span>
+              {% endif %}
             </div>
           </section>
 
@@ -192,10 +198,12 @@
           </div>
 
           <div class="actions">
-            <button id="btn-undo" class="btn btn--small" disabled>Undo</button>
-            <button id="btn-generate" class="btn btn--primary" disabled>
-              Generate
-            </button>
+            {% if not viewer_mode %}
+              <button id="btn-undo" class="btn btn--small" disabled>Undo</button>
+              <button id="btn-generate" class="btn btn--primary" disabled>
+                Generate
+              </button>
+            {% endif %}
           </div>
         </div>
       </section>
@@ -234,6 +242,39 @@
           </div>
         </div>
       </div>
+
+      <div id="restore-modal" class="modal modal--hidden">
+        <div class="modal-backdrop"></div>
+        <div class="modal-dialog card">
+          <h3>Sessione Trovata</h3>
+          <p class="modal-message">
+            Ho trovato dei brani salvati nel database (probabile sessione precedente o crash).
+            <br><br>
+            Vuoi recuperarli o iniziare da zero?
+          </p>
+          <div class="modal-actions" style="justify-content: center;">
+            <button id="restore-new" class="btn btn--small">🗑️ Nuova Sessione</button>
+            <button id="restore-ok" class="btn btn--small btn--primary">♻️ Recupera Dati</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="qr-modal" class="modal modal--hidden">
+        <div class="modal-backdrop"></div>
+        <div class="modal-dialog card" style="max-width: 360px;">
+          <h3>Scansiona per seguire Live</h3>
+          <p class="modal-message">
+            Inquadra questo QR code per vedere la lista brani in tempo reale dal tuo smartphone.
+          </p>
+          <div style="background: white; padding: 10px; border-radius: 8px; margin: 10px auto; width: fit-content;">
+            <img id="qr-image" src="" alt="QR Code" style="display: block; width: 200px; height: 200px;" />
+          </div>
+          <div class="modal-actions" style="justify-content: center;">
+            <button id="qr-close" class="btn btn--small">Chiudi</button>
+          </div>
+        </div>
+      </div>
+
     </main>
 
     <script src="{{ url_for('static', filename='script.js') }}" defer></script>

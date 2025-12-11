@@ -1,7 +1,8 @@
 import threading
 import time
 import re
-import unicodedata # <--- NUOVO IMPORT IMPORTANTE
+import sqlite3 # <--- Dal collega
+import unicodedata # <--- Dalla tua versione
 from datetime import datetime
 from threading import Lock
 from metadata_manager import MetadataManager
@@ -9,17 +10,107 @@ from difflib import SequenceMatcher
 
 class SessionManager:
     def __init__(self):
+        self.db_path = "session_live.db" # <--- DB Path
         self.playlist = [] 
         self.known_songs_cache = {} 
         self.meta_bot = MetadataManager()
         self._next_id = 1 
         self.lock = Lock()
-        print("📝 Session Manager Inizializzato (Accent-Insensitive)")
+        
+        # Inizializza il DB e ricarica sessioni precedenti (Codice Collega)
+        self._init_db()
+        self._load_session_from_db()
+        
+        print(f"📝 Session Manager Inizializzato (Accent-Insensitive + SQLite: {self.db_path})")
+
+    # --- GESTIONE DATABASE (Dal Codice del Collega) ---
+    def _init_db(self):
+        """Crea la tabella se non esiste"""
+        with sqlite3.connect(self.db_path, check_same_thread=False) as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS songs (
+                    id INTEGER PRIMARY KEY,
+                    title TEXT,
+                    artist TEXT,
+                    composer TEXT,
+                    album TEXT,
+                    timestamp TEXT,
+                    duration_ms INTEGER,
+                    score INTEGER,
+                    type TEXT,
+                    isrc TEXT,
+                    upc TEXT
+                )
+            ''')
+            conn.commit()
+
+    def _load_session_from_db(self):
+        """Ricarica la sessione precedente in caso di crash/riavvio"""
+        with sqlite3.connect(self.db_path, check_same_thread=False) as conn:
+            conn.row_factory = sqlite3.Row 
+            cursor = conn.cursor()
+            cursor.execute('SELECT * FROM songs ORDER BY id ASC')
+            rows = cursor.fetchall()
+            
+            if rows:
+                print(f"♻️ Ripristino sessione: trovati {len(rows)} brani nel database.")
+                for row in rows:
+                    song = dict(row)
+                    # Nota: _raw_meta non viene salvato nel DB, quindi al riavvio sarà vuoto.
+                    # Questo è normale per una persistenza leggera.
+                    song['_raw_meta'] = {} 
+                    self.playlist.append(song)
+                    
+                    track_key = f"{song['title']} - {song['artist']}".lower()
+                    self.known_songs_cache[track_key] = song
+                    if song['id'] >= self._next_id:
+                        self._next_id = song['id'] + 1
+            else:
+                print("🆕 Nessuna sessione precedente trovata. Parto da zero.")
+
+    def _save_song_to_db(self, song):
+        """Salva un nuovo brano nel DB"""
+        try:
+            with sqlite3.connect(self.db_path, check_same_thread=False) as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    INSERT INTO songs (id, title, artist, composer, album, timestamp, duration_ms, score, type, isrc, upc)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (
+                    song['id'], song['title'], song['artist'], song['composer'],
+                    song['album'], song['timestamp'], song['duration_ms'],
+                    song['score'], song['type'], song['isrc'], song['upc']
+                ))
+                conn.commit()
+        except Exception as e:
+            print(f"❌ Errore salvataggio DB: {e}")
+
+    def _update_composer_in_db(self, song_id, composer):
+        """Aggiorna solo il compositore di un brano esistente"""
+        try:
+            with sqlite3.connect(self.db_path, check_same_thread=False) as conn:
+                cursor = conn.cursor()
+                cursor.execute('UPDATE songs SET composer = ? WHERE id = ?', (composer, song_id))
+                conn.commit()
+        except Exception as e:
+            print(f"❌ Errore update DB: {e}")
+
+    def _delete_from_db(self, song_id):
+        """Rimuove un brano dal DB"""
+        try:
+            with sqlite3.connect(self.db_path, check_same_thread=False) as conn:
+                cursor = conn.cursor()
+                cursor.execute('DELETE FROM songs WHERE id = ?', (song_id,))
+                conn.commit()
+        except Exception as e:
+            print(f"❌ Errore delete DB: {e}")
+
+    # --- FINE GESTIONE DB ---
 
     def _normalize_string(self, text):
         """
-        Pulisce le stringhe rimuovendo accenti e caratteri speciali.
-        Es: "Fàbula" -> "fabula"
+        Pulisce le stringhe (TUA VERSIONE - Più robusta).
         """
         if not text: return ""
         
@@ -30,7 +121,6 @@ class SessionManager:
         text = re.sub(r"(?i)\b(feat\.|ft\.|remix|edit|version|karaoke|live)\b.*", "", text)
         
         # 3. Normalizzazione Accenti (UNICODE NFD)
-        # Trasforma 'à' in 'a' + accento, poi butta via l'accento
         text = unicodedata.normalize('NFD', text).encode('ascii', 'ignore').decode("utf-8")
         
         # 4. Solo alfanumerici
@@ -39,7 +129,7 @@ class SessionManager:
 
     def _are_songs_equivalent(self, new_s, existing_s):
         """
-        Controlla se due brani sono lo stesso (SOGLIE HIP-HOP FIX).
+        Controlla duplicati (TUA VERSIONE - Soglie Smart & Hip-Hop Fix).
         """
         # 1. CONTROLLO ARTISTA
         art_new = self._normalize_string(new_s['artist'])
@@ -58,12 +148,10 @@ class SessionManager:
             return False
 
         # 2. MATCH SICURO (> 0.60)
-        # Es. Favola/Fabula (0.66). Accettiamo tutto.
         if similarity > 0.60: 
             return True
 
         # 3. ZONA CRITICA (0.40 - 0.60)
-        # Es: Morto Mai (9 chars) vs Re Mida (7 chars) -> Sim ~0.50
         try:
             dur_new = int(new_s.get('duration_ms', 0) or 0)
             dur_ex = int(existing_s.get('duration_ms', 0) or 0)
@@ -75,9 +163,7 @@ class SessionManager:
         if dur_new > MIN_VALID_DURATION and dur_ex > MIN_VALID_DURATION:
             diff = abs(dur_new - dur_ex)
             
-            # --- FIX: TOLLERANZA RIDOTTA A 200ms ---
-            # Se la similarità è bassa (0.50), i brani devono avere la STESSA durata (stesso master).
-            # 1.2s era troppo largo per brani diversi dello stesso artista.
+            # --- TUA VERSIONE: TOLLERANZA STRETTA (200ms) ---
             tolerance = 200
             
             if diff < tolerance:
@@ -143,6 +229,7 @@ class SessionManager:
             }
 
             self.playlist.append(new_entry) 
+            self._save_song_to_db(new_entry) # <--- SALVATAGGIO DB (Collega)
             self._next_id += 1
 
             if status_enrichment == "Pending":
@@ -152,7 +239,7 @@ class SessionManager:
                     daemon=True
                 ).start()
 
-            print(f"✅ Aggiunto (Async): {title}")
+            print(f"✅ Aggiunto (Async + Persistente): {title}")
             return {"added": True, "song": new_entry}
 
     def _background_enrichment(self, entry, target_artist):
@@ -165,13 +252,14 @@ class SessionManager:
 
         while attempts < max_attempts:
             try:
+                # Usa la TUA chiamata a find_composer (passa anche raw_acr_meta)
                 found_composer = self.meta_bot.find_composer(
                     title=entry['title'], 
                     detected_artist=entry['artist'],
                     isrc=entry.get('_raw_isrc'),
                     upc=entry.get('_raw_upc'),
                     setlist_artist=target_artist,
-                    raw_acr_meta=entry.get('_raw_meta')
+                    raw_acr_meta=entry.get('_raw_meta') # <--- La tua versione lo usa
                 )
                 success = True
                 break 
@@ -188,6 +276,10 @@ class SessionManager:
             
             if target_song:
                 target_song['composer'] = found_composer
+                
+                # Aggiornamento DB (Collega)
+                self._update_composer_in_db(target_song['id'], found_composer)
+                
                 print(f"📝 [Thread] Compositore aggiornato: {found_composer}")
                 
                 if success and found_composer not in ["Sconosciuto", "Errore Conn."]:
@@ -196,12 +288,35 @@ class SessionManager:
 
     def get_playlist(self):
         return self.playlist
+    
+    def clear_session(self):
+        """
+        RESET TOTALE (Codice del collega)
+        """
+        with self.lock:
+            # 1. Pulisce la RAM
+            self.playlist = []
+            self.known_songs_cache = {}
+            self._next_id = 1
+            
+            # 2. Pulisce il Database Fisico
+            try:
+                with sqlite3.connect(self.db_path, check_same_thread=False) as conn:
+                    cursor = conn.cursor()
+                    cursor.execute('DELETE FROM songs')
+                    conn.commit()
+                print("🧹 Sessione resettata: Database e memoria puliti.")
+                return True
+            except Exception as e:
+                print(f"❌ Errore reset DB: {e}")
+                return False
 
     def delete_song(self, song_id):
         with self.lock:
             try:
                 song_id = int(song_id)
                 self.playlist = [s for s in self.playlist if s['id'] != song_id]
+                self._delete_from_db(song_id) # <--- Cancellazione DB (Collega)
                 return True
             except ValueError:
                 return False
