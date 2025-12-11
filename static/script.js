@@ -1,13 +1,14 @@
 // --- STATO APP ---
 const state = {
-  mode: null, // "dj" | "band" | "concert"
-  route: "welcome", // "welcome" | "session" | "review"
+  mode: null,          // "dj" | "band" | "concert"
+  route: "welcome",    // "welcome" | "session" | "review"
   concertArtist: "",
-  bandArtist: "", // artista opzionale per live band
+  bandArtist: "",      // artista opzionale per live band
+  notes: ""            // note su mismatch/errori dalla sessione
 };
 
 // playlist locale (frontend)
-let songs = [];
+let songs = []; // ogni song può avere .order (indice originale)
 
 // id massimo visto (per capire quali brani sono nuovi quando facciamo polling)
 let lastMaxSongId = 0;
@@ -29,14 +30,18 @@ let undoStack = [];
 // snapshot eventuale per tornare da review a sessione (se servirà)
 let lastSessionSnapshot = null;
 
-// stato dell'onda (idle = piatta, playing = viva, paused = si spegne lentamente)
+// stato dell'onda
 let waveMode = "idle"; // "idle" | "playing" | "paused"
 
 // --- VISUALIZER: equalizzatore continuo full-width ---
 const VIS_COLS = 96;
 const VIS_ROWS = 16;
+
 let visTick = null;
 let visLevels = new Array(VIS_COLS).fill(0);
+
+// contesto attuale del modal note: "session" | "review"
+let notesModalContext = "session";
 
 /** selettore rapido */
 const $ = (sel) => document.querySelector(sel);
@@ -77,9 +82,8 @@ function applyTheme() {
 // --- NAVIGAZIONE / ROUTE ---
 function setRoute(route) {
   state.route = route;
-
-  // niente scroll generale in welcome + session
   const body = document.body;
+
   if (body) {
     if (route === "welcome" || route === "session") {
       body.classList.add("no-scroll");
@@ -93,6 +97,7 @@ function showView(id) {
   document
     .querySelectorAll(".view")
     .forEach((v) => v.classList.remove("view--active"));
+
   const el = document.querySelector(id);
   if (el) el.classList.add("view--active");
 }
@@ -103,6 +108,7 @@ function buildVisualizer() {
   if (!container) return;
 
   container.innerHTML = "";
+
   for (let c = 0; c < VIS_COLS; c++) {
     const col = document.createElement("div");
     col.className = "vis-col";
@@ -112,6 +118,7 @@ function buildVisualizer() {
       cell.className = "vis-cell";
       col.appendChild(cell);
     }
+
     container.appendChild(col);
   }
 }
@@ -123,27 +130,28 @@ function updateVisualizer() {
   for (let colIndex = 0; colIndex < cols.length; colIndex++) {
     let current = visLevels[colIndex] || 0;
 
-    // target con forte bias verso zero (random^2.2)
-    let target = Math.pow(Math.random(), 2.2) * VIS_ROWS;
+    // base casuale, con coda più bassa (più "movimento" in basso)
+    let base = Math.pow(Math.random(), 3.2);
+    let target = base * VIS_ROWS * 0.9;
 
-    // ogni tanto un picco alto (tipo colpo di cassa)
-    if (Math.random() < 0.12) {
-      target = VIS_ROWS * (0.6 + 0.4 * Math.random()); // 60–100% dell'altezza
+    // ogni tanto un impulso più alto
+    if (Math.random() < 0.1) {
+      target = VIS_ROWS * (0.55 + 0.45 * Math.random());
     }
 
-    // easing salita/discesa
+    // salita più rapida, discesa più lenta
     const speedUp = 0.45;
-    const speedDown = 0.12;      // più lento: discesa più morbida
+    const speedDown = 0.12;
+
     if (target > current) {
       current += (target - current) * speedUp;
     } else {
       current += (target - current) * speedDown;
     }
 
-    // damping più morbido (residuo più lungo)
+    // leggero smorzamento
     current *= 0.985;
 
-    // clamp
     if (current < 0) current = 0;
     if (current > VIS_ROWS) current = VIS_ROWS;
 
@@ -213,27 +221,19 @@ function setNow(title, composer) {
 }
 
 // --- LOG LIVE ---
-function pushLog({ id, when, title, composer, status }) {
+function pushLog({ id, index, title, composer, artist }) {
   const row = document.createElement("div");
   row.className = "log-row";
 
-  // salviamo l'id per poter aggiornare questa riga in seguito
   if (id != null) {
     row.dataset.id = id;
   }
 
-  const cls =
-    status === "NEW"
-      ? "status-new"
-      : status === "SAME"
-      ? "status-same"
-      : "status-ok";
-
   row.innerHTML = `
-    <span>${when}</span>
+    <span class="col-index">${index != null ? index : "—"}</span>
     <span>${title || "—"}</span>
     <span class="col-composer">${composer || "—"}</span>
-    <span class="${cls}">${status}</span>
+    <span class="col-artist">${artist || "—"}</span>
   `;
 
   $("#live-log").prepend(row);
@@ -242,7 +242,9 @@ function pushLog({ id, when, title, composer, status }) {
 // --- TIMER SESSIONE ---
 function startSessionTimer() {
   if (sessionTick) return;
+
   sessionStartMs = Date.now();
+
   sessionTick = setInterval(() => {
     const elapsed = sessionAccumulatedMs + (Date.now() - sessionStartMs);
     const el = $("#session-timer");
@@ -252,6 +254,7 @@ function startSessionTimer() {
 
 function pauseSessionTimer() {
   if (!sessionTick) return;
+
   clearInterval(sessionTick);
   sessionTick = null;
   sessionAccumulatedMs += Date.now() - sessionStartMs;
@@ -262,6 +265,7 @@ function resetSessionTimer() {
   sessionTick = null;
   sessionStartMs = 0;
   sessionAccumulatedMs = 0;
+
   const el = $("#session-timer");
   if (el) el.textContent = "00:00";
 }
@@ -270,9 +274,11 @@ function resetSessionTimer() {
 function pushUndoState() {
   const snapshot = songs.map((s) => ({ ...s }));
   undoStack.push(snapshot);
+
   if (undoStack.length > 5) {
     undoStack.shift();
   }
+
   updateUndoButton();
 }
 
@@ -284,6 +290,7 @@ function updateUndoButton() {
 
 function undoLast() {
   if (!undoStack.length) return;
+
   const snapshot = undoStack.pop();
   songs = snapshot.map((s) => ({ ...s }));
   renderReview();
@@ -293,8 +300,8 @@ function undoLast() {
 // --- BACKEND START/STOP RICONOSCIMENTO ---
 async function startBackendRecognition() {
   const body = {};
-
   let targetArtist = null;
+
   if (state.mode === "concert" && state.concertArtist) {
     targetArtist = state.concertArtist;
   } else if (state.mode === "band" && state.bandArtist) {
@@ -302,19 +309,21 @@ async function startBackendRecognition() {
   }
 
   if (targetArtist) {
-    body.targetArtist = targetArtist; // "bias artist" lato backend
+    body.targetArtist = targetArtist;
   }
 
   try {
     const res = await fetch("/api/start_recognition", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+      body: JSON.stringify(body)
     });
+
     if (!res.ok) {
       console.error("Errore HTTP /api/start_recognition:", res.status);
       return;
     }
+
     const data = await res.json();
     console.log("start_recognition:", data);
   } catch (err) {
@@ -327,12 +336,14 @@ async function stopBackendRecognition() {
     const res = await fetch("/api/stop_recognition", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({}),
+      body: JSON.stringify({})
     });
+
     if (!res.ok) {
       console.error("Errore HTTP /api/stop_recognition:", res.status);
       return;
     }
+
     const data = await res.json();
     console.log("stop_recognition:", data);
   } catch (err) {
@@ -348,6 +359,7 @@ async function pollPlaylistOnce() {
       console.error("Errore HTTP /api/get_playlist:", res.status);
       return;
     }
+
     const data = await res.json();
     const playlist = Array.isArray(data.playlist) ? data.playlist : [];
 
@@ -358,16 +370,16 @@ async function pollPlaylistOnce() {
       const id = Number(song.id);
       if (!Number.isFinite(id)) return;
 
-      // Cerco se il brano esiste già nel frontend
       const existing = songs.find((t) => t.id === id);
 
       if (!existing) {
-        // --- NUOVO BRANO CON ID MAGGIORE DELL'ULTIMO VISTO ---
+        // nuovo brano
         if (id > lastMaxSongId) {
           const track = {
             id,
+            order: songs.length + 1, // numerazione progressiva
             title: song.title || "Titolo sconosciuto",
-            composer: song.composer || "—", // può essere "Ricerca..."
+            composer: song.composer || "—",
             artist: song.artist || "",
             album: song.album || "",
             type: song.type || "",
@@ -375,7 +387,7 @@ async function pollPlaylistOnce() {
             upc: song.upc || null,
             ms: song.duration_ms || 0,
             confirmed: false,
-            timestamp: song.timestamp || null,
+            timestamp: song.timestamp || null
           };
 
           songs.push(track);
@@ -384,15 +396,16 @@ async function pollPlaylistOnce() {
 
           pushLog({
             id: track.id,
-            when: track.timestamp || nowHHMM(),
+            index: track.order,
             title: track.title,
             composer: track.composer,
-            status: "NEW",
+            artist: track.artist
           });
         }
       } else {
-        // --- BRANO GIÀ PRESENTE: aggiorno metadata (es. COMPOSITORE) ---
+        // aggiornamento di un brano già esistente
         const oldComposer = existing.composer;
+        const oldArtist = existing.artist;
 
         existing.title = song.title || existing.title;
         existing.composer = song.composer || existing.composer;
@@ -403,20 +416,29 @@ async function pollPlaylistOnce() {
         existing.upc = song.upc || existing.upc;
         existing.ms = song.duration_ms || existing.ms;
 
-        if (existing.composer !== oldComposer) {
+        const composerChanged = existing.composer !== oldComposer;
+        const artistChanged = existing.artist !== oldArtist;
+
+        if (composerChanged || artistChanged) {
           updatedExisting = true;
 
-          // se è il brano attualmente in riproduzione, aggiorno il "Now"
           if (currentSongId === id) {
             setNow(existing.title, existing.composer);
           }
 
-          // aggiorno anche la riga nel log live senza ricrearla
-          const logRow = document.querySelector(`.log-row[data-id="${id}"]`);
+          const logRow = document.querySelector(
+            `.log-row[data-id="${id}"]`
+          );
+
           if (logRow) {
             const composerSpan = logRow.querySelector(".col-composer");
             if (composerSpan) {
               composerSpan.textContent = existing.composer;
+            }
+
+            const artistSpan = logRow.querySelector(".col-artist");
+            if (artistSpan) {
+              artistSpan.textContent = existing.artist || "—";
             }
           }
         }
@@ -427,8 +449,7 @@ async function pollPlaylistOnce() {
 
     lastMaxSongId = maxIdSeen;
 
-    // Se siamo in review e qualche brano è stato aggiornato (es. il compositore),
-    // ridisegno la tabella.
+    // se siamo in review, aggiorna tabella
     if (updatedExisting && state.route === "review") {
       renderReview();
     }
@@ -439,13 +460,14 @@ async function pollPlaylistOnce() {
 
 function startPlaylistPolling() {
   if (playlistPollInterval) return;
-  pollPlaylistOnce(); // prima chiamata immediata
-  // intervallo più rapido (2s) come nella versione funzionante del tuo amico
+
+  pollPlaylistOnce();
   playlistPollInterval = setInterval(pollPlaylistOnce, 2000);
 }
 
 function stopPlaylistPolling() {
   if (!playlistPollInterval) return;
+
   clearInterval(playlistPollInterval);
   playlistPollInterval = null;
 }
@@ -505,18 +527,19 @@ async function sessionStop() {
   await stopBackendRecognition();
   stopPlaylistPolling();
 
-  // sync finale
+  // un ultimo fetch per catturare eventuali brani appena finiti
   await pollPlaylistOnce();
 
   resetSessionTimer();
   currentSongId = null;
   setNow("In ascolto", "—");
 
+  // passaggio a review
   undoStack = [];
   renderReview();
-
   setRoute("review");
   showView("#view-review");
+
   stopVisualizer();
 }
 
@@ -538,6 +561,7 @@ async function sessionReset() {
   const liveLog = $("#live-log");
   if (liveLog) liveLog.innerHTML = "";
 
+  // aggiorna lastMaxSongId in base alla playlist corrente
   try {
     const res = await fetch("/api/get_playlist");
     if (res.ok) {
@@ -563,13 +587,15 @@ async function sessionReset() {
   stopVisualizer();
 }
 
-// --- REVIEW / SNAPSHOT ---
+// --- REVIEW / SNAPSHOT (per ora snapshot non usato ma tenuto) ---
 function restoreSessionFromSnapshot() {
   if (!lastSessionSnapshot) return;
 
   songs = lastSessionSnapshot.songs.map((s) => ({ ...s }));
+
   const snapshotCurrentId = lastSessionSnapshot.currentSongId ?? null;
   currentSongId = snapshotCurrentId;
+
   sessionAccumulatedMs = lastSessionSnapshot.sessionAccumulatedMs || 0;
   sessionStartMs = 0;
   sessionTick = null;
@@ -603,6 +629,49 @@ function backToSessionFromReview() {
   showView("#view-session");
 }
 
+// --- NOTE SESSIONE ---
+function syncReviewNotes() {
+  const view = $("#review-notes-view");
+  if (!view) return;
+
+  const text = (state.notes || "").trim();
+  view.textContent = text || "—";
+}
+
+function openNotesModal(context = "session") {
+  const modal = $("#notes-modal");
+  const textarea = $("#notes-textarea");
+  const saveBtn = $("#notes-save");
+  if (!modal || !textarea) return;
+
+  notesModalContext = context;
+  textarea.value = state.notes || "";
+
+  if (context === "review") {
+    // in review solo lettura
+    textarea.readOnly = true;
+    if (saveBtn) saveBtn.classList.add("hidden");
+  } else {
+    textarea.readOnly = false;
+    if (saveBtn) saveBtn.classList.remove("hidden");
+  }
+
+  modal.classList.remove("modal--hidden");
+}
+
+function closeNotesModal(save) {
+  const modal = $("#notes-modal");
+  const textarea = $("#notes-textarea");
+  if (!modal || !textarea) return;
+
+  if (save && notesModalContext !== "review") {
+    state.notes = textarea.value || "";
+    syncReviewNotes();
+  }
+
+  modal.classList.add("modal--hidden");
+}
+
 // --- MODAL DI CONFERMA ---
 function showConfirm(message) {
   return new Promise((resolve) => {
@@ -617,7 +686,6 @@ function showConfirm(message) {
     }
 
     msgEl.textContent = message || "Sei sicuro?";
-
     modal.classList.remove("modal--hidden");
 
     function cleanup(result) {
@@ -647,22 +715,29 @@ function renderReview() {
   const container = $("#review-rows");
   const template = $("#review-row-template");
   const btnGenerate = $("#btn-generate");
+
   if (!container || !template || !btnGenerate) return;
 
   container.innerHTML = "";
 
-  songs.forEach((song) => {
+  songs.forEach((song, index) => {
     if (typeof song.confirmed !== "boolean") {
       song.confirmed = false;
     }
 
     const node = template.content.firstElementChild.cloneNode(true);
 
+    const indexSpan = node.querySelector(".review-index");
     const inputComposer = node.querySelector('[data-field="composer"]');
     const inputTitle = node.querySelector('[data-field="title"]');
     const btnConfirm = node.querySelector(".btn-confirm");
     const btnEdit = node.querySelector(".btn-edit");
     const btnDelete = node.querySelector(".btn-delete");
+    const btnAdd = node.querySelector(".btn-add");
+
+    if (indexSpan) {
+      indexSpan.textContent = index + 1;
+    }
 
     inputComposer.value = song.composer || "";
     inputTitle.value = song.title || "";
@@ -688,7 +763,6 @@ function renderReview() {
     // CONFERMA
     btnConfirm.addEventListener("click", (e) => {
       e.preventDefault();
-
       pushUndoState();
 
       song.composer = inputComposer.value || "";
@@ -697,7 +771,6 @@ function renderReview() {
 
       inputComposer.readOnly = true;
       inputTitle.readOnly = true;
-
       node.classList.add("row--confirmed");
       updateGenerateState();
     });
@@ -718,7 +791,7 @@ function renderReview() {
           await fetch("/api/delete_song", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ id: song.id }),
+            body: JSON.stringify({ id: song.id })
           });
         } catch (err) {
           console.error("Errore delete:", err);
@@ -727,9 +800,39 @@ function renderReview() {
 
       const idx = songs.indexOf(song);
       if (idx !== -1) songs.splice(idx, 1);
-      node.remove();
-      updateGenerateState();
+
+      renderReview();
     });
+
+    // AGGIUNGI (nuova riga sotto quella corrente)
+    if (btnAdd) {
+      btnAdd.addEventListener("click", (e) => {
+        e.preventDefault();
+
+        pushUndoState();
+
+        const idx = songs.indexOf(song);
+        const insertPos = idx === -1 ? songs.length : idx + 1;
+
+        const newSong = {
+          id: null,
+          title: "",
+          composer: "",
+          artist: "",
+          album: "",
+          type: "",
+          isrc: null,
+          upc: null,
+          ms: 0,
+          confirmed: false,
+          timestamp: null,
+          manual: true
+        };
+
+        songs.splice(insertPos, 0, newSong);
+        renderReview();
+      });
+    }
 
     container.appendChild(node);
   });
@@ -743,9 +846,10 @@ function renderReview() {
 
   updateGenerateState();
   updateUndoButton();
+  syncReviewNotes();
 }
 
-// --- WELCOME / MODALITÀ + CAMPI ARTISTA / DOPPIO CLICK ---
+// --- WELCOME / MODALITÀ + CAMPI ARTISTA ---
 function syncWelcomeModeRadios() {
   const cards = document.querySelectorAll(".mode-card");
   cards.forEach((card) =>
@@ -758,13 +862,10 @@ function syncWelcomeModeRadios() {
 
   const artistWrapper = document.getElementById("artistInputWrapper");
   const artistInput = document.getElementById("artistInput");
-
   const bandWrapper = document.getElementById("bandArtistWrapper");
   const bandInput = document.getElementById("bandArtistInput");
-
   const djWrapper = document.getElementById("djConfirmWrapper");
 
-  // nascondi tutto
   if (artistWrapper) artistWrapper.classList.remove("visible");
   if (bandWrapper) bandWrapper.classList.remove("visible");
   if (djWrapper) djWrapper.classList.remove("visible");
@@ -783,7 +884,6 @@ function syncWelcomeModeRadios() {
   }
 }
 
-// alias usato altrove
 function updateConcertArtistVisibility() {
   syncWelcomeModeRadios();
 }
@@ -810,7 +910,6 @@ function initWelcome() {
   const djWrapper = document.getElementById("djConfirmWrapper");
   const djConfirmBtn = document.getElementById("djConfirmBtn");
 
-  // nessuna selezione iniziale
   state.mode = null;
   applyTheme();
   syncWelcomeModeRadios();
@@ -846,12 +945,13 @@ function initWelcome() {
       state.bandArtist = "";
       applyTheme();
       syncWelcomeModeRadios();
-      return; // conferma con tasto Invia
+      return;
     }
   }
 
   function handleConcertSubmit() {
     if (!artistInput) return;
+
     const name = artistInput.value.trim();
     if (!name) {
       if (artistError) {
@@ -860,6 +960,7 @@ function initWelcome() {
       }
       return;
     }
+
     if (artistError) artistError.textContent = "";
 
     state.mode = "concert";
@@ -871,7 +972,7 @@ function initWelcome() {
   function handleBandSubmit() {
     const name = bandInput ? bandInput.value.trim() : "";
     state.mode = "band";
-    state.bandArtist = name; // facoltativo, può essere vuoto
+    state.bandArtist = name;
     applyTheme();
     goToSession();
   }
@@ -899,7 +1000,6 @@ function initWelcome() {
     });
   });
 
-  // evitare che click dentro i wrapper triggerino anche click sulla card
   if (artistWrapper) {
     artistWrapper.addEventListener("click", (e) => e.stopPropagation());
   }
@@ -917,6 +1017,7 @@ function initWelcome() {
       handleConcertSubmit();
     });
   }
+
   if (artistInput) {
     artistInput.addEventListener("keydown", (e) => {
       if (e.key === "Enter") {
@@ -934,6 +1035,7 @@ function initWelcome() {
       handleBandSubmit();
     });
   }
+
   if (bandInput) {
     bandInput.addEventListener("keydown", (e) => {
       if (e.key === "Enter") {
@@ -986,13 +1088,14 @@ function wireSessionButtons() {
   }
 
   if (btnReset) {
-    btnReset.addEventListener("click", async (e) => {
+    btnReset.addEventListener("click", (e) => {
       e.preventDefault();
-      const ok = await showConfirm(
-        "Vuoi resettare la sessione e cancellare il log corrente?"
-      );
-      if (!ok) return;
-      sessionReset();
+      const msg =
+        "Vuoi resettare la sessione e cancellare il log corrente?";
+      showConfirm(msg).then((ok) => {
+        if (!ok) return;
+        sessionReset();
+      });
     });
   }
 
@@ -1027,6 +1130,39 @@ function wireSessionButtons() {
       backToWelcome();
     });
   }
+
+  const btnNotes = $("#btn-session-notes");
+  if (btnNotes) {
+    btnNotes.addEventListener("click", (e) => {
+      e.preventDefault();
+      openNotesModal("session");
+    });
+  }
+
+  const btnReviewNotes = $("#btn-review-notes");
+  if (btnReviewNotes) {
+    btnReviewNotes.addEventListener("click", (e) => {
+      e.preventDefault();
+      openNotesModal("review");
+    });
+  }
+
+  const notesCancel = $("#notes-cancel");
+  const notesSave = $("#notes-save");
+
+  if (notesCancel) {
+    notesCancel.addEventListener("click", (e) => {
+      e.preventDefault();
+      closeNotesModal(false);
+    });
+  }
+
+  if (notesSave) {
+    notesSave.addEventListener("click", (e) => {
+      e.preventDefault();
+      closeNotesModal(true);
+    });
+  }
 }
 
 // --- AVVIO ---
@@ -1036,4 +1172,5 @@ document.addEventListener("DOMContentLoaded", () => {
   initWelcome();
   wireSessionButtons();
   buildVisualizer();
+  syncReviewNotes();
 });
