@@ -986,6 +986,37 @@ function wireSessionButtons() {
   const btnStop = $("#btn-session-stop");
   const btnReset = $("#btn-session-reset");
 
+    // Aggiungi questo nella funzione wireSessionButtons() o initWelcome()
+
+  const btnShowQr = document.getElementById("btn-show-qr");
+  const qrModal = document.getElementById("qr-modal");
+  const qrImage = document.getElementById("qr-image");
+  const qrClose = document.getElementById("qr-close");
+
+  if (btnShowQr) {
+      btnShowQr.addEventListener("click", () => {
+          // Carica l'immagine fresca (timestamp per evitare cache)
+          qrImage.src = "/api/get_qr_image?t=" + Date.now();
+          qrModal.classList.remove("modal--hidden");
+      });
+  }
+
+  if (qrClose) {
+      qrClose.addEventListener("click", () => {
+          qrModal.classList.add("modal--hidden");
+      });
+  }
+
+  // Chiudi cliccando fuori
+  if (qrModal) {
+      const backdrop = qrModal.querySelector(".modal-backdrop");
+      if (backdrop) {
+          backdrop.addEventListener("click", () => {
+              qrModal.classList.add("modal--hidden");
+          });
+      }
+  }
+
   if (btnStart) {
     btnStart.addEventListener("click", (e) => {
       e.preventDefault();
@@ -1056,7 +1087,6 @@ function wireSessionButtons() {
 }
 
 // --- LOGICA RIPRISTINO SESSIONE ALL'AVVIO ---
-// --- LOGICA RIPRISTINO SESSIONE ALL'AVVIO ---
 async function checkRestoreSession() {
   try {
     const res = await fetch("/api/get_playlist");
@@ -1117,10 +1147,39 @@ async function checkRestoreSession() {
 
 // --- AVVIO ---
 document.addEventListener("DOMContentLoaded", () => {
-  setRoute("welcome");
-  showView("#view-welcome");
-  initWelcome();
+  const app = document.getElementById("app");
+  // Leggiamo se siamo spettatori dal tag HTML che abbiamo modificato prima
+  const isViewer = app.dataset.viewer === "true";
+
+  // Inizializziamo bottoni e visualizer (servono a tutti)
   wireSessionButtons();
   buildVisualizer();
-  checkRestoreSession();
+
+  if (isViewer) {
+    // --- CASO 1: SPETTATORE (SMARTPHONE) ---
+    console.log("Modalità Viewer attiva: salto diretto alla sessione.");
+    
+    // 1. Va subito alla schermata della lista brani
+    state.route = "session";
+    showView("#view-session");
+    
+    // 2. Inizia subito a scaricare la lista brani dal server
+    startPlaylistPolling();
+    
+    // 3. Avvia le barrette colorate che si muovono
+    startVisualizer();
+    
+    // 4. Nasconde il popup "Vuoi recuperare la sessione?" se dovesse apparire
+    const restoreModal = document.getElementById("restore-modal");
+    if (restoreModal) restoreModal.classList.add("modal--hidden");
+
+  } else {
+    // --- CASO 2: AMMINISTRATORE (TU AL PC) ---
+    // Fa esattamente quello che faceva prima:
+    // Mostra il benvenuto, inizializza la scelta DJ/Band e controlla i salvataggi
+    setRoute("welcome");
+    showView("#view-welcome");
+    initWelcome();
+    checkRestoreSession();
+  }
 });

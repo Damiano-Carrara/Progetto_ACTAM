@@ -7,8 +7,7 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
 </head>
 <body>
-  <main id="app">
-    <!-- FACCIATA 1: WELCOME -->
+  <main id="app" data-viewer="{{ 'true' if viewer_mode else 'false' }}">
     <section id="view-welcome" class="view view--active">
       <div class="mode-page">
         <div class="mode-container">
@@ -18,7 +17,6 @@
           </p>
 
           <div class="mode-grid">
-            <!-- DJ SET -->
             <div
               class="mode-card"
               data-mode="dj"
@@ -32,7 +30,6 @@
                 <h2>DJ set</h2>
                 <p>Per serate con uno o più DJ, mashup e remix.</p>
 
-                <!-- Conferma DJ: solo tasto Invia, nessuna label -->
                 <div class="artist-input-wrapper" id="djConfirmWrapper">
                   <div class="artist-input-row">
                     <div class="artist-placeholder"></div>
@@ -42,7 +39,6 @@
               </div>
             </div>
 
-            <!-- LIVE BAND -->
             <div
               class="mode-card"
               data-mode="band"
@@ -56,7 +52,6 @@
                 <h2>Live band</h2>
                 <p>Per band con strumenti dal vivo e voce.</p>
 
-                <!-- Input artista (opzionale), grafica come concerto -->
                 <div class="artist-input-wrapper" id="bandArtistWrapper">
                   <label for="bandArtistInput">Nome artista (opzionale)</label>
                   <div class="artist-input-row">
@@ -72,7 +67,6 @@
               </div>
             </div>
 
-            <!-- CONCERTO -->
             <div
               class="mode-card mode-card-concerto"
               data-mode="concert"
@@ -86,7 +80,6 @@
                 <h2>Concerto</h2>
                 <p>Per le date di un tour o concerti singoli.</p>
 
-                <!-- Input artista obbligatorio -->
                 <div class="artist-input-wrapper" id="artistInputWrapper">
                   <label for="artistInput">Nome artista</label>
                   <div class="artist-input-row">
@@ -107,10 +100,8 @@
       </div>
     </section>
 
-    <!-- FACCIATA 2: SESSION -->
     <section id="view-session" class="view">
       <div class="session-grid">
-        <!-- Card con titolo sessione e controlli -->
         <section class="card session-panel">
           <div class="left">
             <h2>Sessione</h2>
@@ -121,15 +112,21 @@
               <span id="session-timer">00:00</span>
             </div>
           </div>
+          
           <div class="controls">
-            <button id="btn-session-start" class="btn btn--primary">Start</button>
-            <button id="btn-session-pause" class="btn" disabled>Pause</button>
-            <button id="btn-session-stop" class="btn" disabled>Stop</button>
-            <button id="btn-session-reset" class="btn">Reset</button>
+            {% if not viewer_mode %}
+              <button id="btn-session-start" class="btn btn--primary">Start</button>
+              <button id="btn-session-pause" class="btn" disabled>Pause</button>
+              <button id="btn-session-stop" class="btn" disabled>Stop</button>
+              <button id="btn-session-reset" class="btn">Reset</button>
+              <button id="btn-show-qr" class="btn" style="margin-left: 10px;">📱 Share QR</button>
+            {% else %}
+              <span class="badge" style="background: #7c3aed; color: white;">Modalità Spettatore</span>
+            {% endif %}
           </div>
+          
         </section>
 
-        <!-- Card log live -->
         <section class="card log-card">
           <h3>Log live</h3>
           <div class="log-head">
@@ -142,13 +139,11 @@
         </section>
       </div>
 
-      <!-- Visualizer a quadratini FULL WIDTH -->
       <section class="visualizer-strip">
         <div id="visualizer" class="visualizer-grid" aria-hidden="true"></div>
       </section>
     </section>
 
-    <!-- FACCIATA 3: REVIEW -->
     <section id="view-review" class="view">
       <header class="hero hero--small">
         <h2>Review borderò</h2>
@@ -183,15 +178,16 @@
         </div>
 
         <div class="actions">
-          <button id="btn-undo" class="btn btn--small" disabled>Undo</button>
-          <button id="btn-generate" class="btn btn--primary" disabled>
-            Generate
-          </button>
+          {% if not viewer_mode %}
+            <button id="btn-undo" class="btn btn--small" disabled>Undo</button>
+            <button id="btn-generate" class="btn btn--primary" disabled>
+              Generate
+            </button>
+          {% endif %}
         </div>
       </div>
     </section>
 
-    <!-- MODAL DI CONFERMA GENERICA -->
     <div id="confirm-modal" class="modal modal--hidden">
       <div class="modal-backdrop"></div>
       <div class="modal-dialog card">
@@ -204,6 +200,7 @@
         </div>
       </div>
     </div>
+
     <div id="restore-modal" class="modal modal--hidden">
       <div class="modal-backdrop"></div>
       <div class="modal-dialog card">
@@ -219,6 +216,23 @@
         </div>
       </div>
     </div>
+
+    <div id="qr-modal" class="modal modal--hidden">
+      <div class="modal-backdrop"></div>
+      <div class="modal-dialog card" style="max-width: 360px;">
+        <h3>Scansiona per seguire Live</h3>
+        <p class="modal-message">
+          Inquadra questo QR code per vedere la lista brani in tempo reale dal tuo smartphone.
+        </p>
+        <div style="background: white; padding: 10px; border-radius: 8px; margin: 10px auto; width: fit-content;">
+            <img id="qr-image" src="" alt="QR Code" style="display: block; width: 200px; height: 200px;" />
+        </div>
+        <div class="modal-actions" style="justify-content: center;">
+          <button id="qr-close" class="btn btn--small">Chiudi</button>
+        </div>
+      </div>
+    </div>
+
   </main>
 
   <script src="{{ url_for('static', filename='script.js') }}" defer></script>
