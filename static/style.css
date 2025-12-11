@@ -1,66 +1,1011 @@
+:root {
+  --bg: #0b0c10;
+  --panel: #12151a;
+  --text: #e6eef8;
+  --muted: #9fb0c2;
+  --border: #1f242d;
+  --primary: #7c3aed;
+}
+
+/* RESET BASE */
+* {
+  box-sizing: border-box;
+}
+
+html,
 body {
-    background-color: #121212;
-    color: #e0e0e0;
-    font-family: sans-serif;
-    margin: 0;
-    padding: 20px;
+  height: 100%;
 }
 
-.container {
-    max-width: 800px;
-    margin: 0 auto;
+body {
+  margin: 0;
+  font-family: "Arial", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  background: linear-gradient(180deg, #0b0c10, #0e1116);
+  color: var(--text);
 }
 
-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    border-bottom: 1px solid #333;
-    padding-bottom: 20px;
-}
-
-.status-box {
-    padding: 10px 20px;
-    border-radius: 5px;
-    font-weight: bold;
-}
-.recording { background-color: #d32f2f; color: white; animation: pulse 2s infinite;}
-.idle { background-color: #333; color: #aaa; }
-.error { background-color: #f57c00; color: black; }
-
-.controls { margin: 20px 0; display: flex; gap: 10px; }
-
+/* tutti i bottoni usano lo stesso font dell'app */
 button {
-    padding: 15px 30px;
-    font-size: 16px;
-    cursor: pointer;
-    border: none;
-    border-radius: 5px;
-    background-color: #1976d2;
-    color: white;
+  font-family: inherit;
 }
-button:disabled { background-color: #444; cursor: not-allowed; }
-#btn-stop { background-color: #d32f2f; }
 
-table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-th, td { padding: 12px; text-align: left; border-bottom: 1px solid #333; }
-th { background-color: #1e1e1e; color: #888; }
+/* no scroll per welcome + session + review */
+body.no-scroll {
+  overflow: hidden;
+}
 
+#app {
+  max-width: 960px;
+  margin: 0 auto;
+  /* di base niente padding gigante in fondo */
+  padding: 24px 16px 24px;
+}
+
+/* padding extra solo quando c'è il visualizer (sessione) */
+body.has-visualizer #app {
+  padding-bottom: 260px; /* ≈ altezza visualizer */
+}
+
+/* UTILITY */
+.hidden {
+  display: none !important;
+}
+
+/* VIEWS */
+.view {
+  display: none;
+}
+
+.view.view--active {
+  display: block;
+}
+
+/* HERO / TITOLI */
+.hero {
+  margin-bottom: 24px;
+}
+
+.hero--small {
+  margin-bottom: 12px;
+}
+
+.hero h1,
+.hero h2 {
+  margin: 0 0 4px;
+}
+
+.subtitle {
+  margin: 0;
+  color: var(--muted);
+}
+
+/* Card-hero in review */
+#view-review .hero.hero--small {
+  padding: 16px 18px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.4);
+  background: var(--panel);
+}
+
+/* CARD GENERICA */
+.card {
+  background: var(--panel);
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  padding: 16px 18px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.4);
+}
+
+/* BUTTONS */
+.btn {
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  padding: 6px 14px;
+  font-size: 0.95rem;
+  background: #111827;
+  color: var(--text);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition:
+    transform 0.1s ease,
+    box-shadow 0.1s ease,
+    background 0.1s ease;
+}
+
+.btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
+}
+
+.btn--primary {
+  background: linear-gradient(135deg, #7c3aed, #5eead4);
+  border: none;
+  color: #0b0c10;
+  font-weight: 600;
+}
+
+.btn--small {
+  padding: 4px 10px;
+  font-size: 0.85rem;
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* BADGE / METADATI */
 .badge {
-    background-color: #333;
-    padding: 4px 8px;
-    border-radius: 4px;
-    font-size: 12px;
+  display: inline-block;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 0.9rem;
 }
 
-.btn-delete {
-    background: none;
-    padding: 5px;
-    font-size: 18px;
+/* === FACCIATA 1: SELEZIONE MODALITÀ === */
+
+.mode-page {
+  width: 100%;
+  padding: 24px;
 }
 
-@keyframes pulse {
-    0% { opacity: 1; }
-    50% { opacity: 0.5; }
-    100% { opacity: 1; }
+.mode-container {
+  max-width: 1100px;
+  margin: 0 auto;
+  text-align: center;
+}
+
+.app-title {
+  font-size: 2.1rem;
+  margin-bottom: 0.5rem;
+}
+
+.app-subtitle {
+  font-size: 0.95rem;
+  color: #c7c7e0;
+  margin-bottom: 2.5rem;
+}
+
+.mode-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1.5rem;
+}
+
+/* card modalità: alte abbastanza per contenere SEMPRE il blocco artista */
+.mode-card {
+  position: relative;
+  overflow: hidden;
+  border-radius: 18px;
+  cursor: pointer;
+  min-height: 280px;
+  outline: none;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35);
+  transform: translateY(0);
+  transition:
+    transform 0.25s ease,
+    box-shadow 0.25s ease,
+    outline 0.15s ease;
+  will-change: transform;
+}
+
+.mode-bg {
+  position: absolute;
+  inset: 0;
+  background-size: cover;
+  background-position: center;
+  filter: grayscale(0.1) brightness(0.65);
+  transform: scale(1.02);
+  transition:
+    filter 0.25s ease,
+    transform 0.25s ease;
+  border-radius: inherit;
+}
+
+.mode-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    145deg,
+    rgba(5, 5, 15, 0.92),
+    rgba(88, 80, 180, 0.8)
+  );
+  mix-blend-mode: multiply;
+  transition: opacity 0.25s ease;
+  border-radius: inherit;
+}
+
+.mode-content {
+  position: relative;
+  z-index: 1;
+  padding: 1.4rem 1.5rem;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  /* justify-content rimosso per usare il text-group flex 1 */
+  height: 100%;
+}
+
+/* === NUOVO: Gruppo testo che spinge il wrapper in basso === */
+.mode-text-group {
+  flex: 1;
+}
+
+.mode-content h2 {
+  font-size: 1.3rem;
+  margin-bottom: 0.35rem;
+}
+
+.mode-content p {
+  font-size: 0.9rem;
+  color: #d6d6f0;
+}
+
+.mode-card:hover,
+.mode-card:focus-visible {
+  transform: translateY(-8px);
+  box-shadow: 0 22px 50px rgba(0, 0, 0, 0.55);
+}
+
+.mode-card:hover .mode-bg,
+.mode-card:focus-visible .mode-bg {
+  filter: grayscale(0) brightness(0.9);
+  transform: scale(1.06);
+}
+
+.mode-card:hover .mode-overlay,
+.mode-card:focus-visible .mode-overlay {
+  opacity: 0.5;
+}
+
+.mode-card:focus-visible {
+  outline: 2px solid #f4bfff;
+}
+
+.bg-dj {
+  background-image: radial-gradient(circle at 20% 0%, #ff8a00, #1b0033);
+}
+
+.bg-live {
+  background-image: radial-gradient(circle at 80% 0%, #00ffc3, #002b36);
+}
+
+.bg-concerto {
+  background-image: radial-gradient(circle at 50% 100%, #ff3f6a, #1a0030);
+}
+
+.mode-card.mode-card--selected {
+  outline: 2px solid #f4bfff;
+}
+
+.mode-card-concerto.active {
+  outline: 2px solid #ff8ad4;
+}
+
+/* === MODIFICA: Wrapper con altezza fissa e allineamento === */
+.artist-input-wrapper {
+  margin-top: 1rem;
+  padding-top: 0.8rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.18);
+  display: none;
+  
+  /* Altezza fissa per accomodare il contenuto più alto (concerto) */
+  min-height: 95px;
+  flex-direction: column;
+  justify-content: flex-end; /* Allinea contenuto in basso */
+}
+
+/* Quando visibile diventa flex, non block */
+.artist-input-wrapper.visible {
+  display: flex;
+}
+
+.artist-input-wrapper label {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #f6d7ff;
+  display: inline-block;
+  margin-bottom: 0.35rem;
+}
+
+.artist-input-row {
+  display: flex;
+  gap: 0.6rem;
+  align-items: stretch;
+}
+
+#artistInput,
+#bandArtistInput {
+  flex: 1 1 auto;
+  min-width: 0;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  background: rgba(8, 8, 25, 0.85);
+  padding: 0.5rem 0.9rem;
+  color: #ffffff;
+  font-size: 0.9rem;
+}
+
+#artistInput::placeholder,
+#bandArtistInput::placeholder {
+  color: #a9a9d8;
+}
+
+#artistInput:focus,
+#bandArtistInput:focus {
+  outline: none;
+  border-color: #ffbfea;
+  box-shadow: 0 0 0 1px rgba(255, 191, 234, 0.6);
+}
+
+.artist-placeholder {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+#artistConfirmBtn,
+#bandConfirmBtn,
+#djConfirmBtn {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  border: none;
+  padding: 0.45rem 0.9rem;
+  min-height: 38px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  width: 110px;
+  text-align: center;
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.15s ease,
+    filter 0.15s ease;
+}
+
+/* Gradiente coerente con le card in facciata 1 */
+#djConfirmBtn {
+  background: linear-gradient(135deg, #ff8a00, #ffca4d);
+  color: #140616;
+}
+
+#bandConfirmBtn {
+  background: linear-gradient(135deg, #00ffc3, #007c9f);
+  color: #021315;
+}
+
+#artistConfirmBtn {
+  background: linear-gradient(135deg, #ff3f6a, #ff9ad7);
+  color: #21021e;
+}
+
+#artistConfirmBtn:hover,
+#bandConfirmBtn:hover,
+#djConfirmBtn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
+  filter: brightness(1.05);
+}
+
+#artistConfirmBtn:active,
+#bandConfirmBtn:active,
+#djConfirmBtn:active {
+  transform: translateY(1px);
+  box-shadow: none;
+}
+
+.artist-error {
+  margin-top: 0.3rem;
+  font-size: 0.8rem;
+  color: #ffc7d5;
+}
+
+@media (max-width: 880px) {
+  .mode-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .mode-card {
+    min-height: 240px;
+  }
+
+  .mode-content {
+    padding: 1.3rem 1.3rem 1.4rem;
+  }
+}
+
+/* === FACCIATA 2: SESSIONE === */
+
+#view-session.view--active {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: calc(100vh - 48px);
+}
+
+.session-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+}
+
+.session-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.session-panel .meta {
+  color: var(--muted);
+  margin-top: 4px;
+}
+
+.session-panel .left {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* Tasti Start / Pause / Stop / Reset: stessa dimensione */
+.session-panel .controls {
+  display: flex;
+  gap: 8px;
+}
+
+.session-panel .controls .btn {
+  width: 110px; /* tutti uguali in larghezza */
+  justify-content: center;
+}
+
+.log-card {
+  display: flex;
+  flex-direction: column;
+  height: 280px;
+}
+
+/* Header log live + tasto Note (page 2) */
+.log-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.log-header-row h3 {
+  margin: 0;
+}
+
+.log-head,
+.log-row {
+  display: grid;
+  /* # | Brano | Compositore | Artista */
+  grid-template-columns: 0.3fr 2fr 1.8fr 1.5fr;
+  gap: 8px;
+  font-size: 0.9rem;
+}
+
+.log-head {
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 6px;
+  color: var(--muted);
+}
+
+/* Header "#" allineato all'inizio della card */
+.log-head span:first-child {
+  text-align: left;
+}
+
+/* Indici numerici delle righe possono restare a destra */
+.log-row .col-index {
+  text-align: right;
+}
+
+.log-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow: auto;
+}
+
+.log-row .status-ok {
+  color: #22c55e;
+}
+
+.log-row .status-same {
+  color: #9fb0c2;
+}
+
+.log-row .status-new {
+  color: #eab308;
+}
+
+.visualizer-strip {
+  position: fixed;
+  left: 50%;
+  bottom: 0;
+  transform: translateX(-50%);
+  width: 100vw;
+  margin: 0;
+  padding: 0;
+  z-index: 5;
+  opacity: 0.75;
+  pointer-events: none;
+}
+
+.visualizer-grid {
+  display: flex;
+  width: 100%;
+  gap: 2px;
+  height: 220px;
+  align-items: flex-end;
+  overflow: hidden;
+}
+
+.vis-col {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 2px;
+}
+
+.vis-cell {
+  width: 100%;
+  height: 10px;
+  border-radius: 2px;
+  background: #05070d;
+  opacity: 0.12;
+  transition:
+    opacity 0.4s ease,
+    background 0.4s ease,
+    transform 0.2s ease;
+}
+
+.vis-cell.active {
+  opacity: 0.85;
+  background: linear-gradient(
+    180deg,
+    rgba(124, 58, 237, 0.05),
+    rgba(124, 58, 237, 0.55),
+    rgba(94, 234, 212, 0.95)
+  );
+  transform: translateY(-1px);
+}
+
+@media (max-width: 900px) {
+  #view-session.view--active {
+    min-height: auto;
+  }
+
+  .session-panel {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .controls {
+    width: 100%;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    display: flex;
+    gap: 8px;
+  }
+}
+
+/* === FACCIATA 3: REVIEW E TABELLE === */
+
+.review-card {
+  display: flex;
+  flex-direction: column;
+  height: 460px;
+}
+
+/* Titolo + tasto Note in alto a destra */
+.review-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.review-header-row h3 {
+  margin: 0;
+}
+
+.review-table {
+  margin-top: 12px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.review-rows-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+/* === FACCIATA 3: REVIEW === */
+
+.review-card {
+  display: flex;
+  flex-direction: column;
+  height: 460px; /* come se contenesse ~8 righe */
+}
+
+.review-table {
+  margin-top: 12px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.review-rows-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+/* Tabelle */
+.table {
+  margin-top: 12px;
+}
+
+.row {
+  display: grid;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+/* struttura 4 colonne: # | Compositore | Titolo | Azioni */
+.review-table .row {
+  grid-template-columns: 0.2fr 1.5fr 1.3fr 300px;
+}
+
+/* INTESTAZIONI */
+.row--head {
+  font-size: 0.9rem;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+/* padding sinistro per allineare al testo degli input */
+.row--head span {
+  padding-left: 9px;
+  text-align: left !important;
+}
+
+/* Titolo (3a colonna) */
+.review-table .row--head span:nth-child(3) {
+  padding-left: 10px !important;
+  text-align: left !important;
+  justify-self: start !important;
+}
+
+/* Azioni (4a colonna) */
+.review-table .row--head span:nth-child(4) {
+  text-align: left !important;
+  justify-self: start !important;
+  padding-left: 0 !important;
+}
+
+/* Colonna bottoni (dentro le righe dati) */
+.review-table .row .tools {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-start;
+  flex-wrap: nowrap;
+}
+
+/* Bottoni piccoli in review leggermente compattati */
+.review-table .row .tools .btn.btn--small {
+  padding: 3px 8px;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.actions {
+  margin-top: 14px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+input.inline {
+  width: 100%;
+  background: #0d1117;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 8px;
+  font-size: 0.9rem;
+}
+
+.row.row--confirmed input.inline {
+  border-style: solid;
+  border-color: #22c55e; /* override dal tema sotto */
+}
+
+/* SCROLLBAR */
+.log-body::-webkit-scrollbar,
+.review-rows-body::-webkit-scrollbar,
+body::-webkit-scrollbar {
+  width: 8px;
+}
+
+.log-body::-webkit-scrollbar-thumb,
+.review-rows-body::-webkit-scrollbar-thumb,
+body::-webkit-scrollbar-thumb {
+  background: #111827;
+  border-radius: 999px;
+}
+
+/* MODAL */
+.modal {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal--hidden {
+  display: none;
+}
+
+.modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+}
+
+.modal-dialog {
+  position: relative;
+  min-width: 260px;
+  max-width: 420px;
+  text-align: center;
+}
+
+.modal-message {
+  margin: 4px 0 16px;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+/* >>> bottoni Annulla / Ok stessa size */
+.modal-actions .btn {
+  min-width: 96px;
+  justify-content: center;
+}
+
+/* Ok mantiene il gradiente ma NON è in grassetto */
+#confirm-ok {
+  font-weight: 500;
+  text-transform: none;
+}
+
+/* TEMA */
+#app.theme-dj .btn--primary {
+  background: linear-gradient(135deg, #ff8a00, #ffca4d);
+  color: #140616;
+}
+
+#app.theme-dj .vis-cell.active {
+  background: linear-gradient(
+    180deg,
+    rgba(255, 138, 0, 0),
+    rgba(255, 138, 0, 0.45),
+    rgba(255, 202, 77, 0.85)
+  );
+}
+
+#app.theme-dj .row.row--confirmed input.inline {
+  border-color: #ff8a00;
+}
+
+#app.theme-dj .session-panel,
+#app.theme-dj #view-review .hero.hero--small {
+  background-image:
+    linear-gradient(
+      90deg,
+      rgba(0, 0, 0, 0.4),
+      rgba(0, 0, 0, 0.05) 55%,
+      rgba(0, 0, 0, 0) 100%
+    ),
+    radial-gradient(circle at 20% 0%, #ff8a00, #1b0033);
+  border-color: #ff8a00;
+}
+
+#app.theme-band .btn--primary {
+  background: linear-gradient(135deg, #00ffc3, #007c9f);
+  color: #021315;
+}
+
+#app.theme-band .vis-cell.active {
+  background: linear-gradient(
+    180deg,
+    rgba(0, 255, 195, 0),
+    rgba(0, 255, 195, 0.5),
+    rgba(0, 124, 159, 0.85)
+  );
+}
+
+#app.theme-band .row.row--confirmed input.inline {
+  border-color: #00ffc3;
+}
+
+#app.theme-band .session-panel {
+  background-image: radial-gradient(circle at 80% 0%, #00ffc3, #003848);
+  border-color: #00ffc3;
+}
+
+#app.theme-band #view-review .hero.hero--small {
+  background-image: radial-gradient(circle at 80% 0%, #00ffc3, #003848);
+  border-color: #00ffc3;
+}
+
+#app.theme-concert .btn--primary {
+  background: linear-gradient(135deg, #ff3f6a, #ff9ad7);
+  color: #21021e;
+}
+
+#app.theme-concert .vis-cell.active {
+  background: linear-gradient(
+    180deg,
+    rgba(255, 63, 106, 0),
+    rgba(255, 63, 106, 0.5),
+    rgba(255, 154, 215, 0.9)
+  );
+}
+
+#app.theme-concert .row.row--confirmed input.inline {
+  border-color: #ff3f6a;
+}
+
+#app.theme-concert .session-panel {
+  background-image: radial-gradient(circle at 50% 100%, #ff3f6a, #1a0030);
+  border-color: #ff3f6a;
+}
+
+#app.theme-concert #view-review .hero.hero--small {
+  background-image: radial-gradient(circle at 50% 100%, #ff3f6a, #1a0030);
+  border-color: #ff3f6a;
+}
+
+/* === TOOLTIP SU BOTTONI CON data-tooltip === */
+
+.btn[data-tooltip] {
+  position: relative;
+}
+
+.btn[data-tooltip]::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 8px);
+  transform: translateX(-50%);
+  white-space: nowrap;
+  max-width: none;
+  padding: 6px 8px;
+  border-radius: 8px;
+  font-size: 0.75rem;
+  line-height: 1.3;
+  background: rgba(15, 23, 42, 0.95);
+  color: var(--text);
+  border: 1px solid var(--border);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  z-index: 50;
+}
+
+.btn[data-tooltip]::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: 100%;
+  transform: translateX(-50%);
+  border-width: 6px;
+  border-style: solid;
+  border-color: transparent transparent rgba(15, 23, 42, 0.95) transparent;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  z-index: 50;
+}
+
+.btn[data-tooltip]:hover::after,
+.btn[data-tooltip]:focus-visible::after {
+  opacity: 1;
+  transform: translateX(-50%) translateY(-2px);
+}
+
+.btn[data-tooltip]:hover::before,
+.btn[data-tooltip]:focus-visible::before {
+  opacity: 1;
+}
+
+/* === NOTE SESSIONE === */
+
+#notes-textarea {
+  width: 100%;
+  min-height: 120px;
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: #0d1117;
+  color: var(--text);
+  resize: vertical;
+  font-family: inherit;
+  font-size: 0.9rem;
+}
+
+/* Box note in review: nascosto, solo mirror testo */
+.review-notes {
+  display: none;
+  margin-top: 10px;
+  margin-bottom: 8px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px dashed var(--border);
+  background: rgba(15, 23, 42, 0.7);
+}
+
+.review-notes h4 {
+  margin: 0 0 4px;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.review-notes-text {
+  margin: 0;
+  font-size: 0.9rem;
+  white-space: pre-wrap;
+}
+
+/* --- TASTI NOTE (page 2 + page 3) --- */
+
+#btn-session-notes,
+#btn-review-notes {
+  font-weight: 600;
+  border: none;
+}
+
+/* Gradiente pieno per entrambi i tasti Note, in base alla modalità */
+#app.theme-dj #btn-session-notes,
+#app.theme-dj #btn-review-notes {
+  background: linear-gradient(135deg, #ff8a00, #ffca4d);
+  color: #140616;
+}
+
+#app.theme-band #btn-session-notes,
+#app.theme-band #btn-review-notes {
+  background: linear-gradient(135deg, #00ffc3, #007c9f);
+  color: #021315;
+}
+
+#app.theme-concert #btn-session-notes,
+#app.theme-concert #btn-review-notes {
+  background: linear-gradient(135deg, #ff3f6a, #ff9ad7);
+  color: #21021e;
 }
