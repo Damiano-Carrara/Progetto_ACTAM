@@ -356,16 +356,14 @@ class AudioManager:
                         artist_name = self._get_artist_name(t)
                         applied_bonus = 0
                         
+                        # --- LOGICA BIAS ESISTENTE ---
                         if bias_artist:
-                             # Bias Matching: Usa normalizzazione GENTILE (tiene i feat)
                              bias_norm_str = self._normalize_for_match(bias_artist)
                              bias_tokens = set(bias_norm_str.split())
                              
                              def check_match_smart(text_to_check):
                                  if not text_to_check: return False
-                                 # Matching GENTILE
                                  text_norm = self._normalize_for_match(text_to_check)
-                                 
                                  if bias_norm_str in text_norm: return True
                                  target_tokens = set(text_norm.split())
                                  if bias_tokens.issubset(target_tokens): return True
@@ -383,13 +381,28 @@ class AudioManager:
 
                              if not is_match and 'external_metadata' in t:
                                  ext_meta_dump = json.dumps(t['external_metadata'])
-                                 # Anche qui gentile, altrimenti non troviamo i feat nel dump
                                  if self._normalize_for_match(bias_artist) in self._normalize_for_match(ext_meta_dump):
                                      is_match = True
 
                              if is_match:
                                 applied_bonus = current_bonus_val
                                 final_score += applied_bonus
+
+                        # ============================================================
+                        # [NUOVO] FILTRO ANTI "ID" / TITOLI GENERICI
+                        # ============================================================
+                        # Pulisce titolo da (Live), (Remix) per vedere se la "base" è solo ID
+                        # Esempio: "ID (Live at Tomorrowland)" diventa "id"
+                        clean_check = re.sub(r"[\(\[].*?[\)\]]", "", title)
+                        clean_check = re.sub(r"(?i)\b(feat\.|ft\.|remix|edit|version|live|mixed|vip)\b.*", "", clean_check)
+                        clean_check = re.sub(r"[^a-zA-Z0-9]", "", clean_check).lower().strip()
+
+                        # Regex: Cattura "id", "id1", "id23", "track1", "track05"
+                        if re.match(r"^(id|track)\d*$", clean_check):
+                            penalty = final_score * 0.30  # Calcolo il 30%
+                            final_score -= penalty        # Sottraggo
+                            print(f"📉 PENALITÀ GENERIC ID: '{title}' -> Score abbattuto del 30% ({int(final_score + penalty)}% -> {int(final_score)}%)")
+                        # ============================================================
 
                         if final_score >= threshold:
                             if raw_score < threshold:
@@ -410,7 +423,9 @@ class AudioManager:
                             })
                         else:
                             bias_msg = f" (Bias fallito)" if bias_artist and applied_bonus == 0 else ""
-                            print(f"📉 SCARTATO: '{title}' - Score: {final_score}%{bias_msg}")
+                            # Aggiungiamo info log se è stato scartato per colpa dell'ID check
+                            reason = " (ID Penalty)" if re.match(r"^(id|track)\d*$", clean_check) else ""
+                            print(f"📉 SCARTATO: '{title}' - Score: {final_score}%{bias_msg}{reason}")
 
                 if 'music' in metadata:
                     process_section(metadata['music'], THRESHOLD_MUSIC, "Original")
