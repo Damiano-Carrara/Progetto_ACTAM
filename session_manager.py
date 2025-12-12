@@ -55,7 +55,7 @@ class SessionManager:
                 
                 # CASO 2: Match Esatto
                 if clean_new_title == clean_ex_title and clean_new_artist == clean_ex_artist:
-                     return {"added": False, "reason": "Duplicate (Exact match)", "song": existing_song}
+                    return {"added": False, "reason": "Duplicate (Exact match)", "song": existing_song}
 
             # --- PREPARAZIONE DATI (Modificata per Async) ---
             track_key = f"{title} - {artist}".lower()
@@ -80,7 +80,7 @@ class SessionManager:
                 "id": self._next_id, 
                 "title": title,
                 "artist": artist, 
-                "composer": composer_name,     
+                "composer": composer_name,       
                 "album": song_data.get('album', 'Sconosciuto'),
                 "timestamp": datetime.now().strftime("%H:%M:%S"),
                 "duration_ms": song_data.get('duration_ms', 0),
@@ -90,7 +90,13 @@ class SessionManager:
                 "upc": upc,
                 # Salviamo i dati grezzi per il thread di background (nascosti all'utente)
                 "_raw_isrc": isrc,
-                "_raw_upc": upc
+                "_raw_upc": upc,
+                "confirmed": False,  # Default: non confermato
+
+                # snapshot originale per il PDF di log
+                "original_title": title,
+                "original_artist": artist,
+                "original_composer": composer_name,
             }
 
             self.playlist.append(new_entry) 
@@ -106,6 +112,58 @@ class SessionManager:
 
             print(f"✅ Aggiunto (Async): {title}")
             return {"added": True, "song": new_entry}
+
+    def update_song(self, song_id, data):
+        """
+        Aggiorna un brano esistente o ne crea uno nuovo (se manuale).
+        Segna il brano come CONFERMATO.
+        """
+        with self.lock:
+            # CASO 1: Aggiornamento brano esistente
+            if song_id is not None:
+                try:
+                    song_id_int = int(song_id)
+                    for song in self.playlist:
+                        if song['id'] == song_id_int:
+                            song['title'] = data.get('title', song['title'])
+                            song['composer'] = data.get('composer', song['composer'])
+                            # Se l'artista è vuoto nel data, mantieni quello vecchio
+                            if data.get('artist'):
+                                song['artist'] = data.get('artist')
+                            
+                            song['confirmed'] = True  # IMPORTANTE: Segniamo come confermato
+                            print(f"✏️ Aggiornato ID {song_id_int}: {song['title']}")
+                            return {"status": "updated", "id": song_id_int}
+                except ValueError:
+                    pass
+                return {"status": "error", "message": "ID non trovato"}
+
+            # CASO 2: Creazione nuovo brano manuale
+            else:
+                new_entry = {
+                    "id": self._next_id,
+                    "title": data.get('title', 'Titolo Manuale'),
+                    "artist": data.get('artist', 'Artista Manuale'),
+                    "composer": data.get('composer', 'Autore Manuale'),
+                    "album": "Inserimento Manuale",
+                    "timestamp": datetime.now().strftime("%H:%M:%S"),
+                    "duration_ms": 0,
+                    "score": 100,
+                    "type": "Manual",
+                    "isrc": None,
+                    "upc": None,
+                    "confirmed": True,  # I manuali nascono confermati
+
+                    # per i manuali, originale = versione inserita
+                    "original_title": data.get('title', 'Titolo Manuale'),
+                    "original_artist": data.get('artist', 'Artista Manuale'),
+                    "original_composer": data.get('composer', 'Autore Manuale'),
+                }
+                self.playlist.append(new_entry)
+                print(f"➕ Creato manuale ID {self._next_id}: {new_entry['title']}")
+                created_id = self._next_id
+                self._next_id += 1
+                return {"status": "created", "id": created_id}
 
     def _background_enrichment(self, entry, target_artist):
         """
@@ -131,7 +189,7 @@ class SessionManager:
                 )
                 
                 success = True
-                break # Usciamo dal ciclo while se ha funzionato
+                break  # Usciamo dal ciclo while se ha funzionato
 
             except Exception as e:
                 attempts += 1
@@ -146,20 +204,23 @@ class SessionManager:
                     found_composer = "Errore Conn."
 
         # --- FASE DI AGGIORNAMENTO SICURO ---
-        # Dobbiamo riprendere il Lock per modificare la lista condivisa
         with self.lock:
             # Cerchiamo l'oggetto originale nella lista tramite ID
-            # (Non usiamo 'entry' direttamente perché la lista potrebbe essere cambiata)
             target_song = next((s for s in self.playlist if s['id'] == entry['id']), None)
             
             if target_song:
-                target_song['composer'] = found_composer
-                print(f"📝 [Thread] Compositore aggiornato: {found_composer}")
-                
-                # Aggiorniamo la cache solo se abbiamo un dato valido
-                if success and found_composer not in ["Sconosciuto", "Errore Conn."]:
-                    track_key = f"{target_song['title']} - {target_song['artist']}".lower()
-                    self.known_songs_cache[track_key] = target_song.copy()
+                # Aggiorniamo solo se l'utente non ha già confermato manualmente
+                if not target_song.get('confirmed', False):
+                    target_song['composer'] = found_composer
+                    print(f"📝 [Thread] Compositore aggiornato: {found_composer}")
+
+                    # aggiorniamo anche lo snapshot originale
+                    target_song['original_composer'] = found_composer
+                    
+                    # Aggiorniamo la cache solo se abbiamo un dato valido
+                    if success and found_composer not in ["Sconosciuto", "Errore Conn."]:
+                        track_key = f"{target_song['title']} - {target_song['artist']}".lower()
+                        self.known_songs_cache[track_key] = target_song.copy()
 
     def get_playlist(self):
         # Restituisce la playlist (il frontend vedrà "⏳ Ricerca..." finché il thread non finisce)

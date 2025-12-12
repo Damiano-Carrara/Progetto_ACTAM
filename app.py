@@ -1,13 +1,16 @@
-from flask import Flask, render_template, jsonify, request
+from flask import Flask, render_template, jsonify, request, send_file
 from audio_manager import AudioManager
 from session_manager import SessionManager 
+from report_generator import ReportGenerator
 import atexit 
+from datetime import datetime
 
 app = Flask(__name__)
 
 # Inizializziamo i nostri "robot"
 audio_bot = AudioManager()
 session_bot = SessionManager()
+report_bot = ReportGenerator()
 
 @app.route('/')
 def home():
@@ -22,8 +25,6 @@ def start_recognition():
     
     print(f"🚀 Richiesta avvio monitoraggio. Bias: {target_artist}")
     
-    # Passiamo a AudioBot la funzione add_song del SessionBot come "Callback"
-    # Così quando AudioBot trova qualcosa, lo passa direttamente a SessionBot
     started = audio_bot.start_continuous_recognition(
         callback_function=session_bot.add_song,
         target_artist=target_artist
@@ -43,7 +44,6 @@ def stop_recognition():
 # --- API 3: OTTIENI LA LISTA (Per il Frontend che deve fare polling) ---
 @app.route('/api/get_playlist', methods=['GET'])
 def get_playlist():
-    # Restituisce la lista accumulata dal SessionManager
     playlist = session_bot.get_playlist()
     return jsonify({"playlist": playlist})
 
@@ -55,10 +55,74 @@ def delete_song():
         return jsonify({"status": "deleted"})
     return jsonify({"status": "error"})
 
+# --- API 5: AGGIORNA/CREA BRANO (Review) ---
+@app.route('/api/update_song', methods=['POST'])
+def update_song():
+    data = request.get_json()
+    result = session_bot.update_song(data.get('id'), data)
+    return jsonify(result)
+
+# --- API 6: GENERA REPORT EXCEL ---
+@app.route('/api/generate_report', methods=['GET'])
+def generate_report():
+    try:
+        playlist = session_bot.get_playlist()
+        excel_file = report_bot.generate_excel(playlist, metadata={"artist": "Export Borderò"})
+        filename = f"Bordero_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
+        return send_file(
+            excel_file,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            as_attachment=True,
+            download_name=filename
+        )
+    except Exception as e:
+        print(f"❌ Errore generazione report: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+# --- API 7: PDF UFFICIALE (stessi dati dell'Excel) ---
+@app.route('/api/generate_pdf_official', methods=['GET'])
+def generate_pdf_official():
+    try:
+        playlist = session_bot.get_playlist()
+        pdf_file = report_bot.generate_pdf_official(
+            playlist,
+            metadata={"artist": "Export Borderò"}
+        )
+        filename = f"Bordero_ufficiale_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf"
+        return send_file(
+            pdf_file,
+            mimetype="application/pdf",
+            as_attachment=True,
+            download_name=filename
+        )
+    except Exception as e:
+        print(f"❌ Errore generazione PDF ufficiale: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+# --- API 8: PDF LOG RICONOSCIUTO (raw) ---
+@app.route('/api/generate_pdf_raw', methods=['GET'])
+def generate_pdf_raw():
+    try:
+        playlist = session_bot.get_playlist()
+        pdf_file = report_bot.generate_pdf_raw(
+            playlist,
+            metadata={"artist": "Export Borderò"}
+        )
+        filename = f"Bordero_log_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf"
+        return send_file(
+            pdf_file,
+            mimetype="application/pdf",
+            as_attachment=True,
+            download_name=filename
+        )
+    except Exception as e:
+        print(f"❌ Errore generazione PDF raw: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
 def cleanup_on_exit():
-    audio_bot.stop_continuous_recognition()
+  audio_bot.stop_continuous_recognition()
 
 atexit.register(cleanup_on_exit)
 
 if __name__ == '__main__':
-    app.run(debug=False, use_reloader=False)
+  app.run(debug=True, use_reloader=False, host='0.0.0.0', port=5000)

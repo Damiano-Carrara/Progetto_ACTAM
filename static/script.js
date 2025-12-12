@@ -63,6 +63,41 @@ function nowHHMM() {
   return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
 }
 
+// helper per scaricare Blob (PDF, Excel, ecc.)
+async function downloadBinary(endpoint, fallbackFilename, btn) {
+  if (!btn) return;
+  const originalText = btn.textContent;
+  const originalDisabled = btn.disabled;
+
+  btn.textContent = "Scaricamento...";
+  btn.disabled = true;
+
+  try {
+    const response = await fetch(endpoint);
+    if (response.ok) {
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.style.display = "none";
+      a.href = url;
+      a.download = fallbackFilename;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      a.remove();
+    } else {
+      console.error("Errore download:", response.status);
+      alert("Errore durante la generazione del file.");
+    }
+  } catch (err) {
+    console.error("Errore fetch:", err);
+    alert("Errore di connessione.");
+  } finally {
+    btn.textContent = originalText;
+    btn.disabled = originalDisabled;
+  }
+}
+
 // --- THEME (colore coerente alla modalità) ---
 function applyTheme() {
   const app = document.getElementById("app");
@@ -89,6 +124,13 @@ function setRoute(route) {
       body.classList.add("no-scroll");
     } else {
       body.classList.remove("no-scroll");
+    }
+
+    // padding extra per visualizer
+    if (route === "session") {
+      body.classList.add("has-visualizer");
+    } else {
+      body.classList.remove("has-visualizer");
     }
   }
 }
@@ -407,14 +449,17 @@ async function pollPlaylistOnce() {
         const oldComposer = existing.composer;
         const oldArtist = existing.artist;
 
-        existing.title = song.title || existing.title;
-        existing.composer = song.composer || existing.composer;
-        existing.artist = song.artist || existing.artist;
-        existing.album = song.album || existing.album;
-        existing.type = song.type || existing.type;
-        existing.isrc = song.isrc || existing.isrc;
-        existing.upc = song.upc || existing.upc;
-        existing.ms = song.duration_ms || existing.ms;
+        // AGGIORNAMENTO DATI SOLO SE NON CONFERMATI
+        if (!existing.confirmed) {
+          existing.title = song.title || existing.title;
+          existing.composer = song.composer || existing.composer;
+          existing.artist = song.artist || existing.artist;
+          existing.album = song.album || existing.album;
+          existing.type = song.type || existing.type;
+          existing.isrc = song.isrc || existing.isrc;
+          existing.upc = song.upc || existing.upc;
+          existing.ms = song.duration_ms || existing.ms;
+        }
 
         const composerChanged = existing.composer !== oldComposer;
         const artistChanged = existing.artist !== oldArtist;
@@ -449,9 +494,18 @@ async function pollPlaylistOnce() {
 
     lastMaxSongId = maxIdSeen;
 
-    // se siamo in review, aggiorna tabella
-    if (updatedExisting && state.route === "review") {
-      renderReview();
+    // === GESTIONE SMART UPDATE PER LA REVIEW (FIX UX) ===
+    if (state.route === "review") {
+      const currentRenderedRows = document.querySelectorAll(".review-rows-body .row").length;
+        
+      // Se il numero di righe è diverso (nuovi brani o cancellazioni remote), ridisegna tutto
+      if (songs.length !== currentRenderedRows) {
+        renderReview();
+      } 
+      // Se il numero è uguale ma ci sono aggiornamenti di testo, usa il Soft Sync
+      else if (updatedExisting) {
+        syncReviewRowValues();
+      }
     }
   } catch (err) {
     console.error("Errore nel polling playlist:", err);
@@ -710,6 +764,34 @@ function showConfirm(message) {
   });
 }
 
+// --- SOFT SYNC FUNCTION (NUOVA PER EVITARE FOCUS LOSS) ---
+function syncReviewRowValues() {
+  if (state.route !== "review") return;
+  
+  const rows = document.querySelectorAll(".review-rows-body .row");
+  rows.forEach(row => {
+    const id = parseInt(row.dataset.id);
+    if (!id) return;
+    const song = songs.find(s => s.id === id);
+    if (!song) return;
+    
+    const inputComposer = row.querySelector('[data-field="composer"]');
+    const inputTitle = row.querySelector('[data-field="title"]');
+    
+    // Aggiorna solo se diverso e se NON ha il focus (per evitare che salti il cursore)
+    if (inputComposer && inputComposer.value !== song.composer && document.activeElement !== inputComposer) {
+      inputComposer.value = song.composer || "";
+      // Flash visivo leggero per indicare aggiornamento
+      inputComposer.style.transition = "background-color 0.3s";
+      inputComposer.style.backgroundColor = "#2d3748";
+      setTimeout(() => inputComposer.style.backgroundColor = "", 300);
+    }
+    if (inputTitle && inputTitle.value !== song.title && document.activeElement !== inputTitle) {
+      inputTitle.value = song.title || "";
+    }
+  });
+}
+
 // --- REVIEW ---
 function renderReview() {
   const container = $("#review-rows");
@@ -726,6 +808,10 @@ function renderReview() {
     }
 
     const node = template.content.firstElementChild.cloneNode(true);
+    // AGGIUNTO ID PER IL SOFT SYNC
+    if (song.id) {
+      node.dataset.id = song.id;
+    }
 
     const indexSpan = node.querySelector(".review-index");
     const inputComposer = node.querySelector('[data-field="composer"]');
@@ -742,14 +828,15 @@ function renderReview() {
     inputComposer.value = song.composer || "";
     inputTitle.value = song.title || "";
 
-    inputComposer.readOnly = true;
-    inputTitle.readOnly = true;
+    // ReadOnly dipende dallo stato confirmed
+    inputComposer.readOnly = song.confirmed;
+    inputTitle.readOnly = song.confirmed;
 
     if (song.confirmed) {
       node.classList.add("row--confirmed");
     }
 
-    // MODIFICA
+    // EDIT
     btnEdit.addEventListener("click", (e) => {
       e.preventDefault();
       inputComposer.readOnly = false;
@@ -760,19 +847,64 @@ function renderReview() {
       inputTitle.focus();
     });
 
-    // CONFERMA
-    btnConfirm.addEventListener("click", (e) => {
+    // --- CONFERMA CON LOGICA SERVER ---
+    btnConfirm.addEventListener("click", async (e) => {
       e.preventDefault();
-      pushUndoState();
+      
+      // Feedback visivo immediato (loading)
+      btnConfirm.textContent = "...";
+      btnConfirm.disabled = true;
 
-      song.composer = inputComposer.value || "";
-      song.title = inputTitle.value || "";
-      song.confirmed = true;
+      const updatedData = {
+        id: song.id, // Se è null, il backend ne creerà uno nuovo
+        title: inputTitle.value || "",
+        composer: inputComposer.value || "",
+        artist: song.artist || "" // Manteniamo l'artista se c'è
+      };
 
-      inputComposer.readOnly = true;
-      inputTitle.readOnly = true;
-      node.classList.add("row--confirmed");
-      updateGenerateState();
+      try {
+        const res = await fetch("/api/update_song", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(updatedData)
+        });
+
+        if (res.ok) {
+          const respData = await res.json();
+          
+          // Se era un brano manuale (nuovo), il backend ci dà il nuovo ID
+          if (!song.id && respData.id) {
+            song.id = respData.id;
+          }
+
+          // Aggiorniamo il modello locale
+          pushUndoState();
+          song.composer = updatedData.composer;
+          song.title = updatedData.title;
+          song.confirmed = true;
+
+          // Aggiorniamo la UI
+          inputComposer.readOnly = true;
+          inputTitle.readOnly = true;
+          node.classList.add("row--confirmed");
+          
+          // Se abbiamo appena salvato un brano manuale, aggiorniamo l'ID nel DOM
+          if (node.dataset.id !== String(song.id)) {
+            node.dataset.id = song.id;
+          }
+
+        } else {
+          alert("Errore nel salvataggio del brano.");
+          song.confirmed = false;
+        }
+      } catch (err) {
+        console.error("Errore update:", err);
+        alert("Errore di connessione col server.");
+      } finally {
+        btnConfirm.textContent = "Conferma";
+        btnConfirm.disabled = false;
+        updateGenerateState();
+      }
     });
 
     // DELETE
@@ -842,6 +974,18 @@ function renderReview() {
     const confirmedCount = songs.filter((s) => s.confirmed).length;
     const ok = total > 0 && confirmedCount === total;
     btnGenerate.disabled = !ok;
+
+    // PDF ufficiale: stessi vincoli dell'Excel
+    const btnPdfOfficial = $("#btn-pdf-official");
+    if (btnPdfOfficial) {
+      btnPdfOfficial.disabled = !ok;
+    }
+
+    // PDF raw: basta che ci sia almeno un brano in lista
+    const btnPdfRaw = $("#btn-pdf-raw");
+    if (btnPdfRaw) {
+      btnPdfRaw.disabled = total === 0;
+    }
   }
 
   updateGenerateState();
@@ -1099,11 +1243,71 @@ function wireSessionButtons() {
     });
   }
 
+  // === GENERAZIONE FILE EXCEL ===
   const btnGenerate = $("#btn-generate");
   if (btnGenerate) {
-    btnGenerate.addEventListener("click", (e) => {
+    btnGenerate.addEventListener("click", async (e) => {
       e.preventDefault();
-      alert("TODO: Generazione PDF / CSV");
+      
+      const originalText = btnGenerate.textContent;
+      btnGenerate.textContent = "Scaricamento...";
+      btnGenerate.disabled = true;
+
+      try {
+        const response = await fetch("/api/generate_report");
+        
+        if (response.ok) {
+          const blob = await response.blob();
+          const url = window.URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.style.display = "none";
+          a.href = url;
+          a.download = "Bordero_SIAE.xlsx";
+          document.body.appendChild(a);
+          a.click();
+          window.URL.revokeObjectURL(url);
+          a.remove();
+        } else {
+          console.error("Errore download:", response.status);
+          alert("Errore durante la generazione del file.");
+        }
+      } catch (err) {
+        console.error("Errore fetch generate:", err);
+        alert("Errore di connessione.");
+      } finally {
+        btnGenerate.textContent = originalText;
+        // Ripristina lo stato corretto del bottone in base alle canzoni
+        const total = songs.length;
+        const confirmedCount = songs.filter((s) => s.confirmed).length;
+        const ok = total > 0 && confirmedCount === total;
+        btnGenerate.disabled = !ok;
+      }
+    });
+  }
+
+  // --- PDF ufficiale (stessi dati Excel) ---
+  const btnPdfOfficial = $("#btn-pdf-official");
+  if (btnPdfOfficial) {
+    btnPdfOfficial.addEventListener("click", async (e) => {
+      e.preventDefault();
+      await downloadBinary(
+        "/api/generate_pdf_official",
+        "Bordero_ufficiale.pdf",
+        btnPdfOfficial
+      );
+    });
+  }
+
+  // --- PDF log riconosciuto (raw) ---
+  const btnPdfRaw = $("#btn-pdf-raw");
+  if (btnPdfRaw) {
+    btnPdfRaw.addEventListener("click", async (e) => {
+      e.preventDefault();
+      await downloadBinary(
+        "/api/generate_pdf_raw",
+        "Bordero_log_riconosciuto.pdf",
+        btnPdfRaw
+      );
     });
   }
 
