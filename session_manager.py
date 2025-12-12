@@ -1,38 +1,178 @@
 import threading
 import time
 import re
+import sqlite3 # <--- Dal collega
+import unicodedata # <--- Dalla tua versione
 from datetime import datetime
 from threading import Lock
 from metadata_manager import MetadataManager
+from difflib import SequenceMatcher 
 
 class SessionManager:
     def __init__(self):
+        self.db_path = "session_live.db" # <--- DB Path
         self.playlist = [] 
         self.known_songs_cache = {} 
         self.meta_bot = MetadataManager()
         self._next_id = 1 
         self.lock = Lock()
-        print("📝 Session Manager Inizializzato (Async + Retry)")
+        
+        # Inizializza il DB e ricarica sessioni precedenti (Codice Collega)
+        self._init_db()
+        self._load_session_from_db()
+        
+        print(f"📝 Session Manager Inizializzato (Accent-Insensitive + SQLite: {self.db_path})")
+
+    # --- GESTIONE DATABASE (Dal Codice del Collega) ---
+    def _init_db(self):
+        """Crea la tabella se non esiste"""
+        with sqlite3.connect(self.db_path, check_same_thread=False) as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS songs (
+                    id INTEGER PRIMARY KEY,
+                    title TEXT,
+                    artist TEXT,
+                    composer TEXT,
+                    album TEXT,
+                    timestamp TEXT,
+                    duration_ms INTEGER,
+                    score INTEGER,
+                    type TEXT,
+                    isrc TEXT,
+                    upc TEXT
+                )
+            ''')
+            conn.commit()
+
+    def _load_session_from_db(self):
+        """Ricarica la sessione precedente in caso di crash/riavvio"""
+        with sqlite3.connect(self.db_path, check_same_thread=False) as conn:
+            conn.row_factory = sqlite3.Row 
+            cursor = conn.cursor()
+            cursor.execute('SELECT * FROM songs ORDER BY id ASC')
+            rows = cursor.fetchall()
+            
+            if rows:
+                print(f"♻️ Ripristino sessione: trovati {len(rows)} brani nel database.")
+                for row in rows:
+                    song = dict(row)
+                    # Nota: _raw_meta non viene salvato nel DB, quindi al riavvio sarà vuoto.
+                    # Questo è normale per una persistenza leggera.
+                    song['_raw_meta'] = {} 
+                    self.playlist.append(song)
+                    
+                    track_key = f"{song['title']} - {song['artist']}".lower()
+                    self.known_songs_cache[track_key] = song
+                    if song['id'] >= self._next_id:
+                        self._next_id = song['id'] + 1
+            else:
+                print("🆕 Nessuna sessione precedente trovata. Parto da zero.")
+
+    def _save_song_to_db(self, song):
+        """Salva un nuovo brano nel DB"""
+        try:
+            with sqlite3.connect(self.db_path, check_same_thread=False) as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    INSERT INTO songs (id, title, artist, composer, album, timestamp, duration_ms, score, type, isrc, upc)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (
+                    song['id'], song['title'], song['artist'], song['composer'],
+                    song['album'], song['timestamp'], song['duration_ms'],
+                    song['score'], song['type'], song['isrc'], song['upc']
+                ))
+                conn.commit()
+        except Exception as e:
+            print(f"❌ Errore salvataggio DB: {e}")
+
+    def _update_composer_in_db(self, song_id, composer):
+        """Aggiorna solo il compositore di un brano esistente"""
+        try:
+            with sqlite3.connect(self.db_path, check_same_thread=False) as conn:
+                cursor = conn.cursor()
+                cursor.execute('UPDATE songs SET composer = ? WHERE id = ?', (composer, song_id))
+                conn.commit()
+        except Exception as e:
+            print(f"❌ Errore update DB: {e}")
+
+    def _delete_from_db(self, song_id):
+        """Rimuove un brano dal DB"""
+        try:
+            with sqlite3.connect(self.db_path, check_same_thread=False) as conn:
+                cursor = conn.cursor()
+                cursor.execute('DELETE FROM songs WHERE id = ?', (song_id,))
+                conn.commit()
+        except Exception as e:
+            print(f"❌ Errore delete DB: {e}")
+
+    # --- FINE GESTIONE DB ---
 
     def _normalize_string(self, text):
-        """Pulisce le stringhe per il confronto duplicati"""
+        """
+        Pulisce le stringhe (TUA VERSIONE - Più robusta).
+        """
         if not text: return ""
-        clean = re.sub(r"[\(\[].*?[\)\]]", "", text)
-        clean = re.sub(r"(?i)\b(feat\.|ft\.|remix|edit|version|karaoke|live)\b.*", "", clean)
+        
+        # 1. Rimozione parentesi
+        text = re.sub(r"[\(\[].*?[\)\]]", "", text)
+        
+        # 2. Rimozione Keyword
+        text = re.sub(r"(?i)\b(feat\.|ft\.|remix|edit|version|karaoke|live)\b.*", "", text)
+        
+        # 3. Normalizzazione Accenti (UNICODE NFD)
+        text = unicodedata.normalize('NFD', text).encode('ascii', 'ignore').decode("utf-8")
+        
+        # 4. Solo alfanumerici
+        clean = re.sub(r"[^a-zA-Z0-9\s]", "", text)
         return clean.strip().lower()
 
-    def _is_karaoke_or_cover(self, title, artist):
-        """Identifica brani palesemente fake/karaoke"""
-        keywords = ['karaoke', 'backing version', 'made popular by', 'tribute to', 'instrumental', 'cover', 'ameritz', 'party hit']
-        full_text = (title + " " + artist).lower()
-        return any(k in full_text for k in keywords)
+    def _are_songs_equivalent(self, new_s, existing_s):
+        """
+        Controlla duplicati (TUA VERSIONE - Soglie Smart & Hip-Hop Fix).
+        """
+        # 1. CONTROLLO ARTISTA
+        art_new = self._normalize_string(new_s['artist'])
+        art_ex = self._normalize_string(existing_s['artist'])
+        
+        if art_new != art_ex and art_new not in art_ex and art_ex not in art_new:
+            return False
+
+        # 2. CALCOLO SIMILARITÀ TITOLO
+        tit_new = self._normalize_string(new_s['title'])
+        tit_ex = self._normalize_string(existing_s['title'])
+        similarity = SequenceMatcher(None, tit_new, tit_ex).ratio()
+
+        # 1. SAFETY FLOOR
+        if similarity < 0.40:
+            return False
+
+        # 2. MATCH SICURO (> 0.60)
+        if similarity > 0.60: 
+            return True
+
+        # 3. ZONA CRITICA (0.40 - 0.60)
+        try:
+            dur_new = int(new_s.get('duration_ms', 0) or 0)
+            dur_ex = int(existing_s.get('duration_ms', 0) or 0)
+        except:
+            dur_new, dur_ex = 0, 0
+
+        MIN_VALID_DURATION = 30000 
+
+        if dur_new > MIN_VALID_DURATION and dur_ex > MIN_VALID_DURATION:
+            diff = abs(dur_new - dur_ex)
+            
+            # --- TUA VERSIONE: TOLLERANZA STRETTA (200ms) ---
+            tolerance = 200
+            
+            if diff < tolerance:
+                print(f"🔄 Duplicato (Zona Critica {similarity:.2f}): '{tit_new}' == '{tit_ex}' (Diff: {diff}ms)")
+                return True
+        
+        return False
 
     def add_song(self, song_data, target_artist=None):
-        """
-        Aggiunge un brano alla lista.
-        Restituisce SUBITO il controllo, avviando l'arricchimento dati in background.
-        """
-        # 1. Acquisiamo il lucchetto per leggere/scrivere la lista in sicurezza
         with self.lock:
             if song_data.get('status') != 'success':
                 return {"added": False, "reason": "No match"}
@@ -40,27 +180,18 @@ class SessionManager:
             title = song_data['title']
             artist = song_data['artist']
             
-            clean_new_title = self._normalize_string(title)
-            clean_new_artist = self._normalize_string(artist)
+            candidate_song = {
+                'title': title,
+                'artist': artist,
+                'duration_ms': song_data.get('duration_ms', 0)
+            }
 
-            # --- LOGICA DUPLICATI (Invariata) ---
             for existing_song in self.playlist[-15:]:
-                clean_ex_title = self._normalize_string(existing_song['title'])
-                clean_ex_artist = self._normalize_string(existing_song['artist'])
+                if self._are_songs_equivalent(candidate_song, existing_song):
+                    print(f"♻️ Duplicato Scartato: {title}")
+                    return {"added": False, "reason": "Duplicate (Smart Match)", "song": existing_song}
 
-                # CASO 1: Titoli identici
-                if clean_new_title == clean_ex_title and len(clean_new_title) > 3:
-                    print(f"🔄 Duplicato per Titolo Identico: '{clean_new_title}' (Artista ignorato: {artist})")
-                    return {"added": False, "reason": "Duplicate (Title Match)", "song": existing_song}
-                
-                # CASO 2: Match Esatto
-                if clean_new_title == clean_ex_title and clean_new_artist == clean_ex_artist:
-                    return {"added": False, "reason": "Duplicate (Exact match)", "song": existing_song}
-
-            # --- PREPARAZIONE DATI (Modificata per Async) ---
             track_key = f"{title} - {artist}".lower()
-            
-            # Controlliamo se lo abbiamo già in cache (risposta istantanea)
             cached_entry = self.known_songs_cache.get(track_key)
             
             if cached_entry:
@@ -70,17 +201,21 @@ class SessionManager:
                 upc = cached_entry.get('upc')
                 status_enrichment = "Done"
             else:
-                # Se è nuovo, mettiamo un segnaposto e attiviamo il thread
                 composer_name = "⏳ Ricerca..."
                 isrc = song_data.get('isrc')
                 upc = song_data.get('upc')
                 status_enrichment = "Pending"
 
+            raw_meta_package = {
+                "spotify": song_data.get('external_metadata', {}).get('spotify', {}),
+                "contributors": song_data.get('contributors', {})
+            }
+
             new_entry = {
                 "id": self._next_id, 
                 "title": title,
                 "artist": artist, 
-                "composer": composer_name,       
+                "composer": composer_name,     
                 "album": song_data.get('album', 'Sconosciuto'),
                 "timestamp": datetime.now().strftime("%H:%M:%S"),
                 "duration_ms": song_data.get('duration_ms', 0),
@@ -88,88 +223,26 @@ class SessionManager:
                 "type": song_data.get('type', 'Original'),
                 "isrc": isrc, 
                 "upc": upc,
-                # Salviamo i dati grezzi per il thread di background (nascosti all'utente)
                 "_raw_isrc": isrc,
                 "_raw_upc": upc,
-                "confirmed": False,  # Default: non confermato
-
-                # snapshot originale per il PDF di log
-                "original_title": title,
-                "original_artist": artist,
-                "original_composer": composer_name,
+                "_raw_meta": raw_meta_package
             }
 
             self.playlist.append(new_entry) 
+            self._save_song_to_db(new_entry) # <--- SALVATAGGIO DB (Collega)
             self._next_id += 1
 
-            # --- LANCIO THREAD DI BACKGROUND ---
             if status_enrichment == "Pending":
                 threading.Thread(
                     target=self._background_enrichment,
                     args=(new_entry, target_artist),
-                    daemon=True # Il thread muore se si chiude il programma
+                    daemon=True
                 ).start()
 
-            print(f"✅ Aggiunto (Async): {title}")
+            print(f"✅ Aggiunto (Async + Persistente): {title}")
             return {"added": True, "song": new_entry}
 
-    def update_song(self, song_id, data):
-        """
-        Aggiorna un brano esistente o ne crea uno nuovo (se manuale).
-        Segna il brano come CONFERMATO.
-        """
-        with self.lock:
-            # CASO 1: Aggiornamento brano esistente
-            if song_id is not None:
-                try:
-                    song_id_int = int(song_id)
-                    for song in self.playlist:
-                        if song['id'] == song_id_int:
-                            song['title'] = data.get('title', song['title'])
-                            song['composer'] = data.get('composer', song['composer'])
-                            # Se l'artista è vuoto nel data, mantieni quello vecchio
-                            if data.get('artist'):
-                                song['artist'] = data.get('artist')
-                            
-                            song['confirmed'] = True  # IMPORTANTE: Segniamo come confermato
-                            print(f"✏️ Aggiornato ID {song_id_int}: {song['title']}")
-                            return {"status": "updated", "id": song_id_int}
-                except ValueError:
-                    pass
-                return {"status": "error", "message": "ID non trovato"}
-
-            # CASO 2: Creazione nuovo brano manuale
-            else:
-                new_entry = {
-                    "id": self._next_id,
-                    "title": data.get('title', 'Titolo Manuale'),
-                    "artist": data.get('artist', 'Artista Manuale'),
-                    "composer": data.get('composer', 'Autore Manuale'),
-                    "album": "Inserimento Manuale",
-                    "timestamp": datetime.now().strftime("%H:%M:%S"),
-                    "duration_ms": 0,
-                    "score": 100,
-                    "type": "Manual",
-                    "isrc": None,
-                    "upc": None,
-                    "confirmed": True,  # I manuali nascono confermati
-
-                    # per i manuali, originale = versione inserita
-                    "original_title": data.get('title', 'Titolo Manuale'),
-                    "original_artist": data.get('artist', 'Artista Manuale'),
-                    "original_composer": data.get('composer', 'Autore Manuale'),
-                }
-                self.playlist.append(new_entry)
-                print(f"➕ Creato manuale ID {self._next_id}: {new_entry['title']}")
-                created_id = self._next_id
-                self._next_id += 1
-                return {"status": "created", "id": created_id}
-
     def _background_enrichment(self, entry, target_artist):
-        """
-        Funzione eseguita in un thread separato.
-        Tenta di recuperare il compositore con logica Retry & Backoff.
-        """
         attempts = 0
         max_attempts = 3
         found_composer = "Sconosciuto"
@@ -179,58 +252,71 @@ class SessionManager:
 
         while attempts < max_attempts:
             try:
-                # Chiamata a MusicBrainz (potrebbe metterci tempo)
+                # Usa la TUA chiamata a find_composer (passa anche raw_acr_meta)
                 found_composer = self.meta_bot.find_composer(
                     title=entry['title'], 
                     detected_artist=entry['artist'],
                     isrc=entry.get('_raw_isrc'),
                     upc=entry.get('_raw_upc'),
-                    setlist_artist=target_artist
+                    setlist_artist=target_artist,
+                    raw_acr_meta=entry.get('_raw_meta') # <--- La tua versione lo usa
                 )
-                
                 success = True
-                break  # Usciamo dal ciclo while se ha funzionato
+                break 
 
             except Exception as e:
                 attempts += 1
-                print(f"⚠️ [Thread] Errore MusicBrainz ({attempts}/{max_attempts}): {e}")
-                
                 if attempts < max_attempts:
-                    # Backoff esponenziale: aspetta 2s, poi 4s...
-                    wait_time = 2 ** attempts
-                    time.sleep(wait_time)
+                    time.sleep(2 ** attempts)
                 else:
-                    print(f"❌ [Thread] Abbandono ricerca per: {entry['title']}")
                     found_composer = "Errore Conn."
 
-        # --- FASE DI AGGIORNAMENTO SICURO ---
         with self.lock:
-            # Cerchiamo l'oggetto originale nella lista tramite ID
             target_song = next((s for s in self.playlist if s['id'] == entry['id']), None)
             
             if target_song:
-                # Aggiorniamo solo se l'utente non ha già confermato manualmente
-                if not target_song.get('confirmed', False):
-                    target_song['composer'] = found_composer
-                    print(f"📝 [Thread] Compositore aggiornato: {found_composer}")
-
-                    # aggiorniamo anche lo snapshot originale
-                    target_song['original_composer'] = found_composer
-                    
-                    # Aggiorniamo la cache solo se abbiamo un dato valido
-                    if success and found_composer not in ["Sconosciuto", "Errore Conn."]:
-                        track_key = f"{target_song['title']} - {target_song['artist']}".lower()
-                        self.known_songs_cache[track_key] = target_song.copy()
+                target_song['composer'] = found_composer
+                
+                # Aggiornamento DB (Collega)
+                self._update_composer_in_db(target_song['id'], found_composer)
+                
+                print(f"📝 [Thread] Compositore aggiornato: {found_composer}")
+                
+                if success and found_composer not in ["Sconosciuto", "Errore Conn."]:
+                    track_key = f"{target_song['title']} - {target_song['artist']}".lower()
+                    self.known_songs_cache[track_key] = target_song.copy()
 
     def get_playlist(self):
-        # Restituisce la playlist (il frontend vedrà "⏳ Ricerca..." finché il thread non finisce)
         return self.playlist
+    
+    def clear_session(self):
+        """
+        RESET TOTALE (Codice del collega)
+        """
+        with self.lock:
+            # 1. Pulisce la RAM
+            self.playlist = []
+            self.known_songs_cache = {}
+            self._next_id = 1
+            
+            # 2. Pulisce il Database Fisico
+            try:
+                with sqlite3.connect(self.db_path, check_same_thread=False) as conn:
+                    cursor = conn.cursor()
+                    cursor.execute('DELETE FROM songs')
+                    conn.commit()
+                print("🧹 Sessione resettata: Database e memoria puliti.")
+                return True
+            except Exception as e:
+                print(f"❌ Errore reset DB: {e}")
+                return False
 
     def delete_song(self, song_id):
         with self.lock:
             try:
                 song_id = int(song_id)
                 self.playlist = [s for s in self.playlist if s['id'] != song_id]
+                self._delete_from_db(song_id) # <--- Cancellazione DB (Collega)
                 return True
             except ValueError:
                 return False

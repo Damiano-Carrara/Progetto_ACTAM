@@ -5,6 +5,10 @@
   --muted: #9fb0c2;
   --border: #1f242d;
   --primary: #7c3aed;
+
+  /* equalizer */
+  --vis-h: 130px;
+  --vis-gap: 8px; /* distanza “aria” sopra l’equalizer */
 }
 
 /* RESET BASE */
@@ -37,13 +41,7 @@ body.no-scroll {
 #app {
   max-width: 960px;
   margin: 0 auto;
-  /* di base niente padding gigante in fondo */
   padding: 24px 16px 24px;
-}
-
-/* padding extra solo quando c'è il visualizer (sessione) */
-body.has-visualizer #app {
-  padding-bottom: 260px; /* ≈ altezza visualizer */
 }
 
 /* UTILITY */
@@ -95,6 +93,10 @@ body.has-visualizer #app {
   border: 1px solid var(--border);
   padding: 16px 18px;
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.4);
+
+  /* fondamentale: le card devono stare sopra all’equalizer */
+  position: relative;
+  z-index: 2;
 }
 
 /* BUTTONS */
@@ -176,7 +178,7 @@ body.has-visualizer #app {
   gap: 1.5rem;
 }
 
-/* card modalità: alte abbastanza per contenere SEMPRE il blocco artista */
+/* card modalità */
 .mode-card {
   position: relative;
   overflow: hidden;
@@ -226,11 +228,9 @@ body.has-visualizer #app {
   text-align: left;
   display: flex;
   flex-direction: column;
-  /* justify-content rimosso per usare il text-group flex 1 */
   height: 100%;
 }
 
-/* === NUOVO: Gruppo testo che spinge il wrapper in basso === */
 .mode-text-group {
   flex: 1;
 }
@@ -286,20 +286,17 @@ body.has-visualizer #app {
   outline: 2px solid #ff8ad4;
 }
 
-/* === MODIFICA: Wrapper con altezza fissa e allineamento === */
+/* === WRAPPER INPUT ARTISTA === */
 .artist-input-wrapper {
   margin-top: 1rem;
   padding-top: 0.8rem;
   border-top: 1px solid rgba(255, 255, 255, 0.18);
   display: none;
-  
-  /* Altezza fissa per accomodare il contenuto più alto (concerto) */
   min-height: 95px;
   flex-direction: column;
-  justify-content: flex-end; /* Allinea contenuto in basso */
+  justify-content: flex-end;
 }
 
-/* Quando visibile diventa flex, non block */
 .artist-input-wrapper.visible {
   display: flex;
 }
@@ -358,7 +355,6 @@ body.has-visualizer #app {
   min-height: 38px;
   font-size: 0.9rem;
   font-weight: 600;
-  font-family: inherit;
   cursor: pointer;
   width: 110px;
   text-align: center;
@@ -368,7 +364,6 @@ body.has-visualizer #app {
     filter 0.15s ease;
 }
 
-/* Gradiente coerente con le card in facciata 1 */
 #djConfirmBtn {
   background: linear-gradient(135deg, #ff8a00, #ffca4d);
   color: #140616;
@@ -421,11 +416,18 @@ body.has-visualizer #app {
 
 /* === FACCIATA 2: SESSIONE === */
 
+/* view-session: occupa la viewport (dentro il padding di #app)
+   e riserva spazio sotto per l'equalizer, così non sovrappone */
 #view-session.view--active {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  min-height: calc(100vh - 48px);
+
+  height: calc(100vh - 48px);
+  height: calc(100dvh - 48px); /* meglio su browser moderni */
+  min-height: 0;
+
+  padding-bottom: calc(var(--vis-h) + var(--vis-gap));
 }
 
 .session-grid {
@@ -433,43 +435,100 @@ body.has-visualizer #app {
   flex-direction: column;
   gap: 16px;
   width: 100%;
+  flex: 1;
+  min-height: 0;
 }
 
+/* CARD “SESSIONE” più bassa */
 .session-panel {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  padding: 10px 14px;
+}
+
+.session-panel h2 {
+  margin: 0;
+  font-size: 1.55rem;
+  line-height: 1.1;
 }
 
 .session-panel .meta {
   color: var(--muted);
-  margin-top: 4px;
+  margin-top: 2px;
+  font-size: 0.92rem;
+}
+
+.session-panel .badge {
+  font-size: 0.85rem;
+  padding: 1px 7px;
+}
+
+/* SOLO quando c'è il QR in basso a dx */
+.session-panel--qr {
+  position: relative;
+  padding-bottom: 42px; /* spazio riservato al bottone QR */
 }
 
 .session-panel .left {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
 }
 
-/* Tasti Start / Pause / Stop / Reset: stessa dimensione */
 .session-panel .controls {
   display: flex;
-  gap: 8px;
+  gap: 6px;
+  flex-wrap: wrap;
 }
 
-.session-panel .controls .btn {
-  width: 110px; /* tutti uguali in larghezza */
+/* tasti principali più piccoli */
+.session-panel .controls .btn--ctl {
   justify-content: center;
+  min-width: 74px;
+  padding: 4px 10px;
+  font-size: 0.85rem;
 }
 
+/* QR in basso a dx: minimal */
+.qr-corner {
+  position: absolute;
+  right: 14px;
+  bottom: 10px;
+}
+
+.btn--qr {
+  padding: 3px 9px;
+  font-size: 0.8rem;
+  min-width: 0;
+  width: auto;
+  border-radius: 999px;
+
+  background: rgba(17, 24, 39, 0.28);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: none;
+}
+
+.btn--qr:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.35);
+}
+
+/* LOG: ora riempie lo spazio centrale */
 .log-card {
   display: flex;
   flex-direction: column;
-  height: 280px;
+
+  flex: 1 1 auto;
+  min-height: 0;
+
+  /* kill assoluto di eventuali height vecchie (es. 280px) */
+  height: auto !important;
+  max-height: none !important;
+
+  overflow: hidden;
 }
 
-/* Header log live + tasto Note (page 2) */
 .log-header-row {
   display: flex;
   align-items: center;
@@ -486,7 +545,7 @@ body.has-visualizer #app {
 .log-row {
   display: grid;
   /* # | Brano | Compositore | Artista */
-  grid-template-columns: 0.3fr 2fr 1.8fr 1.5fr;
+  grid-template-columns: 36px 2fr 1.8fr 1.5fr;
   gap: 8px;
   font-size: 0.9rem;
 }
@@ -498,34 +557,22 @@ body.has-visualizer #app {
   color: var(--muted);
 }
 
-/* Header "#" allineato all'inizio della card */
 .log-head span:first-child {
   text-align: left;
 }
 
-/* Indici numerici delle righe possono restare a destra */
+/* colonna numerica allineata a sinistra come "#" */
 .log-row .col-index {
-  text-align: right;
+  text-align: left;
 }
 
 .log-body {
   flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 6px;
   overflow: auto;
-}
-
-.log-row .status-ok {
-  color: #22c55e;
-}
-
-.log-row .status-same {
-  color: #9fb0c2;
-}
-
-.log-row .status-new {
-  color: #eab308;
 }
 
 .visualizer-strip {
@@ -536,7 +583,10 @@ body.has-visualizer #app {
   width: 100vw;
   margin: 0;
   padding: 0;
-  z-index: 5;
+
+  /* sotto alle card */
+  z-index: 1;
+
   opacity: 0.75;
   pointer-events: none;
 }
@@ -545,7 +595,7 @@ body.has-visualizer #app {
   display: flex;
   width: 100%;
   gap: 2px;
-  height: 220px;
+  height: var(--vis-h);
   align-items: flex-end;
   overflow: hidden;
 }
@@ -582,21 +632,25 @@ body.has-visualizer #app {
 
 @media (max-width: 900px) {
   #view-session.view--active {
-    min-height: auto;
+    height: auto;
+    min-height: calc(100vh - 48px);
+    padding-bottom: calc(var(--vis-h) + 12px);
   }
 
   .session-panel {
     flex-direction: column;
     align-items: flex-start;
-    gap: 12px;
+    gap: 10px;
   }
 
-  .controls {
-    width: 100%;
-    justify-content: flex-start;
-    flex-wrap: wrap;
-    display: flex;
-    gap: 8px;
+  .session-panel--qr {
+    padding-bottom: 16px;
+  }
+
+  .qr-corner {
+    position: static;
+    align-self: flex-end;
+    margin-top: 8px;
   }
 }
 
@@ -608,7 +662,6 @@ body.has-visualizer #app {
   height: 460px;
 }
 
-/* Titolo + tasto Note in alto a destra */
 .review-header-row {
   display: flex;
   align-items: center;
@@ -635,6 +688,7 @@ body.has-visualizer #app {
   overflow: auto;
 }
 
+/* Tabelle */
 .table {
   margin-top: 12px;
 }
@@ -652,34 +706,29 @@ body.has-visualizer #app {
   grid-template-columns: 0.2fr 1.5fr 1.3fr 300px;
 }
 
-/* INTESTAZIONI */
 .row--head {
   font-size: 0.9rem;
   color: var(--muted);
   font-weight: 600;
 }
 
-/* padding sinistro per allineare al testo degli input */
 .row--head span {
   padding-left: 9px;
   text-align: left !important;
 }
 
-/* Titolo (3a colonna) */
 .review-table .row--head span:nth-child(3) {
   padding-left: 10px !important;
   text-align: left !important;
   justify-self: start !important;
 }
 
-/* Azioni (4a colonna) */
 .review-table .row--head span:nth-child(4) {
   text-align: left !important;
   justify-self: start !important;
   padding-left: 0 !important;
 }
 
-/* Colonna bottoni (dentro le righe dati) */
 .review-table .row .tools {
   display: flex;
   gap: 6px;
@@ -687,7 +736,6 @@ body.has-visualizer #app {
   flex-wrap: nowrap;
 }
 
-/* Bottoni piccoli in review leggermente compattati */
 .review-table .row .tools .btn.btn--small {
   padding: 3px 8px;
   font-size: 0.8rem;
@@ -768,13 +816,11 @@ body::-webkit-scrollbar-thumb {
   margin-top: 8px;
 }
 
-/* >>> bottoni Annulla / Ok stessa size */
 .modal-actions .btn {
   min-width: 96px;
   justify-content: center;
 }
 
-/* Ok mantiene il gradiente ma NON è in grassetto */
 #confirm-ok {
   font-weight: 500;
   text-transform: none;
@@ -868,8 +914,7 @@ body::-webkit-scrollbar-thumb {
   border-color: #ff3f6a;
 }
 
-/* === TOOLTIP SU BOTTONI CON data-tooltip === */
-
+/* TOOLTIP */
 .btn[data-tooltip] {
   position: relative;
 }
@@ -937,7 +982,6 @@ body::-webkit-scrollbar-thumb {
   font-size: 0.9rem;
 }
 
-/* Box note in review: nascosto, solo mirror testo */
 .review-notes {
   display: none;
   margin-top: 10px;
@@ -960,15 +1004,12 @@ body::-webkit-scrollbar-thumb {
   white-space: pre-wrap;
 }
 
-/* --- TASTI NOTE (page 2 + page 3) --- */
-
 #btn-session-notes,
 #btn-review-notes {
   font-weight: 600;
   border: none;
 }
 
-/* Gradiente pieno per entrambi i tasti Note, in base alla modalità */
 #app.theme-dj #btn-session-notes,
 #app.theme-dj #btn-review-notes {
   background: linear-gradient(135deg, #ff8a00, #ffca4d);
@@ -985,4 +1026,31 @@ body::-webkit-scrollbar-thumb {
 #app.theme-concert #btn-review-notes {
   background: linear-gradient(135deg, #ff3f6a, #ff9ad7);
   color: #21021e;
+}
+
+/* VIEWER */
+main[data-viewer="true"] .tools {
+  display: none !important;
+}
+
+main[data-viewer="true"] .review-table .row {
+  grid-template-columns: 0.2fr 1.5fr 2fr;
+}
+
+main[data-viewer="true"] input.inline {
+  pointer-events: none;
+  border-color: transparent;
+  background: transparent;
+  padding-left: 0;
+}
+
+/* QR IMG */
+#qr-image {
+  display: block;
+  margin: 0 auto;
+}
+
+/* restore modal buttons */
+#restore-modal .modal-actions button {
+  min-width: 140px;
 }

@@ -63,38 +63,22 @@ function nowHHMM() {
   return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
 }
 
-// helper per scaricare Blob (PDF, Excel, ecc.)
-async function downloadBinary(endpoint, fallbackFilename, btn) {
-  if (!btn) return;
-  const originalText = btn.textContent;
-  const originalDisabled = btn.disabled;
+// --- SALVATAGGIO STATO LOCALE (Dal Collega - Per Restore) ---
+function saveStateToLocal() {
+  if (!state.mode) return;
 
-  btn.textContent = "Scaricamento...";
-  btn.disabled = true;
+  localStorage.setItem("appMode", state.mode);
 
-  try {
-    const response = await fetch(endpoint);
-    if (response.ok) {
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.style.display = "none";
-      a.href = url;
-      a.download = fallbackFilename;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      a.remove();
-    } else {
-      console.error("Errore download:", response.status);
-      alert("Errore durante la generazione del file.");
-    }
-  } catch (err) {
-    console.error("Errore fetch:", err);
-    alert("Errore di connessione.");
-  } finally {
-    btn.textContent = originalText;
-    btn.disabled = originalDisabled;
+  if (state.concertArtist) {
+    localStorage.setItem("concertArtist", state.concertArtist);
+  } else {
+    localStorage.removeItem("concertArtist");
+  }
+
+  if (state.bandArtist) {
+    localStorage.setItem("bandArtist", state.bandArtist);
+  } else {
+    localStorage.removeItem("bandArtist");
   }
 }
 
@@ -125,13 +109,6 @@ function setRoute(route) {
     } else {
       body.classList.remove("no-scroll");
     }
-
-    // padding extra per visualizer
-    if (route === "session") {
-      body.classList.add("has-visualizer");
-    } else {
-      body.classList.remove("has-visualizer");
-    }
   }
 }
 
@@ -144,7 +121,7 @@ function showView(id) {
   if (el) el.classList.add("view--active");
 }
 
-// --- VISUALIZER BUILD + UPDATE ---
+// --- VISUALIZER BUILD + UPDATE (Tua logica originale completa) ---
 function buildVisualizer() {
   const container = document.querySelector("#visualizer");
   if (!container) return;
@@ -172,16 +149,13 @@ function updateVisualizer() {
   for (let colIndex = 0; colIndex < cols.length; colIndex++) {
     let current = visLevels[colIndex] || 0;
 
-    // base casuale, con coda più bassa (più "movimento" in basso)
     let base = Math.pow(Math.random(), 3.2);
     let target = base * VIS_ROWS * 0.9;
 
-    // ogni tanto un impulso più alto
     if (Math.random() < 0.1) {
       target = VIS_ROWS * (0.55 + 0.45 * Math.random());
     }
 
-    // salita più rapida, discesa più lenta
     const speedUp = 0.45;
     const speedDown = 0.12;
 
@@ -191,7 +165,6 @@ function updateVisualizer() {
       current += (target - current) * speedDown;
     }
 
-    // leggero smorzamento
     current *= 0.985;
 
     if (current < 0) current = 0;
@@ -393,7 +366,7 @@ async function stopBackendRecognition() {
   }
 }
 
-// --- POLLING PLAYLIST ---
+// --- POLLING PLAYLIST (Tua logica di aggiornamento metadata completa) ---
 async function pollPlaylistOnce() {
   try {
     const res = await fetch("/api/get_playlist");
@@ -415,11 +388,10 @@ async function pollPlaylistOnce() {
       const existing = songs.find((t) => t.id === id);
 
       if (!existing) {
-        // nuovo brano
         if (id > lastMaxSongId) {
           const track = {
             id,
-            order: songs.length + 1, // numerazione progressiva
+            order: songs.length + 1,
             title: song.title || "Titolo sconosciuto",
             composer: song.composer || "—",
             artist: song.artist || "",
@@ -445,21 +417,17 @@ async function pollPlaylistOnce() {
           });
         }
       } else {
-        // aggiornamento di un brano già esistente
         const oldComposer = existing.composer;
         const oldArtist = existing.artist;
 
-        // AGGIORNAMENTO DATI SOLO SE NON CONFERMATI
-        if (!existing.confirmed) {
-          existing.title = song.title || existing.title;
-          existing.composer = song.composer || existing.composer;
-          existing.artist = song.artist || existing.artist;
-          existing.album = song.album || existing.album;
-          existing.type = song.type || existing.type;
-          existing.isrc = song.isrc || existing.isrc;
-          existing.upc = song.upc || existing.upc;
-          existing.ms = song.duration_ms || existing.ms;
-        }
+        existing.title = song.title || existing.title;
+        existing.composer = song.composer || existing.composer;
+        existing.artist = song.artist || existing.artist;
+        existing.album = song.album || existing.album;
+        existing.type = song.type || existing.type;
+        existing.isrc = song.isrc || existing.isrc;
+        existing.upc = song.upc || existing.upc;
+        existing.ms = song.duration_ms || existing.ms;
 
         const composerChanged = existing.composer !== oldComposer;
         const artistChanged = existing.artist !== oldArtist;
@@ -471,20 +439,14 @@ async function pollPlaylistOnce() {
             setNow(existing.title, existing.composer);
           }
 
-          const logRow = document.querySelector(
-            `.log-row[data-id="${id}"]`
-          );
+          const logRow = document.querySelector(`.log-row[data-id="${id}"]`);
 
           if (logRow) {
             const composerSpan = logRow.querySelector(".col-composer");
-            if (composerSpan) {
-              composerSpan.textContent = existing.composer;
-            }
+            if (composerSpan) composerSpan.textContent = existing.composer;
 
             const artistSpan = logRow.querySelector(".col-artist");
-            if (artistSpan) {
-              artistSpan.textContent = existing.artist || "—";
-            }
+            if (artistSpan) artistSpan.textContent = existing.artist || "—";
           }
         }
       }
@@ -494,18 +456,8 @@ async function pollPlaylistOnce() {
 
     lastMaxSongId = maxIdSeen;
 
-    // === GESTIONE SMART UPDATE PER LA REVIEW (FIX UX) ===
-    if (state.route === "review") {
-      const currentRenderedRows = document.querySelectorAll(".review-rows-body .row").length;
-        
-      // Se il numero di righe è diverso (nuovi brani o cancellazioni remote), ridisegna tutto
-      if (songs.length !== currentRenderedRows) {
-        renderReview();
-      } 
-      // Se il numero è uguale ma ci sono aggiornamenti di testo, usa il Soft Sync
-      else if (updatedExisting) {
-        syncReviewRowValues();
-      }
+    if (updatedExisting && state.route === "review") {
+      renderReview();
     }
   } catch (err) {
     console.error("Errore nel polling playlist:", err);
@@ -581,14 +533,12 @@ async function sessionStop() {
   await stopBackendRecognition();
   stopPlaylistPolling();
 
-  // un ultimo fetch per catturare eventuali brani appena finiti
   await pollPlaylistOnce();
 
   resetSessionTimer();
   currentSongId = null;
   setNow("In ascolto", "—");
 
-  // passaggio a review
   undoStack = [];
   renderReview();
   setRoute("review");
@@ -605,6 +555,21 @@ async function sessionReset() {
   pauseSessionTimer();
   resetSessionTimer();
 
+  try {
+    console.log("Richiesta reset database backend...");
+    await fetch("/api/reset_session", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+  } catch (err) {
+    console.error("Errore durante il reset del backend:", err);
+  }
+
+  localStorage.removeItem("appMode");
+  localStorage.removeItem("concertArtist");
+  localStorage.removeItem("bandArtist");
+
   currentSongId = null;
   setNow("In ascolto", "—");
 
@@ -615,20 +580,7 @@ async function sessionReset() {
   const liveLog = $("#live-log");
   if (liveLog) liveLog.innerHTML = "";
 
-  // aggiorna lastMaxSongId in base alla playlist corrente
-  try {
-    const res = await fetch("/api/get_playlist");
-    if (res.ok) {
-      const data = await res.json();
-      const playlist = Array.isArray(data.playlist) ? data.playlist : [];
-      lastMaxSongId = playlist.reduce(
-        (acc, s) => (s.id && s.id > acc ? s.id : acc),
-        0
-      );
-    }
-  } catch (err) {
-    console.error("Errore get_playlist in reset:", err);
-  }
+  lastMaxSongId = 0;
 
   const btnStart = $("#btn-session-start");
   const btnPause = $("#btn-session-pause");
@@ -702,7 +654,6 @@ function openNotesModal(context = "session") {
   textarea.value = state.notes || "";
 
   if (context === "review") {
-    // in review solo lettura
     textarea.readOnly = true;
     if (saveBtn) saveBtn.classList.add("hidden");
   } else {
@@ -764,35 +715,7 @@ function showConfirm(message) {
   });
 }
 
-// --- SOFT SYNC FUNCTION (NUOVA PER EVITARE FOCUS LOSS) ---
-function syncReviewRowValues() {
-  if (state.route !== "review") return;
-  
-  const rows = document.querySelectorAll(".review-rows-body .row");
-  rows.forEach(row => {
-    const id = parseInt(row.dataset.id);
-    if (!id) return;
-    const song = songs.find(s => s.id === id);
-    if (!song) return;
-    
-    const inputComposer = row.querySelector('[data-field="composer"]');
-    const inputTitle = row.querySelector('[data-field="title"]');
-    
-    // Aggiorna solo se diverso e se NON ha il focus (per evitare che salti il cursore)
-    if (inputComposer && inputComposer.value !== song.composer && document.activeElement !== inputComposer) {
-      inputComposer.value = song.composer || "";
-      // Flash visivo leggero per indicare aggiornamento
-      inputComposer.style.transition = "background-color 0.3s";
-      inputComposer.style.backgroundColor = "#2d3748";
-      setTimeout(() => inputComposer.style.backgroundColor = "", 300);
-    }
-    if (inputTitle && inputTitle.value !== song.title && document.activeElement !== inputTitle) {
-      inputTitle.value = song.title || "";
-    }
-  });
-}
-
-// --- REVIEW ---
+// --- REVIEW (Tua logica originale) ---
 function renderReview() {
   const container = $("#review-rows");
   const template = $("#review-row-template");
@@ -808,10 +731,6 @@ function renderReview() {
     }
 
     const node = template.content.firstElementChild.cloneNode(true);
-    // AGGIUNTO ID PER IL SOFT SYNC
-    if (song.id) {
-      node.dataset.id = song.id;
-    }
 
     const indexSpan = node.querySelector(".review-index");
     const inputComposer = node.querySelector('[data-field="composer"]');
@@ -828,15 +747,13 @@ function renderReview() {
     inputComposer.value = song.composer || "";
     inputTitle.value = song.title || "";
 
-    // ReadOnly dipende dallo stato confirmed
-    inputComposer.readOnly = song.confirmed;
-    inputTitle.readOnly = song.confirmed;
+    inputComposer.readOnly = true;
+    inputTitle.readOnly = true;
 
     if (song.confirmed) {
       node.classList.add("row--confirmed");
     }
 
-    // EDIT
     btnEdit.addEventListener("click", (e) => {
       e.preventDefault();
       inputComposer.readOnly = false;
@@ -847,73 +764,24 @@ function renderReview() {
       inputTitle.focus();
     });
 
-    // --- CONFERMA CON LOGICA SERVER ---
-    btnConfirm.addEventListener("click", async (e) => {
+    btnConfirm.addEventListener("click", (e) => {
       e.preventDefault();
-      
-      // Feedback visivo immediato (loading)
-      btnConfirm.textContent = "...";
-      btnConfirm.disabled = true;
+      pushUndoState();
 
-      const updatedData = {
-        id: song.id, // Se è null, il backend ne creerà uno nuovo
-        title: inputTitle.value || "",
-        composer: inputComposer.value || "",
-        artist: song.artist || "" // Manteniamo l'artista se c'è
-      };
+      song.composer = inputComposer.value || "";
+      song.title = inputTitle.value || "";
+      song.confirmed = true;
 
-      try {
-        const res = await fetch("/api/update_song", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(updatedData)
-        });
-
-        if (res.ok) {
-          const respData = await res.json();
-          
-          // Se era un brano manuale (nuovo), il backend ci dà il nuovo ID
-          if (!song.id && respData.id) {
-            song.id = respData.id;
-          }
-
-          // Aggiorniamo il modello locale
-          pushUndoState();
-          song.composer = updatedData.composer;
-          song.title = updatedData.title;
-          song.confirmed = true;
-
-          // Aggiorniamo la UI
-          inputComposer.readOnly = true;
-          inputTitle.readOnly = true;
-          node.classList.add("row--confirmed");
-          
-          // Se abbiamo appena salvato un brano manuale, aggiorniamo l'ID nel DOM
-          if (node.dataset.id !== String(song.id)) {
-            node.dataset.id = song.id;
-          }
-
-        } else {
-          alert("Errore nel salvataggio del brano.");
-          song.confirmed = false;
-        }
-      } catch (err) {
-        console.error("Errore update:", err);
-        alert("Errore di connessione col server.");
-      } finally {
-        btnConfirm.textContent = "Conferma";
-        btnConfirm.disabled = false;
-        updateGenerateState();
-      }
+      inputComposer.readOnly = true;
+      inputTitle.readOnly = true;
+      node.classList.add("row--confirmed");
+      updateGenerateState();
     });
 
-    // DELETE
     btnDelete.addEventListener("click", async (e) => {
       e.preventDefault();
 
-      const ok = await showConfirm(
-        "Sei sicuro di voler cancellare questo brano?"
-      );
+      const ok = await showConfirm("Sei sicuro di voler cancellare questo brano?");
       if (!ok) return;
 
       pushUndoState();
@@ -936,7 +804,6 @@ function renderReview() {
       renderReview();
     });
 
-    // AGGIUNGI (nuova riga sotto quella corrente)
     if (btnAdd) {
       btnAdd.addEventListener("click", (e) => {
         e.preventDefault();
@@ -974,18 +841,6 @@ function renderReview() {
     const confirmedCount = songs.filter((s) => s.confirmed).length;
     const ok = total > 0 && confirmedCount === total;
     btnGenerate.disabled = !ok;
-
-    // PDF ufficiale: stessi vincoli dell'Excel
-    const btnPdfOfficial = $("#btn-pdf-official");
-    if (btnPdfOfficial) {
-      btnPdfOfficial.disabled = !ok;
-    }
-
-    // PDF raw: basta che ci sia almeno un brano in lista
-    const btnPdfRaw = $("#btn-pdf-raw");
-    if (btnPdfRaw) {
-      btnPdfRaw.disabled = total === 0;
-    }
   }
 
   updateGenerateState();
@@ -993,12 +848,10 @@ function renderReview() {
   syncReviewNotes();
 }
 
-// --- WELCOME / MODALITÀ + CAMPI ARTISTA ---
+// --- WELCOME / MODALITÀ + CAMPI ARTISTA (Tua logica + SaveState) ---
 function syncWelcomeModeRadios() {
   const cards = document.querySelectorAll(".mode-card");
-  cards.forEach((card) =>
-    card.classList.remove("mode-card--selected", "active")
-  );
+  cards.forEach((card) => card.classList.remove("mode-card--selected", "active"));
 
   const djCard = document.querySelector('.mode-card[data-mode="dj"]');
   const bandCard = document.querySelector('.mode-card[data-mode="band"]');
@@ -1099,8 +952,7 @@ function initWelcome() {
     const name = artistInput.value.trim();
     if (!name) {
       if (artistError) {
-        artistError.textContent =
-          "Inserisci il nome dell’artista prima di continuare.";
+        artistError.textContent = "Inserisci il nome dell’artista prima di continuare.";
       }
       return;
     }
@@ -1109,6 +961,9 @@ function initWelcome() {
 
     state.mode = "concert";
     state.concertArtist = name;
+
+    saveStateToLocal();
+
     applyTheme();
     goToSession();
   }
@@ -1117,6 +972,9 @@ function initWelcome() {
     const name = bandInput ? bandInput.value.trim() : "";
     state.mode = "band";
     state.bandArtist = name;
+
+    saveStateToLocal();
+
     applyTheme();
     goToSession();
   }
@@ -1125,6 +983,9 @@ function initWelcome() {
     state.mode = "dj";
     state.concertArtist = "";
     state.bandArtist = "";
+
+    saveStateToLocal();
+
     applyTheme();
     goToSession();
   }
@@ -1144,15 +1005,9 @@ function initWelcome() {
     });
   });
 
-  if (artistWrapper) {
-    artistWrapper.addEventListener("click", (e) => e.stopPropagation());
-  }
-  if (bandWrapper) {
-    bandWrapper.addEventListener("click", (e) => e.stopPropagation());
-  }
-  if (djWrapper) {
-    djWrapper.addEventListener("click", (e) => e.stopPropagation());
-  }
+  if (artistWrapper) artistWrapper.addEventListener("click", (e) => e.stopPropagation());
+  if (bandWrapper) bandWrapper.addEventListener("click", (e) => e.stopPropagation());
+  if (djWrapper) djWrapper.addEventListener("click", (e) => e.stopPropagation());
 
   if (artistConfirmBtn) {
     artistConfirmBtn.addEventListener("click", (e) => {
@@ -1206,6 +1061,33 @@ function wireSessionButtons() {
   const btnStop = $("#btn-session-stop");
   const btnReset = $("#btn-session-reset");
 
+  const btnShowQr = document.getElementById("btn-show-qr");
+  const qrModal = document.getElementById("qr-modal");
+  const qrImage = document.getElementById("qr-image");
+  const qrClose = document.getElementById("qr-close");
+
+  if (btnShowQr) {
+    btnShowQr.addEventListener("click", () => {
+      qrImage.src = "/api/get_qr_image?t=" + Date.now();
+      qrModal.classList.remove("modal--hidden");
+    });
+  }
+
+  if (qrClose) {
+    qrClose.addEventListener("click", () => {
+      qrModal.classList.add("modal--hidden");
+    });
+  }
+
+  if (qrModal) {
+    const backdrop = qrModal.querySelector(".modal-backdrop");
+    if (backdrop) {
+      backdrop.addEventListener("click", () => {
+        qrModal.classList.add("modal--hidden");
+      });
+    }
+  }
+
   if (btnStart) {
     btnStart.addEventListener("click", (e) => {
       e.preventDefault();
@@ -1223,19 +1105,16 @@ function wireSessionButtons() {
   if (btnStop) {
     btnStop.addEventListener("click", async (e) => {
       e.preventDefault();
-      const ok = await showConfirm(
-        "Vuoi fermare la sessione e passare alla review?"
-      );
+      const ok = await showConfirm("Vuoi fermare la sessione e passare alla review?");
       if (!ok) return;
       sessionStop();
     });
   }
 
   if (btnReset) {
-    btnReset.addEventListener("click", (e) => {
+    btnReset.addEventListener("click", async (e) => {
       e.preventDefault();
-      const msg =
-        "Vuoi resettare la sessione e cancellare il log corrente?";
+      const msg = "Vuoi resettare la sessione e cancellare il log corrente?";
       showConfirm(msg).then((ok) => {
         if (!ok) return;
         sessionReset();
@@ -1243,71 +1122,11 @@ function wireSessionButtons() {
     });
   }
 
-  // === GENERAZIONE FILE EXCEL ===
   const btnGenerate = $("#btn-generate");
   if (btnGenerate) {
-    btnGenerate.addEventListener("click", async (e) => {
+    btnGenerate.addEventListener("click", (e) => {
       e.preventDefault();
-      
-      const originalText = btnGenerate.textContent;
-      btnGenerate.textContent = "Scaricamento...";
-      btnGenerate.disabled = true;
-
-      try {
-        const response = await fetch("/api/generate_report");
-        
-        if (response.ok) {
-          const blob = await response.blob();
-          const url = window.URL.createObjectURL(blob);
-          const a = document.createElement("a");
-          a.style.display = "none";
-          a.href = url;
-          a.download = "Bordero_SIAE.xlsx";
-          document.body.appendChild(a);
-          a.click();
-          window.URL.revokeObjectURL(url);
-          a.remove();
-        } else {
-          console.error("Errore download:", response.status);
-          alert("Errore durante la generazione del file.");
-        }
-      } catch (err) {
-        console.error("Errore fetch generate:", err);
-        alert("Errore di connessione.");
-      } finally {
-        btnGenerate.textContent = originalText;
-        // Ripristina lo stato corretto del bottone in base alle canzoni
-        const total = songs.length;
-        const confirmedCount = songs.filter((s) => s.confirmed).length;
-        const ok = total > 0 && confirmedCount === total;
-        btnGenerate.disabled = !ok;
-      }
-    });
-  }
-
-  // --- PDF ufficiale (stessi dati Excel) ---
-  const btnPdfOfficial = $("#btn-pdf-official");
-  if (btnPdfOfficial) {
-    btnPdfOfficial.addEventListener("click", async (e) => {
-      e.preventDefault();
-      await downloadBinary(
-        "/api/generate_pdf_official",
-        "Bordero_ufficiale.pdf",
-        btnPdfOfficial
-      );
-    });
-  }
-
-  // --- PDF log riconosciuto (raw) ---
-  const btnPdfRaw = $("#btn-pdf-raw");
-  if (btnPdfRaw) {
-    btnPdfRaw.addEventListener("click", async (e) => {
-      e.preventDefault();
-      await downloadBinary(
-        "/api/generate_pdf_raw",
-        "Bordero_log_riconosciuto.pdf",
-        btnPdfRaw
-      );
+      alert("TODO: Generazione PDF / CSV");
     });
   }
 
@@ -1369,12 +1188,82 @@ function wireSessionButtons() {
   }
 }
 
+// --- LOGICA RIPRISTINO SESSIONE ALL'AVVIO (Dal Collega) ---
+async function checkRestoreSession() {
+  try {
+    const res = await fetch("/api/get_playlist");
+    if (!res.ok) return;
+
+    const data = await res.json();
+    const playlist = Array.isArray(data.playlist) ? data.playlist : [];
+
+    if (playlist.length === 0) return;
+
+    const modal = document.getElementById("restore-modal");
+    const btnNew = document.getElementById("restore-new");
+    const btnRecover = document.getElementById("restore-ok");
+
+    if (!modal || !btnNew || !btnRecover) return;
+
+    modal.classList.remove("modal--hidden");
+
+    btnNew.onclick = async () => {
+      await fetch("/api/reset_session", { method: "POST" });
+      localStorage.removeItem("appMode");
+      localStorage.removeItem("concertArtist");
+      localStorage.removeItem("bandArtist");
+
+      modal.classList.add("modal--hidden");
+      songs = [];
+      console.log("Database pulito.");
+    };
+
+    btnRecover.onclick = () => {
+      modal.classList.add("modal--hidden");
+      console.log("Sessione recuperata.");
+
+      const savedMode = localStorage.getItem("appMode");
+
+      if (savedMode) {
+        state.mode = savedMode;
+        state.concertArtist = localStorage.getItem("concertArtist") || "";
+        state.bandArtist = localStorage.getItem("bandArtist") || "";
+
+        sessionStart();
+      } else {
+        alert("Dati recuperati! Seleziona la modalità (DJ/Band) per visualizzarli.");
+      }
+    };
+  } catch (err) {
+    console.error("Errore checkRestoreSession:", err);
+  }
+}
+
 // --- AVVIO ---
 document.addEventListener("DOMContentLoaded", () => {
-  setRoute("welcome");
-  showView("#view-welcome");
-  initWelcome();
+  const app = document.getElementById("app");
+  const isViewer = app.dataset.viewer === "true";
+
   wireSessionButtons();
   buildVisualizer();
-  syncReviewNotes();
+
+  if (isViewer) {
+    console.log("Modalità Viewer attiva: salto diretto alla sessione.");
+
+    state.route = "session";
+    showView("#view-session");
+    hydrateSessionHeader();
+
+    startPlaylistPolling();
+    startVisualizer();
+
+    const restoreModal = document.getElementById("restore-modal");
+    if (restoreModal) restoreModal.classList.add("modal--hidden");
+  } else {
+    setRoute("welcome");
+    showView("#view-welcome");
+    initWelcome();
+    checkRestoreSession();
+    syncReviewNotes();
+  }
 });
