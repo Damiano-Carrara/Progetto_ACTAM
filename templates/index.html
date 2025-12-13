@@ -8,7 +8,7 @@
   </head>
 
   <body>
-    <div id="app-background" class="app-background"></div>
+    <div id="app-background" class="app-background {{ 'viewer-bg' if viewer_mode }}"></div>
     <div class="app-background-overlay"></div>
     <main id="app" data-viewer="{{ 'true' if viewer_mode else 'false' }}">
       <section id="view-welcome" class="view view--active">

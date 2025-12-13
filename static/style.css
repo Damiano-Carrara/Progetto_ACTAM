@@ -375,6 +375,10 @@ body.no-scroll { overflow: hidden; }
   align-items: center;
   justify-content: space-between;
   padding: 10px 14px;
+  background: rgba(18, 21, 26, 0.6) !important;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
 }
 
 .session-panel h2 {
@@ -457,6 +461,14 @@ body.no-scroll { overflow: hidden; }
   max-height: none !important;
 
   overflow: hidden;
+  background: rgba(18, 21, 26, 0.6) !important;
+  
+  /* Sfocatura dello sfondo sottostante (Effetto Glassmorphism) */
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px); /* Per Safari */
+  
+  /* Bordo leggermente più visibile per definire i contorni */
+  border: 1px solid rgba(255, 255, 255, 0.15);
 }
 
 .log-header-row {
@@ -981,6 +993,23 @@ main[data-viewer="true"] input.inline {
   transition: opacity 1s ease-in-out;
   filter: blur(20px) brightness(0.6);
   transform: scale(1.1);
+}
+
+.app-background.viewer-bg {
+  /* Meno sfocatura (da 20px a 8px) per riconoscere l'artista */
+  filter: blur(8px) brightness(0.85);
+  
+  /* Opzionale: Riduciamo leggermente lo zoom per vedere più immagine */
+  transform: scale(1.05);
+}
+
+/* Opzionale: Riduciamo l'overlay scuro sopra l'immagine solo per lo spettatore */
+body:has(.viewer-bg) .app-background-overlay {
+    background: rgba(11, 12, 16, 0.45); /* Più trasparente (era 0.6) */
+}
+/* Fallback per browser vecchi che non supportano :has */
+.viewer-bg + .app-background-overlay {
+    background: rgba(11, 12, 16, 0.45); 
 }
 
 .app-background-overlay {
