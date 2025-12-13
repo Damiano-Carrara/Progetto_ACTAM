@@ -43,6 +43,8 @@ let visLevels = new Array(VIS_COLS).fill(0);
 // contesto attuale del modal note: "session" | "review"
 let notesModalContext = "session";
 
+let currentCoverUrl = null;
+
 /** selettore rapido */
 const $ = (sel) => document.querySelector(sel);
 
@@ -205,14 +207,19 @@ function setNow(title, composer) {
 }
 
 // --- LOG LIVE ---
-function pushLog({ id, index, title, composer, artist }) {
+function pushLog({ id, index, title, composer, artist, cover}) {
   const row = document.createElement("div");
   row.className = "log-row";
 
   if (id != null) row.dataset.id = id;
 
+ const imgHtml = cover 
+    ? `<img src="${cover}" alt="Cover" loading="lazy">` 
+    : `<div style="width:32px; height:32px; background: rgba(255,255,255,0.1); border-radius:4px;"></div>`;
+
   row.innerHTML = `
     <span class="col-index">${index != null ? index : "—"}</span>
+    <span class="col-cover">${imgHtml}</span>
     <span>${title || "—"}</span>
     <span class="col-composer">${composer || "—"}</span>
     <span class="col-artist">${artist || "—"}</span>
@@ -330,7 +337,8 @@ async function stopBackendRecognition() {
 // --- POLLING PLAYLIST (Aggiornata) ---
 async function pollPlaylistOnce() {
   try {
-    const res = await fetch("/api/get_playlist");
+    // Aggiungiamo ?t=... per evitare che il browser usi la cache
+    const res = await fetch("/api/get_playlist?t=" + Date.now());
     if (!res.ok) {
       console.error("Errore HTTP /api/get_playlist:", res.status);
       return;
@@ -338,6 +346,7 @@ async function pollPlaylistOnce() {
 
     const data = await res.json();
     const playlist = Array.isArray(data.playlist) ? data.playlist : [];
+    console.log("Ultimo brano ricevuto:", playlist[playlist.length - 1]); // Controlla nella console del browser se c'è la proprietà 'cover'
 
     let maxIdSeen = lastMaxSongId;
     let updatedExisting = false;
@@ -364,6 +373,7 @@ async function pollPlaylistOnce() {
             ms: song.duration_ms || 0,
             confirmed: false,
             timestamp: song.timestamp || null,
+            cover: song.cover || null, // <--- NUOVO: Salviamo la cover
             // Conserva i dati originali per il raw report
             original_title: song.title,
             original_composer: song.composer,
@@ -379,20 +389,18 @@ async function pollPlaylistOnce() {
             index: track.order,
             title: track.title,
             composer: track.composer,
-            artist: track.artist
+            artist: track.artist,
+            cover: track.cover
           });
         }
       } else {
         // BRANO ESISTENTE
-        // IMPORTANTE: Aggiorniamo SEMPRE i dati "original" con quelli freschi dal DB (Backend)
-        existing.original_title = song.title;
-        existing.original_composer = song.composer;
-        existing.original_artist = song.artist;
+        if (song.cover && song.cover !== existing.cover) {
+             existing.cover = song.cover;
+             updatedExisting = true; // Ora questo flag si attiverà correttamente
+        }
 
-        const oldComposer = existing.composer;
-        const oldArtist = existing.artist;
-
-        // Aggiorniamo i dati VISIBILI solo se l'utente non ha ancora confermato/toccato
+        // Aggiorniamo i dati VISIBILI solo se l'utente non ha ancora confermato
         if (!existing.confirmed) {
           existing.title = song.title || existing.title;
           existing.composer = song.composer || existing.composer;
@@ -406,13 +414,25 @@ async function pollPlaylistOnce() {
 
         const composerChanged = existing.composer !== oldComposer;
         const artistChanged = existing.artist !== oldArtist;
+        const logRow = document.querySelector(`.log-row[data-id="${id}"]`);
+
+        // AGGIORNAMENTO DOM IMMEDIATO PER LA COVER
+        // Se abbiamo una cover e la riga esiste...
+        if (logRow && existing.cover) {
+             const coverSpan = logRow.querySelector(".col-cover");
+             const currentImg = coverSpan.querySelector("img");
+             
+             // Se c'è ancora il "quadratino" (nessuna img) o l'src è diverso, aggiorna
+             if (!currentImg || currentImg.src !== existing.cover) {
+                 coverSpan.innerHTML = `<img src="${existing.cover}" alt="Cover" loading="lazy">`;
+                 // Non serve settare updatedExisting qui per il live log, 
+                 // ma è utile se volessimo refreshare la review table.
+             }
+        }
 
         if (composerChanged || artistChanged) {
           updatedExisting = true;
-
           if (currentSongId === id) setNow(existing.title, existing.composer);
-
-          const logRow = document.querySelector(`.log-row[data-id="${id}"]`);
 
           if (logRow) {
             const composerSpan = logRow.querySelector(".col-composer");
@@ -428,6 +448,17 @@ async function pollPlaylistOnce() {
     });
 
     lastMaxSongId = maxIdSeen;
+
+    // --- NUOVO: LOGICA SFONDO DINAMICO ---
+    // Cerchiamo l'ultimo brano nella lista che possiede una cover
+    const lastSongWithCover = [...songs].reverse().find(s => s.cover);
+
+    // Se troviamo una cover ed è diversa da quella attuale, aggiorniamo lo sfondo
+    if (lastSongWithCover && lastSongWithCover.cover !== currentCoverUrl) {
+        currentCoverUrl = lastSongWithCover.cover;
+        updateBackground(currentCoverUrl);
+    }
+    // -------------------------------------
 
     if (updatedExisting && state.route === "review") renderReview();
   } catch (err) {
@@ -1305,3 +1336,20 @@ document.addEventListener("DOMContentLoaded", () => {
     syncReviewNotes();
   }
 });
+
+function updateBackground(url) {
+    const bgEl = document.getElementById("app-background");
+    if (!bgEl) return;
+
+    if (url) {
+        // Precarica l'immagine per evitare scatti
+        const img = new Image();
+        img.src = url;
+        img.onload = () => {
+            bgEl.style.backgroundImage = `url('${url}')`;
+            bgEl.style.opacity = "1";
+        };
+    } else {
+        bgEl.style.opacity = "0"; // Nascondi se non c'è cover
+    }
+}

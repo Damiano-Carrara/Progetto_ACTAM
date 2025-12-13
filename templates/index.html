@@ -8,6 +8,8 @@
   </head>
 
   <body>
+    <div id="app-background" class="app-background"></div>
+    <div class="app-background-overlay"></div>
     <main id="app" data-viewer="{{ 'true' if viewer_mode else 'false' }}">
       <section id="view-welcome" class="view view--active">
         <div class="mode-page">
@@ -124,7 +126,10 @@
             </div>
 
             <div class="log-head">
-              <span>#</span><span>Brano</span><span>Compositore</span><span>Artista</span>
+              <span>#</span>
+              <span>Cover</span> <span>Brano</span>
+              <span>Compositore</span>
+              <span>Artista</span>
             </div>
             <div id="live-log" class="log-body"></div>
           </section>

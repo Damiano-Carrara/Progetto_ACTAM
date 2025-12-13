@@ -176,6 +176,26 @@ class AudioManager:
 
         return False
 
+    def _extract_best_cover(self, track_data):
+        """Estrae la migliore copertina disponibile (Spotify > Deezer > Generic)"""
+        try:
+            # 1. Prova Spotify (spesso HD)
+            spotify = track_data.get("external_metadata", {}).get("spotify", {})
+            if "album" in spotify and "images" in spotify["album"]:
+                images = spotify["album"]["images"]
+                if images:
+                    return images[0].get("url") # Solitamente la prima è la più grande
+
+            # 2. Prova Generic ACRCloud Cover
+            album = track_data.get("album", {})
+            if "covers" in album and album["covers"]:
+                return album["covers"][0].get("url")
+                
+        except Exception as e:
+            print(f"⚠️ Errore estrazione cover: {e}")
+        
+        return None
+
     def _process_window(self):
         if not self.upload_lock.acquire(blocking=False):
             print("⏳ Rete lenta: Salto finestra.")
@@ -492,12 +512,14 @@ class AudioManager:
                             elif applied_bonus > 0:
                                 print(f"✨ Boost applicato (+{applied_bonus}): '{title}'")
 
+                            cover_url = self._extract_best_cover(t)
                             all_found.append({
                                 "status": "success",
                                 "type": type_label,
                                 "title": title,
                                 "artist": artist_name,
                                 "album": t.get("album", {}).get("name"),
+                                "cover": cover_url,
                                 "score": final_score,
                                 "duration_ms": t.get("duration_ms"),
                                 "isrc": t.get("external_ids", {}).get("isrc"),

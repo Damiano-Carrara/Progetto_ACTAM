@@ -473,9 +473,10 @@ body.no-scroll { overflow: hidden; }
 .log-row {
   display: grid;
   /* # | Brano | Compositore | Artista */
-  grid-template-columns: 36px 2fr 1.8fr 1.5fr;
+  grid-template-columns: 36px 40px 2fr 1.8fr 1.5fr;
   gap: 8px;
   font-size: 0.9rem;
+  align-items: center;
 }
 
 .log-head {
@@ -483,6 +484,15 @@ body.no-scroll { overflow: hidden; }
   border-bottom: 1px solid var(--border);
   margin-bottom: 6px;
   color: var(--muted);
+}
+
+.log-row .col-cover img {
+  width: 32px;
+  height: 32px;
+  border-radius: 4px;
+  object-fit: cover;
+  display: block;
+  background-color: #222; /* Placeholder scuro */
 }
 
 .log-head span:first-child { text-align: left; }
@@ -943,3 +953,46 @@ main[data-viewer="true"] input.inline {
 
 /* restore modal buttons */
 #restore-modal .modal-actions button { min-width: 140px; }
+
+#app {
+  position: relative;
+  z-index: 10; /* Porta il contenuto (testi, bottoni) in primo piano */
+  /* Mantieni le altre regole esistenti di #app (max-width, margin, ecc.) */
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 24px 16px 24px;
+}
+
+/* SFONDO DINAMICO */
+.app-background {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  
+  /* MODIFICA QUI: Da -2 a 0 */
+  z-index: 0; /* Sta sopra il gradiente del body, ma sotto #app */
+  
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  opacity: 0; 
+  transition: opacity 1s ease-in-out;
+  filter: blur(20px) brightness(0.6);
+  transform: scale(1.1);
+}
+
+.app-background-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  
+  /* MODIFICA QUI: Da -1 a 1 */
+  z-index: 1; /* Sta sopra l'immagine sfocata, ma sotto #app */
+  
+  background: rgba(11, 12, 16, 0.6);
+  pointer-events: none;
+}
