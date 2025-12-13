@@ -130,6 +130,7 @@ class AudioManager:
         art1 = self._normalize_text(self._get_artist_name(t1))
         art2 = self._normalize_text(self._get_artist_name(t2))
         
+        # Se gli artisti sono diversi, sono brani diversi
         if art1 != art2 and art1 not in art2 and art2 not in art1:
             return False
 
@@ -138,11 +139,19 @@ class AudioManager:
 
         similarity = SequenceMatcher(None, tit1, tit2).ratio()
 
-        if similarity < 0.40:
+        # --- SOGLIE CORRETTE ---
+
+        # Sotto il 60%: Sicuramente DIVERSI
+        if similarity < 0.60:
             return False
 
-        if similarity > 0.60:
+        # Sopra l'85%: Sicuramente UGUALI (es. differenze minime di typo o accenti)
+        if similarity > 0.85:
             return True
+
+        # --- ZONA GRIGIA (60% - 85%) ---
+        # Caso Baglioni: "Quanto ti voglio" (14 car) vs "Quante volte" (11 car) -> Similarity ~0.64
+        # Per distinguere, usiamo la DURATA (se disponibile)
             
         try:
             dur1 = int(t1.get('duration_ms', 0) or 0)
@@ -150,12 +159,38 @@ class AudioManager:
         except (ValueError, TypeError):
             dur1, dur2 = 0, 0
 
+        # Se le durate mancano, nel dubbio NON uniamo (meglio separati che un falso positivo)
+        if dur1 == 0 or dur2 == 0:
+            return False
+
+        # Se entrambi sono brani "full" (>30s) e la differenza è minima (<2.5s)
         if dur1 > 30000 and dur2 > 30000:
             diff = abs(dur1 - dur2)
-            if diff < 1200:
+            if diff < 2500: # Tolleranza stretta (2.5 secondi)
                 return True
 
+        # Se siamo nella zona grigia ma la durata è diversa, sono canzoni diverse
         return False
+
+    def _extract_best_cover(self, track_data):
+        """Estrae la migliore copertina disponibile (Spotify > Deezer > Generic)"""
+        try:
+            # 1. Prova Spotify (spesso HD)
+            spotify = track_data.get("external_metadata", {}).get("spotify", {})
+            if "album" in spotify and "images" in spotify["album"]:
+                images = spotify["album"]["images"]
+                if images:
+                    return images[0].get("url") # Solitamente la prima è la più grande
+
+            # 2. Prova Generic ACRCloud Cover
+            album = track_data.get("album", {})
+            if "covers" in album and album["covers"]:
+                return album["covers"][0].get("url")
+                
+        except Exception as e:
+            print(f"⚠️ Errore estrazione cover: {e}")
+        
+        return None
 
     def _process_window(self):
         if not self.upload_lock.acquire(blocking=False):
@@ -409,11 +444,18 @@ class AudioManager:
                                 print(f"🚀 BOOST DECISIVO (+{applied_bonus}): '{title}' ({raw_score}% -> {final_score}%)")
                             elif applied_bonus > 0:
                                 print(f"✨ Boost applicato (+{applied_bonus}): '{title}'")
+                            
+                            # [NUOVO] Estrazione Copertina
+                            cover_url = self._extract_best_cover(t) 
                                 
                             all_found.append({
                                 "status": "success", "type": type_label,
                                 "title": title, "artist": artist_name,
                                 "album": t.get('album', {}).get('name'), 
+                                
+                                # [NUOVO] Aggiunta campo cover
+                                "cover": cover_url, 
+                                
                                 "score": final_score, 
                                 "duration_ms": t.get('duration_ms'), 
                                 "isrc": t.get('external_ids', {}).get('isrc'),

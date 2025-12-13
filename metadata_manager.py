@@ -10,7 +10,7 @@ class MetadataManager:
         musicbrainzngs.set_useragent("SIAE_Project_Univ", "0.5", "tuamail@esempio.com")
         self.itunes_url = "https://itunes.apple.com/search"
         self.deezer_search_url = "https://api.deezer.com/search"
-        print("📚 Metadata Manager (IT Store Forced) Pronto.")
+        print("📚 Metadata Manager (Composer + Cover Mode) Pronto.")
 
     def _clean_string(self, text):
         if not text: return ""
@@ -24,133 +24,146 @@ class MetadataManager:
         return clean.strip()
 
     def find_composer(self, title, detected_artist, isrc=None, upc=None, setlist_artist=None, raw_acr_meta=None):
+        """
+        Restituisce una TUPLA: (nome_compositore, url_copertina)
+        """
         clean_title = self._clean_title(title)
         search_title = clean_title if len(clean_title) > 2 else title
         
-        print(f"\n🔎 [META] Cerco Compositore: '{search_title}' (Art: '{detected_artist}')")
+        print(f"\n🔎 [META] Ricerca Dati: '{search_title}' (Art: '{detected_artist}')")
 
-        # 0. ACRCLOUD NATIVE (Nuova Miniera d'Oro)
-        # Se ACRCloud ha già i compositori nel suo DB, usiamoli subito!
+        final_composer = "Sconosciuto"
+        final_cover = None
+
+        # 0. ACRCLOUD NATIVE (Ottimo per Compositore)
         if raw_acr_meta and 'contributors' in raw_acr_meta:
-            # ACRCloud restituisce 'composers': ['Nome 1', 'Nome 2']
             composers_list = raw_acr_meta['contributors'].get('composers', [])
             if composers_list:
-                res_str = ", ".join(composers_list)
-                print(f"   💎 ACRCloud Native Match: {res_str}")
-                return res_str
+                final_composer = ", ".join(composers_list)
+                print(f"   💎 ACRCloud Native Composer: {final_composer}")
+
+        # Se ACRCloud (passato da audio_manager) aveva già una cover, potremmo averla qui,
+        # ma per sicurezza cerchiamo la versione HD su iTunes/Deezer.
 
         artists_to_try = []
         if setlist_artist: artists_to_try.append(setlist_artist)
         if detected_artist and detected_artist != setlist_artist: artists_to_try.append(detected_artist)
 
-        # 1. MUSICBRAINZ (ISRC)
-        if isrc:
+        # 1. ITUNES (Priorità Cover HD + Compositore)
+        # Cerchiamo su iTunes anche se abbiamo già il compositore, per trovare la Cover HD
+        if final_cover is None or final_composer == "Sconosciuto":
+            print("🍏 [Apple] Provo iTunes (Store IT)...")
+            for artist in artists_to_try:
+                # Nota: _search_itunes ora restituisce (comp, cover)
+                found_comp, found_cover = self._search_itunes(search_title, artist)
+                
+                if found_cover and not final_cover:
+                    final_cover = found_cover
+                    print(f"     📸 Cover trovata su iTunes!")
+                
+                if found_comp and final_composer == "Sconosciuto":
+                    final_composer = f"{found_comp} (Apple)"
+                
+                # Se abbiamo entrambi, possiamo uscire dal loop degli artisti
+                if final_cover and final_composer != "Sconosciuto":
+                    break
+
+        # 2. DEEZER (Fallback)
+        if final_cover is None or final_composer == "Sconosciuto":
+            print("🎵 [Deezer] Provo Deezer...")
+            for artist in artists_to_try:
+                found_comp, found_cover = self._search_deezer(search_title, artist)
+                
+                if found_cover and not final_cover:
+                    final_cover = found_cover
+                    print(f"     📸 Cover trovata su Deezer!")
+                
+                if found_comp and final_composer == "Sconosciuto":
+                    final_composer = f"{found_comp} (Deezer)"
+
+                if final_cover and final_composer != "Sconosciuto":
+                    break
+
+        # 3. MUSICBRAINZ (Solo Compositore - ISRC)
+        # MusicBrainz è lento, lo usiamo solo se manca il compositore
+        if final_composer == "Sconosciuto" and isrc:
             res = self._search_mb_by_isrc(isrc)
-            if res: return res
+            if res: final_composer = res
 
-        # 2. MUSICBRAINZ (Testo)
-        for artist in artists_to_try:
-            res = self._strategy_musicbrainz(search_title, artist)
-            if res: return res
+        # 4. MUSICBRAINZ (Solo Compositore - Testo)
+        if final_composer == "Sconosciuto":
+            for artist in artists_to_try:
+                res = self._strategy_musicbrainz(search_title, artist)
+                if res: 
+                    final_composer = res
+                    break
 
-        # 3. ITUNES (Potenziato)
-        print("🍏 [Apple] Provo iTunes (Store IT)...")
-        for artist in artists_to_try:
-            res = self._search_itunes(search_title, artist)
-            if res: return f"{res} (Apple)"
-
-        # 4. DEEZER
-        print("🎵 [Deezer] Provo Deezer...")
-        for artist in artists_to_try:
-            res = self._search_deezer(search_title, artist)
-            if res: return f"{res} (Deezer)"
-
-        # 5. SPOTIFY RAW (Fallback)
-        if raw_acr_meta and 'spotify' in raw_acr_meta:
-            print("🟢 [Spotify Raw] Analizzo metadati grezzi...")
+        # 5. SPOTIFY RAW (Fallback solo dati testuali)
+        if final_composer == "Sconosciuto" and raw_acr_meta and 'spotify' in raw_acr_meta:
             try:
-                # Nota: raw_acr_meta['spotify'] è un dict, non una lista
                 spotify_data = raw_acr_meta['spotify']
                 spotify_artists = spotify_data.get('artists', [])
                 names = [a.get('name') for a in spotify_artists if 'name' in a]
                 
                 filtered_names = []
                 target_norm = self._clean_string(detected_artist)
-                
                 for n in names:
                     if self._clean_string(n) not in target_norm:
                         filtered_names.append(n)
                 
                 if filtered_names:
-                    res_str = ", ".join(filtered_names)
-                    print(f"   ✅ Spotify Raw Contributors: {res_str}")
-                    return f"{res_str} (Spotify Raw)"
+                    final_composer = f"{', '.join(filtered_names)} (Spotify Raw)"
             except: pass
 
-        return "Sconosciuto"
+        return final_composer, final_cover
 
     # ---------------------------------------------------------
-    # ITUNES (Logica Potenziata)
+    # ITUNES (Logica Ibrida: Rilassata per Cover, Strict per Comp)
     # ---------------------------------------------------------
     def _search_itunes(self, title, artist):
         try:
-            # Pulizia leggera per la query
             simple_artist = re.sub(r"(?i)\b(feat\.|ft\.|&|the)\b.*", "", artist).strip()
-            
-            # --- TENTATIVO 1: Query Specifica ---
             params = {
                 'term': f"{title} {simple_artist}", 
-                'media': 'music', 
-                'entity': 'song', 
-                'limit': 10,
-                'country': 'IT' # <--- FONDAMENTALE
+                'media': 'music', 'entity': 'song', 'limit': 10, 'country': 'IT'
             }
-            
-            # DEBUG URL
-            # print(f"   ► URL iTunes: {self.itunes_url}?term={params['term']}&country=IT")
             
             resp = requests.get(self.itunes_url, params=params, timeout=5)
             results = resp.json().get('results', []) if resp.status_code == 200 else []
 
-            # --- TENTATIVO 2: Solo Titolo (Se 1 fallisce) ---
             if not results:
-                print(f"   -> Nessun risultato specifico. Provo solo titolo: '{title}'")
                 params['term'] = title
                 resp = requests.get(self.itunes_url, params=params, timeout=5)
                 results = resp.json().get('results', []) if resp.status_code == 200 else []
 
             target_norm = self._clean_string(artist)
             
-            for i, res in enumerate(results):
+            for res in results:
                 track_name = res.get('trackName', '')
                 artist_name = res.get('artistName', '')
                 
-                # Check Titolo (Fuzzy > 60%)
-                if SequenceMatcher(None, title.lower(), track_name.lower()).ratio() < 0.6:
-                    # print(f"     X Scartato Titolo: {track_name}")
-                    continue
+                # Check Titolo
+                if SequenceMatcher(None, title.lower(), track_name.lower()).ratio() < 0.6: continue
                 
-                # Check Artista (Flessibile)
                 found_art_clean = self._clean_string(artist_name)
                 
-                # Se l'artista combacia (Lazza in Lazza / Lazza in Lazza & Sfera)
+                # Check Artista
                 if target_norm in found_art_clean or found_art_clean in target_norm:
-                    if 'composerName' in res:
-                        comp = res['composerName']
-                        print(f"   ✅ iTunes Match: {comp}")
-                        return comp
-                    else:
-                        print(f"     ⚠️ Trovato brano '{track_name}' ma campo composer vuoto.")
-                else:
-                    # print(f"     X Scartato Artista: {artist_name} (Cercavo: {artist})")
-                    pass
+                    # Trovato! Estraiamo dati.
+                    # TRUCCO HD: Sostituisci 100x100 con 600x600 nell'URL
+                    cover = res.get('artworkUrl100', '').replace('100x100', '600x600')
+                    composer = res.get('composerName', None) # Può essere None
+                    
+                    if not cover: cover = None # Pulizia
+                    
+                    return composer, cover
                     
         except Exception as e:
             print(f"   ⚠️ Errore iTunes: {e}")
-        return None
+        return None, None
 
     # ---------------------------------------------------------
-    # DEEZER
+    # DEEZER (Ritorna Tuple)
     # ---------------------------------------------------------
     def _search_deezer(self, title, artist):
         try:
@@ -158,7 +171,7 @@ class MetadataManager:
             params = {'q': query, 'limit': 3}
             
             resp = requests.get(self.deezer_search_url, params=params, timeout=5)
-            if resp.status_code != 200: return None
+            if resp.status_code != 200: return None, None
             data = resp.json()
             
             target_norm = self._clean_string(artist)
@@ -171,21 +184,29 @@ class MetadataManager:
                 found_artist = self._clean_string(res.get('artist', {}).get('name', ''))
                 if target_norm not in found_artist and found_artist not in target_norm: continue
 
-                track_resp = requests.get(f"https://api.deezer.com/track/{res['id']}", timeout=5)
-                if track_resp.status_code == 200:
-                    contributors = track_resp.json().get('contributors', [])
-                    composers = []
-                    for p in contributors:
-                        if p.get('role') in ['Composer', 'Writer', 'Author']:
-                            composers.append(p.get('name'))
-                    
-                    if composers:
-                        return ", ".join(list(set(composers)))
+                # Cover immediata
+                cover = res.get('album', {}).get('cover_medium', None)
+                composer = None
+
+                # Deep search per compositore
+                try:
+                    track_resp = requests.get(f"https://api.deezer.com/track/{res['id']}", timeout=5)
+                    if track_resp.status_code == 200:
+                        contributors = track_resp.json().get('contributors', [])
+                        comps = []
+                        for p in contributors:
+                            if p.get('role') in ['Composer', 'Writer', 'Author']:
+                                comps.append(p.get('name'))
+                        if comps:
+                            composer = ", ".join(list(set(comps)))
+                except: pass
+
+                return composer, cover
         except: pass
-        return None
+        return None, None
 
     # ---------------------------------------------------------
-    # MUSICBRAINZ UTILS
+    # MUSICBRAINZ (Rimane invariato, ritorna stringa)
     # ---------------------------------------------------------
     def _strategy_musicbrainz(self, title, artist):
         try:

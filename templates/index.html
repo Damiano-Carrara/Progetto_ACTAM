@@ -7,6 +7,9 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
   </head>
   <body>
+    <div id="app-background" class="app-background {{ 'viewer-bg' if viewer_mode }}"></div>
+    <div class="app-background-overlay"></div>
+
     <main id="app" data-viewer="{{ 'true' if viewer_mode else 'false' }}">
       
       <section id="view-welcome" class="view view--active">
@@ -18,13 +21,7 @@
             </p>
 
             <div class="mode-grid">
-              <div
-                class="mode-card"
-                data-mode="dj"
-                tabindex="0"
-                role="button"
-                aria-label="DJ set"
-              >
+              <div class="mode-card" data-mode="dj" tabindex="0" role="button" aria-label="DJ set">
                 <div class="mode-bg bg-dj"></div>
                 <div class="mode-overlay"></div>
                 <div class="mode-content">
@@ -32,7 +29,6 @@
                     <h2>DJ set</h2>
                     <p>Per serate con uno o più DJ, mashup e remix.</p>
                   </div>
-
                   <div class="artist-input-wrapper" id="djConfirmWrapper">
                     <div class="artist-input-row">
                       <div class="artist-placeholder"></div>
@@ -42,13 +38,7 @@
                 </div>
               </div>
 
-              <div
-                class="mode-card"
-                data-mode="band"
-                tabindex="0"
-                role="button"
-                aria-label="Live band"
-              >
+              <div class="mode-card" data-mode="band" tabindex="0" role="button" aria-label="Live band">
                 <div class="mode-bg bg-live"></div>
                 <div class="mode-overlay"></div>
                 <div class="mode-content">
@@ -56,7 +46,6 @@
                     <h2>Live band</h2>
                     <p>Per band con strumenti dal vivo e voce.</p>
                   </div>
-
                   <div class="artist-input-wrapper" id="bandArtistWrapper">
                     <div class="artist-input-row">
                       <div class="artist-placeholder"></div>
@@ -66,13 +55,7 @@
                 </div>
               </div>
 
-              <div
-                class="mode-card mode-card-concerto"
-                data-mode="concert"
-                tabindex="0"
-                role="button"
-                aria-label="Concerto (o Tribute Band)"
-              >
+              <div class="mode-card mode-card-concerto" data-mode="concert" tabindex="0" role="button" aria-label="Concerto">
                 <div class="mode-bg bg-concerto"></div>
                 <div class="mode-overlay"></div>
                 <div class="mode-content">
@@ -80,16 +63,10 @@
                     <h2>Concerto (o Tribute Band)</h2>
                     <p>Per le date di un tour o concerti singoli.</p>
                   </div>
-
                   <div class="artist-input-wrapper" id="artistInputWrapper">
                     <label for="artistInput">Nome artista</label>
                     <div class="artist-input-row">
-                      <input
-                        type="text"
-                        id="artistInput"
-                        placeholder="Nome artista"
-                        autocomplete="off"
-                      />
+                      <input type="text" id="artistInput" placeholder="Nome artista" autocomplete="off" />
                       <button type="button" id="artistConfirmBtn">Invia</button>
                     </div>
                     <p class="artist-error" id="artistError"></p>
@@ -103,44 +80,42 @@
 
       <section id="view-session" class="view">
         <div class="session-grid">
-          <section class="card session-panel">
+          <section class="card session-panel {% if not viewer_mode %}session-panel--qr{% endif %}">
             <div class="left">
               <h2>Sessione</h2>
               <div class="meta">
-                Modalità:
-                <span id="mode-badge" class="badge">DJ set</span>
-                • Tempo sessione:
-                <span id="session-timer">00:00</span>
+                Modalità: <span id="mode-badge" class="badge">DJ set</span>
+                • Tempo sessione: <span id="session-timer">00:00</span>
               </div>
             </div>
+            
             <div class="controls">
               {% if not viewer_mode %}
-                <button id="btn-session-start" class="btn">Start</button>
-                <button id="btn-session-pause" class="btn" disabled>Pause</button>
-                <button id="btn-session-stop" class="btn" disabled>Stop</button>
-                <button id="btn-session-reset" class="btn">Reset</button>
-                <button id="btn-show-qr" class="btn" style="margin-left: 10px;">📱 Share QR</button>
+                <button id="btn-session-start" class="btn btn--ctl">Start</button>
+                <button id="btn-session-pause" class="btn btn--ctl" disabled>Pause</button>
+                <button id="btn-session-stop" class="btn btn--ctl" disabled>Stop</button>
+                <button id="btn-session-reset" class="btn btn--ctl">Reset</button>
               {% else %}
                 <span class="badge" style="background: #7c3aed; color: white;">Modalità Spettatore</span>
               {% endif %}
             </div>
+
+            {% if not viewer_mode %}
+            <div class="qr-corner">
+              <button id="btn-show-qr" class="btn btn--qr" type="button" aria-label="Share QR" title="Share QR">QR</button>
+            </div>
+            {% endif %}
           </section>
 
           <section class="card log-card">
             <div class="log-header-row">
               <h3>Log live</h3>
-              <button
-                id="btn-session-notes"
-                class="btn btn--small"
-                data-tooltip="Apre il blocco note per segnare mismatch o errori della sessione."
-              >
-                Note
-              </button>
+              <button id="btn-session-notes" class="btn btn--small" data-tooltip="Note sessione">Note</button>
             </div>
 
             <div class="log-head">
               <span>#</span>
-              <span>Brano</span>
+              <span>Cover</span> <span>Brano</span>
               <span>Compositore</span>
               <span>Artista</span>
             </div>
@@ -156,9 +131,7 @@
       <section id="view-review" class="view">
         <header class="hero hero--small">
           <h2>Review borderò</h2>
-          <p class="subtitle">
-            Controlla i brani rilevati live prima di generare il file SIAE.
-          </p>
+          <p class="subtitle">Controlla i brani rilevati live prima di generare il file SIAE.</p>
         </header>
 
         <div class="card review-card">
@@ -200,9 +173,7 @@
           <div class="actions">
             {% if not viewer_mode %}
               <button id="btn-undo" class="btn btn--small" disabled>Undo</button>
-              <button id="btn-generate" class="btn btn--primary" disabled>
-                Generate
-              </button>
+              <button id="btn-generate" class="btn btn--primary" disabled>Generate</button>
             {% endif %}
           </div>
         </div>
@@ -212,18 +183,11 @@
         <div class="modal-backdrop"></div>
         <div class="modal-dialog card notes-dialog">
           <h3>Note sessione</h3>
-          <p class="modal-message">
-            Segna qui eventuali mismatch o errori da correggere in review.
-          </p>
-          <textarea
-            id="notes-textarea"
-            placeholder="Es: Brano 3: autore errato, controllare..."
-          ></textarea>
+          <p class="modal-message">Segna qui eventuali mismatch o errori.</p>
+          <textarea id="notes-textarea" placeholder="Es: Brano 3: autore errato..."></textarea>
           <div class="modal-actions">
             <button id="notes-cancel" class="btn btn--small">Chiudi</button>
-            <button id="notes-save" class="btn btn--small btn--primary">
-              Salva
-            </button>
+            <button id="notes-save" class="btn btn--small btn--primary">Salva</button>
           </div>
         </div>
       </div>
@@ -231,14 +195,10 @@
       <div id="confirm-modal" class="modal modal--hidden">
         <div class="modal-backdrop"></div>
         <div class="modal-dialog card">
-          <p id="confirm-message" class="modal-message">
-            Sei sicuro di voler cancellare questo brano?
-          </p>
+          <p id="confirm-message" class="modal-message">Sei sicuro di voler cancellare questo brano?</p>
           <div class="modal-actions">
             <button id="confirm-cancel" class="btn btn--small">Annulla</button>
-            <button id="confirm-ok" class="btn btn--small btn--primary">
-              Ok
-            </button>
+            <button id="confirm-ok" class="btn btn--small btn--primary">Ok</button>
           </div>
         </div>
       </div>
@@ -247,11 +207,7 @@
         <div class="modal-backdrop"></div>
         <div class="modal-dialog card">
           <h3>Sessione Trovata</h3>
-          <p class="modal-message">
-            Ho trovato dei brani salvati nel database (probabile sessione precedente o crash).
-            <br><br>
-            Vuoi recuperarli o iniziare da zero?
-          </p>
+          <p class="modal-message">Ho trovato dei brani salvati nel database. Vuoi recuperarli?</p>
           <div class="modal-actions" style="justify-content: center;">
             <button id="restore-new" class="btn btn--small">🗑️ Nuova Sessione</button>
             <button id="restore-ok" class="btn btn--small btn--primary">♻️ Recupera Dati</button>
@@ -263,14 +219,27 @@
         <div class="modal-backdrop"></div>
         <div class="modal-dialog card" style="max-width: 360px;">
           <h3>Scansiona per seguire Live</h3>
-          <p class="modal-message">
-            Inquadra questo QR code per vedere la lista brani in tempo reale dal tuo smartphone.
-          </p>
+          <p class="modal-message">Inquadra per vedere la lista brani in tempo reale.</p>
           <div style="background: white; padding: 10px; border-radius: 8px; margin: 10px auto; width: fit-content;">
             <img id="qr-image" src="" alt="QR Code" style="display: block; width: 200px; height: 200px;" />
           </div>
           <div class="modal-actions" style="justify-content: center;">
             <button id="qr-close" class="btn btn--small">Chiudi</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="export-modal" class="modal modal--hidden">
+        <div class="modal-backdrop"></div>
+        <div class="modal-dialog card" style="max-width: 320px; padding: 20px;">
+          <h3 style="margin-top: 0; margin-bottom: 15px; font-size: 1.2rem;">Esporta Report</h3>
+          <div class="export-options" style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 20px;">
+            <button id="btn-export-excel" class="btn" style="justify-content: center; width: 100%;">Excel (SIAE)</button>
+            <button id="btn-export-pdf" class="btn" style="justify-content: center; width: 100%;">PDF Ufficiale</button>
+            <button id="btn-export-raw" class="btn" style="justify-content: center; width: 100%; border-style: dashed; opacity: 0.8;">Log Tecnico (Raw)</button>
+          </div>
+          <div class="modal-actions" style="justify-content: center; margin-top: 0;">
+            <button id="btn-export-close" class="btn btn--small" style="background: transparent; border: none; color: #999;">Chiudi</button>
           </div>
         </div>
       </div>
