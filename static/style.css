@@ -6,16 +6,20 @@
   --border: #1f242d;
   --primary: #7c3aed;
 
-  /* equalizer */
+  /* Equalizer variables */
   --vis-h: 130px;
-  --vis-gap: 8px; /* distanza “aria” sopra l’equalizer */
+  --vis-gap: 8px;
 }
 
 /* RESET BASE */
-* { box-sizing: border-box; }
+* {
+  box-sizing: border-box;
+}
 
 html,
-body { height: 100%; }
+body {
+  height: 100%;
+}
 
 body {
   margin: 0;
@@ -24,31 +28,81 @@ body {
   color: var(--text);
 }
 
-/* tutti i bottoni usano lo stesso font dell'app */
-button { font-family: inherit; }
+/* Tutti i bottoni usano lo stesso font */
+button {
+  font-family: inherit;
+}
 
-/* no scroll per welcome + session + review */
-body.no-scroll { overflow: hidden; }
+/* No scroll per le view fisse */
+body.no-scroll {
+  overflow: hidden;
+}
 
 #app {
+  /* [CRITICO] Z-Index alto per stare sopra lo sfondo sfocato */
+  position: relative;
+  z-index: 10;
   max-width: 960px;
   margin: 0 auto;
   padding: 24px 16px 24px;
 }
 
+/* SFONDO DINAMICO (COPERTINA SFOCATA) */
+.app-background {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0; /* Livello più basso */
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  opacity: 0; 
+  transition: opacity 1s ease-in-out;
+  filter: blur(20px) brightness(0.6);
+  transform: scale(1.1); /* Zoom per evitare bordi bianchi col blur */
+}
+
+/* Overlay scuro per leggibilità sopra la copertina */
+.app-background-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+  background: rgba(11, 12, 16, 0.6);
+  pointer-events: none;
+}
+
 /* UTILITY */
-.hidden { display: none !important; }
+.hidden {
+  display: none !important;
+}
 
 /* VIEWS */
-.view { display: none; }
-.view.view--active { display: block; }
+.view {
+  display: none;
+}
+
+.view.view--active {
+  display: block;
+}
 
 /* HERO / TITOLI */
-.hero { margin-bottom: 24px; }
-.hero--small { margin-bottom: 12px; }
+.hero {
+  margin-bottom: 24px;
+}
+
+.hero--small {
+  margin-bottom: 12px;
+}
 
 .hero h1,
-.hero h2 { margin: 0 0 4px; }
+.hero h2 {
+  margin: 0 0 4px;
+}
 
 .subtitle {
   margin: 0;
@@ -62,6 +116,9 @@ body.no-scroll { overflow: hidden; }
   border: 1px solid var(--border);
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.4);
   background: var(--panel);
+  /* Assicura leggibilità sopra sfondo */
+  position: relative; 
+  z-index: 2;
 }
 
 /* CARD GENERICA */
@@ -71,8 +128,7 @@ body.no-scroll { overflow: hidden; }
   border: 1px solid var(--border);
   padding: 16px 18px;
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.4);
-
-  /* fondamentale: le card devono stare sopra all’equalizer */
+  /* Le card stanno sopra al visualizer */
   position: relative;
   z-index: 2;
 }
@@ -89,7 +145,10 @@ body.no-scroll { overflow: hidden; }
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  transition: transform 0.1s ease, box-shadow 0.1s ease, background 0.1s ease;
+  transition:
+    transform 0.1s ease,
+    box-shadow 0.1s ease,
+    background 0.1s ease;
 }
 
 .btn:hover:not(:disabled) {
@@ -114,7 +173,7 @@ body.no-scroll { overflow: hidden; }
   cursor: not-allowed;
 }
 
-/* BADGE / METADATI */
+/* BADGE */
 .badge {
   display: inline-block;
   padding: 2px 8px;
@@ -123,7 +182,7 @@ body.no-scroll { overflow: hidden; }
   font-size: 0.9rem;
 }
 
-/* === FACCIATA 1: SELEZIONE MODALITÀ === */
+/* === SELEZIONE MODALITÀ (Welcome) === */
 .mode-page {
   width: 100%;
   padding: 24px;
@@ -152,7 +211,6 @@ body.no-scroll { overflow: hidden; }
   gap: 1.5rem;
 }
 
-/* card modalità */
 .mode-card {
   position: relative;
   overflow: hidden;
@@ -160,10 +218,33 @@ body.no-scroll { overflow: hidden; }
   cursor: pointer;
   min-height: 280px;
   outline: none;
+  
+  /* [MODIFICA] Bordo base più spesso per accogliere il colore */
+  border: 2px solid var(--border); 
+  
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35);
   transform: translateY(0);
-  transition: transform 0.25s ease, box-shadow 0.25s ease, outline 0.15s ease;
+  transition:
+    transform 0.25s ease,
+    box-shadow 0.25s ease,
+    border-color 0.25s ease; /* Aggiunta transizione colore */
   will-change: transform;
+}
+
+/* [MODIFICA] BORDI COLORATI PER OGNI CARD */
+.mode-card[data-mode="dj"] {
+  border-color: #ff8a00;
+  box-shadow: 0 10px 30px rgba(255, 138, 0, 0.1);
+}
+
+.mode-card[data-mode="band"] {
+  border-color: #00ffc3;
+  box-shadow: 0 10px 30px rgba(0, 255, 195, 0.1);
+}
+
+.mode-card[data-mode="concert"] {
+  border-color: #ff3f6a;
+  box-shadow: 0 10px 30px rgba(255, 63, 106, 0.1);
 }
 
 .mode-bg {
@@ -173,14 +254,20 @@ body.no-scroll { overflow: hidden; }
   background-position: center;
   filter: grayscale(0.1) brightness(0.65);
   transform: scale(1.02);
-  transition: filter 0.25s ease, transform 0.25s ease;
+  transition:
+    filter 0.25s ease,
+    transform 0.25s ease;
   border-radius: inherit;
 }
 
 .mode-overlay {
   position: absolute;
   inset: 0;
-  background: linear-gradient(145deg, rgba(5, 5, 15, 0.92), rgba(88, 80, 180, 0.8));
+  background: linear-gradient(
+    145deg,
+    rgba(5, 5, 15, 0.92),
+    rgba(88, 80, 180, 0.8)
+  );
   mix-blend-mode: multiply;
   transition: opacity 0.25s ease;
   border-radius: inherit;
@@ -196,7 +283,9 @@ body.no-scroll { overflow: hidden; }
   height: 100%;
 }
 
-.mode-text-group { flex: 1; }
+.mode-text-group {
+  flex: 1;
+}
 
 .mode-content h2 {
   font-size: 1.3rem;
@@ -211,7 +300,22 @@ body.no-scroll { overflow: hidden; }
 .mode-card:hover,
 .mode-card:focus-visible {
   transform: translateY(-8px);
-  box-shadow: 0 22px 50px rgba(0, 0, 0, 0.55);
+}
+
+/* [MODIFICA] HOVER SPECIFICI CON GLOW COLORATO */
+.mode-card[data-mode="dj"]:hover, 
+.mode-card[data-mode="dj"]:focus-visible {
+  box-shadow: 0 22px 50px rgba(255, 138, 0, 0.25);
+}
+
+.mode-card[data-mode="band"]:hover, 
+.mode-card[data-mode="band"]:focus-visible {
+  box-shadow: 0 22px 50px rgba(0, 255, 195, 0.25);
+}
+
+.mode-card[data-mode="concert"]:hover, 
+.mode-card[data-mode="concert"]:focus-visible {
+  box-shadow: 0 22px 50px rgba(255, 63, 106, 0.25);
 }
 
 .mode-card:hover .mode-bg,
@@ -221,18 +325,42 @@ body.no-scroll { overflow: hidden; }
 }
 
 .mode-card:hover .mode-overlay,
-.mode-card:focus-visible .mode-overlay { opacity: 0.5; }
+.mode-card:focus-visible .mode-overlay {
+  opacity: 0.5;
+}
 
-.mode-card:focus-visible { outline: 2px solid #f4bfff; }
+/* [MODIFICA] RIMOSSA outline generica, ora usiamo il bordo colorato intenso per la selezione */
+.mode-card:focus-visible {
+  outline: none; 
+}
 
-.bg-dj { background-image: radial-gradient(circle at 20% 0%, #ff8a00, #1b0033); }
-.bg-live { background-image: radial-gradient(circle at 80% 0%, #00ffc3, #002b36); }
-.bg-concerto { background-image: radial-gradient(circle at 50% 100%, #ff3f6a, #1a0030); }
+.bg-dj {
+  background-image: radial-gradient(circle at 20% 0%, #ff8a00, #1b0033);
+}
 
-.mode-card.mode-card--selected { outline: 2px solid #f4bfff; }
-.mode-card-concerto.active { outline: 2px solid #ff8ad4; }
+.bg-live {
+  background-image: radial-gradient(circle at 80% 0%, #00ffc3, #002b36);
+}
 
-/* === WRAPPER INPUT ARTISTA === */
+.bg-concerto {
+  background-image: radial-gradient(circle at 50% 100%, #ff3f6a, #1a0030);
+}
+
+/* [MODIFICA] CARD SELEZIONATA (Mantiene il colore specifico ma più luminoso) */
+.mode-card.mode-card--selected[data-mode="dj"] {
+  box-shadow: 0 0 0 2px rgba(255, 138, 0, 0.6), 0 16px 40px rgba(0, 0, 0, 0.5);
+  border-color: #ffca4d;
+}
+.mode-card.mode-card--selected[data-mode="band"] {
+  box-shadow: 0 0 0 2px rgba(0, 255, 195, 0.6), 0 16px 40px rgba(0, 0, 0, 0.5);
+  border-color: #5eead4;
+}
+.mode-card.mode-card--selected[data-mode="concert"] {
+  box-shadow: 0 0 0 2px rgba(255, 63, 106, 0.6), 0 16px 40px rgba(0, 0, 0, 0.5);
+  border-color: #ff9ad7;
+}
+
+/* === INPUT ARTISTA === */
 .artist-input-wrapper {
   margin-top: 1rem;
   padding-top: 0.8rem;
@@ -240,10 +368,12 @@ body.no-scroll { overflow: hidden; }
   display: none;
   min-height: 95px;
   flex-direction: column;
-  justify-content: flex-end;
+  justify-content: flex-end; 
 }
 
-.artist-input-wrapper.visible { display: flex; }
+.artist-input-wrapper.visible {
+  display: flex;
+}
 
 .artist-input-wrapper label {
   font-size: 0.8rem;
@@ -273,7 +403,9 @@ body.no-scroll { overflow: hidden; }
 }
 
 #artistInput::placeholder,
-#bandArtistInput::placeholder { color: #a9a9d8; }
+#bandArtistInput::placeholder {
+  color: #a9a9d8;
+}
 
 #artistInput:focus,
 #bandArtistInput:focus {
@@ -303,20 +435,9 @@ body.no-scroll { overflow: hidden; }
   transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
 }
 
-#djConfirmBtn {
-  background: linear-gradient(135deg, #ff8a00, #ffca4d);
-  color: #140616;
-}
-
-#bandConfirmBtn {
-  background: linear-gradient(135deg, #00ffc3, #007c9f);
-  color: #021315;
-}
-
-#artistConfirmBtn {
-  background: linear-gradient(135deg, #ff3f6a, #ff9ad7);
-  color: #21021e;
-}
+#djConfirmBtn { background: linear-gradient(135deg, #ff8a00, #ffca4d); color: #140616; }
+#bandConfirmBtn { background: linear-gradient(135deg, #00ffc3, #007c9f); color: #021315; }
+#artistConfirmBtn { background: linear-gradient(135deg, #ff3f6a, #ff9ad7); color: #21021e; }
 
 #artistConfirmBtn:hover,
 #bandConfirmBtn:hover,
@@ -346,17 +467,13 @@ body.no-scroll { overflow: hidden; }
 }
 
 /* === FACCIATA 2: SESSIONE === */
-/* view-session: occupa la viewport (dentro il padding di #app)
-   e riserva spazio sotto per l'equalizer, così non sovrappone */
 #view-session.view--active {
   display: flex;
   flex-direction: column;
   gap: 16px;
-
   height: calc(100vh - 48px);
-  height: calc(100dvh - 48px); /* meglio su browser moderni */
+  height: calc(100dvh - 48px);
   min-height: 0;
-
   padding-bottom: calc(var(--vis-h) + var(--vis-gap));
 }
 
@@ -369,12 +486,17 @@ body.no-scroll { overflow: hidden; }
   min-height: 0;
 }
 
-/* CARD “SESSIONE” più bassa */
+/* SESSION PANEL: Senza sfondo (trasparente per mostrare gradiente tema) */
 .session-panel {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 10px 14px;
+  
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  position: relative;
+  z-index: 2;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.4);
 }
 
 .session-panel h2 {
@@ -389,15 +511,8 @@ body.no-scroll { overflow: hidden; }
   font-size: 0.92rem;
 }
 
-.session-panel .badge {
-  font-size: 0.85rem;
-  padding: 1px 7px;
-}
-
-/* SOLO quando c'è il QR in basso a dx */
 .session-panel--qr {
-  position: relative;
-  padding-bottom: 42px; /* spazio riservato al bottone QR */
+  padding-bottom: 42px; /* spazio per bottone QR */
 }
 
 .session-panel .left {
@@ -412,7 +527,6 @@ body.no-scroll { overflow: hidden; }
   flex-wrap: wrap;
 }
 
-/* tasti principali più piccoli */
 .session-panel .controls .btn--ctl {
   justify-content: center;
   min-width: 74px;
@@ -420,7 +534,6 @@ body.no-scroll { overflow: hidden; }
   font-size: 0.85rem;
 }
 
-/* QR in basso a dx: minimal */
 .qr-corner {
   position: absolute;
   right: 14px;
@@ -433,7 +546,6 @@ body.no-scroll { overflow: hidden; }
   min-width: 0;
   width: auto;
   border-radius: 999px;
-
   background: rgba(17, 24, 39, 0.28);
   border: 1px solid rgba(255, 255, 255, 0.18);
   box-shadow: none;
@@ -444,19 +556,27 @@ body.no-scroll { overflow: hidden; }
   box-shadow: 0 8px 18px rgba(0, 0, 0, 0.35);
 }
 
-/* LOG: ora riempie lo spazio centrale */
+/* LOG CARD: MODIFICATO PER TOOLTIP */
 .log-card {
   display: flex;
   flex-direction: column;
-
   flex: 1 1 auto;
   min-height: 0;
-
-  /* kill assoluto di eventuali height vecchie (es. 280px) */
-  height: auto !important;
+  height: auto !important; 
   max-height: none !important;
-
-  overflow: hidden;
+  
+  /* [FIX] RIMOSSO overflow:hidden sulla card principale 
+     per permettere al tooltip di uscire fuori */
+  /* overflow: hidden;  <-- RIMOSSO */
+  
+  background: rgba(18, 21, 26, 0.6) !important;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  
+  /* Assicuriamo che il contenuto non esca dai bordi arrotondati 
+     dato che abbiamo tolto l'overflow dalla card */
+  border-radius: 16px;
 }
 
 .log-header-row {
@@ -465,6 +585,9 @@ body.no-scroll { overflow: hidden; }
   justify-content: space-between;
   gap: 8px;
   margin-bottom: 4px;
+  
+  /* Padding extra per staccare dal bordo superiore arrotondato */
+  padding-top: 4px; 
 }
 
 .log-header-row h3 { margin: 0; }
@@ -472,10 +595,10 @@ body.no-scroll { overflow: hidden; }
 .log-head,
 .log-row {
   display: grid;
-  /* # | Brano | Compositore | Artista */
-  grid-template-columns: 36px 2fr 1.8fr 1.5fr;
+  grid-template-columns: 36px 40px 2fr 1.8fr 1.5fr;
   gap: 8px;
   font-size: 0.9rem;
+  align-items: center;
 }
 
 .log-head {
@@ -485,10 +608,19 @@ body.no-scroll { overflow: hidden; }
   color: var(--muted);
 }
 
-.log-head span:first-child { text-align: left; }
+.log-row .col-cover img {
+  width: 32px;
+  height: 32px;
+  border-radius: 4px;
+  object-fit: cover;
+  display: block;
+  background-color: #222;
+}
 
-/* colonna numerica allineata a sinistra come "#" */
-.log-row .col-index { text-align: left; }
+.log-head span:first-child,
+.log-row .col-index {
+  text-align: left;
+}
 
 .log-body {
   flex: 1;
@@ -496,9 +628,15 @@ body.no-scroll { overflow: hidden; }
   display: flex;
   flex-direction: column;
   gap: 6px;
-  overflow: auto;
+  overflow: auto; /* Lo scroll rimane qui */
+  
+  /* Padding per evitare che la scrollbar tocchi il bordo destro */
+  padding-right: 2px;
+  /* Margine bottom per staccare dal bordo inferiore arrotondato */
+  margin-bottom: 4px;
 }
 
+/* VISUALIZER */
 .visualizer-strip {
   position: fixed;
   left: 50%;
@@ -507,10 +645,7 @@ body.no-scroll { overflow: hidden; }
   width: 100vw;
   margin: 0;
   padding: 0;
-
-  /* sotto alle card */
-  z-index: 1;
-
+  z-index: 1; /* Sotto le card (z=2) ma sopra sfondo */
   opacity: 0.75;
   pointer-events: none;
 }
@@ -557,15 +692,12 @@ body.no-scroll { overflow: hidden; }
     min-height: calc(100vh - 48px);
     padding-bottom: calc(var(--vis-h) + 12px);
   }
-
   .session-panel {
     flex-direction: column;
     align-items: flex-start;
     gap: 10px;
   }
-
   .session-panel--qr { padding-bottom: 16px; }
-
   .qr-corner {
     position: static;
     align-self: flex-end;
@@ -573,7 +705,7 @@ body.no-scroll { overflow: hidden; }
   }
 }
 
-/* === FACCIATA 3: REVIEW E TABELLE === */
+/* === FACCIATA 3: REVIEW === */
 .review-card {
   display: flex;
   flex-direction: column;
@@ -604,9 +736,6 @@ body.no-scroll { overflow: hidden; }
   overflow: auto;
 }
 
-/* Tabelle */
-.table { margin-top: 12px; }
-
 .row {
   display: grid;
   gap: 8px;
@@ -615,8 +744,9 @@ body.no-scroll { overflow: hidden; }
   border-bottom: 1px solid var(--border);
 }
 
-/* struttura 4 colonne: # | Compositore | Titolo | Azioni */
-.review-table .row { grid-template-columns: 0.2fr 1.5fr 1.3fr 300px; }
+.review-table .row {
+  grid-template-columns: 0.2fr 1.5fr 1.3fr 300px;
+}
 
 .row--head {
   font-size: 0.9rem;
@@ -624,28 +754,14 @@ body.no-scroll { overflow: hidden; }
   font-weight: 600;
 }
 
-.row--head span {
-  padding-left: 9px;
-  text-align: left !important;
-}
-
-.review-table .row--head span:nth-child(3) {
-  padding-left: 10px !important;
-  text-align: left !important;
-  justify-self: start !important;
-}
-
-.review-table .row--head span:nth-child(4) {
-  text-align: left !important;
-  justify-self: start !important;
-  padding-left: 0 !important;
-}
+.row--head span { padding-left: 9px; text-align: left !important; }
+.review-table .row--head span:nth-child(3) { padding-left: 10px !important; }
+.review-table .row--head span:nth-child(4) { padding-left: 0 !important; }
 
 .review-table .row .tools {
   display: flex;
   gap: 6px;
   justify-content: flex-start;
-  flex-wrap: nowrap;
 }
 
 .review-table .row .tools .btn.btn--small {
@@ -722,224 +838,88 @@ body::-webkit-scrollbar-thumb {
   margin-top: 8px;
 }
 
-.modal-actions .btn {
-  min-width: 96px;
-  justify-content: center;
-}
+.modal-actions .btn { min-width: 96px; justify-content: center; }
+#confirm-ok { font-weight: 500; text-transform: none; }
 
-#confirm-ok {
-  font-weight: 500;
-  text-transform: none;
-}
+/* TEMA E COLORI */
+/* [MODIFICA] Inclusione del selettore #btn-review-notes per applicare il gradiente anche in page3 */
 
-/* TEMA */
-#app.theme-dj .btn--primary {
-  background: linear-gradient(135deg, #ff8a00, #ffca4d);
-  color: #140616;
-}
-
-#app.theme-dj .vis-cell.active {
-  background: linear-gradient(
-    180deg,
-    rgba(255, 138, 0, 0),
-    rgba(255, 138, 0, 0.45),
-    rgba(255, 202, 77, 0.85)
-  );
-}
-
+#app.theme-dj .btn--primary { background: linear-gradient(135deg, #ff8a00, #ffca4d); color: #140616; }
+#app.theme-dj .vis-cell.active { background: linear-gradient(180deg, rgba(255, 138, 0, 0), rgba(255, 138, 0, 0.45), rgba(255, 202, 77, 0.85)); }
 #app.theme-dj .row.row--confirmed input.inline { border-color: #ff8a00; }
-
-#app.theme-dj .session-panel,
-#app.theme-dj #view-review .hero.hero--small {
-  background-image:
-    linear-gradient(
-      90deg,
-      rgba(0, 0, 0, 0.4),
-      rgba(0, 0, 0, 0.05) 55%,
-      rgba(0, 0, 0, 0) 100%
-    ),
-    radial-gradient(circle at 20% 0%, #ff8a00, #1b0033);
+#app.theme-dj .session-panel, #app.theme-dj #view-review .hero.hero--small {
+  background-image: linear-gradient(90deg, rgba(0, 0, 0, 0.4), rgba(0, 0, 0, 0.05) 55%, rgba(0, 0, 0, 0) 100%), radial-gradient(circle at 20% 0%, #ff8a00, #1b0033);
   border-color: #ff8a00;
 }
-
-#app.theme-band .btn--primary {
-  background: linear-gradient(135deg, #00ffc3, #007c9f);
-  color: #021315;
-}
-
-#app.theme-band .vis-cell.active {
-  background: linear-gradient(
-    180deg,
-    rgba(0, 255, 195, 0),
-    rgba(0, 255, 195, 0.5),
-    rgba(0, 124, 159, 0.85)
-  );
-}
-
-#app.theme-band .row.row--confirmed input.inline { border-color: #00ffc3; }
-
-#app.theme-band .session-panel {
-  background-image: radial-gradient(circle at 80% 0%, #00ffc3, #003848);
-  border-color: #00ffc3;
-}
-
-#app.theme-band #view-review .hero.hero--small {
-  background-image: radial-gradient(circle at 80% 0%, #00ffc3, #003848);
-  border-color: #00ffc3;
-}
-
-#app.theme-concert .btn--primary {
-  background: linear-gradient(135deg, #ff3f6a, #ff9ad7);
-  color: #21021e;
-}
-
-#app.theme-concert .vis-cell.active {
-  background: linear-gradient(
-    180deg,
-    rgba(255, 63, 106, 0),
-    rgba(255, 63, 106, 0.5),
-    rgba(255, 154, 215, 0.9)
-  );
-}
-
-#app.theme-concert .row.row--confirmed input.inline { border-color: #ff3f6a; }
-
-#app.theme-concert .session-panel {
-  background-image: radial-gradient(circle at 50% 100%, #ff3f6a, #1a0030);
-  border-color: #ff3f6a;
-}
-
-#app.theme-concert #view-review .hero.hero--small {
-  background-image: radial-gradient(circle at 50% 100%, #ff3f6a, #1a0030);
-  border-color: #ff3f6a;
-}
-
-/* TOOLTIP */
-.btn[data-tooltip] { position: relative; }
-
-.btn[data-tooltip]::after {
-  content: attr(data-tooltip);
-  position: absolute;
-  left: 50%;
-  bottom: calc(100% + 8px);
-  transform: translateX(-50%);
-  white-space: nowrap;
-  max-width: none;
-  padding: 6px 8px;
-  border-radius: 8px;
-  font-size: 0.75rem;
-  line-height: 1.3;
-  background: rgba(15, 23, 42, 0.95);
-  color: var(--text);
-  border: 1px solid var(--border);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.15s ease, transform 0.15s ease;
-  z-index: 50;
-}
-
-.btn[data-tooltip]::before {
-  content: "";
-  position: absolute;
-  left: 50%;
-  bottom: 100%;
-  transform: translateX(-50%);
-  border-width: 6px;
-  border-style: solid;
-  border-color: transparent transparent rgba(15, 23, 42, 0.95) transparent;
-  opacity: 0;
-  transition: opacity 0.15s ease;
-  z-index: 50;
-}
-
-.btn[data-tooltip]:hover::after,
-.btn[data-tooltip]:focus-visible::after {
-  opacity: 1;
-  transform: translateX(-50%) translateY(-2px);
-}
-
-.btn[data-tooltip]:hover::before,
-.btn[data-tooltip]:focus-visible::before { opacity: 1; }
-
-/* === NOTE SESSIONE === */
-#notes-textarea {
-  width: 100%;
-  min-height: 120px;
-  margin-top: 8px;
-  padding: 8px 10px;
-  border-radius: 8px;
-  border: 1px solid var(--border);
-  background: #0d1117;
-  color: var(--text);
-  resize: vertical;
-  font-family: inherit;
-  font-size: 0.9rem;
-}
-
-.review-notes {
-  display: none;
-  margin-top: 10px;
-  margin-bottom: 8px;
-  padding: 10px 12px;
-  border-radius: 10px;
-  border: 1px dashed var(--border);
-  background: rgba(15, 23, 42, 0.7);
-}
-
-.review-notes h4 {
-  margin: 0 0 4px;
-  font-size: 0.9rem;
-  color: var(--muted);
-}
-
-.review-notes-text {
-  margin: 0;
-  font-size: 0.9rem;
-  white-space: pre-wrap;
-}
-
-#btn-session-notes,
-#btn-review-notes {
-  font-weight: 600;
-  border: none;
-}
-
 #app.theme-dj #btn-session-notes,
 #app.theme-dj #btn-review-notes {
   background: linear-gradient(135deg, #ff8a00, #ffca4d);
   color: #140616;
+  border: none;
+  font-weight: 600;
 }
 
+#app.theme-band .btn--primary { background: linear-gradient(135deg, #00ffc3, #007c9f); color: #021315; }
+#app.theme-band .vis-cell.active { background: linear-gradient(180deg, rgba(0, 255, 195, 0), rgba(0, 255, 195, 0.5), rgba(0, 124, 159, 0.85)); }
+#app.theme-band .row.row--confirmed input.inline { border-color: #00ffc3; }
+#app.theme-band .session-panel { background-image: radial-gradient(circle at 80% 0%, #00ffc3, #003848); border-color: #00ffc3; }
+#app.theme-band #view-review .hero.hero--small { background-image: radial-gradient(circle at 80% 0%, #00ffc3, #003848); border-color: #00ffc3; }
 #app.theme-band #btn-session-notes,
 #app.theme-band #btn-review-notes {
   background: linear-gradient(135deg, #00ffc3, #007c9f);
   color: #021315;
+  border: none;
+  font-weight: 600;
 }
 
+#app.theme-concert .btn--primary { background: linear-gradient(135deg, #ff3f6a, #ff9ad7); color: #21021e; }
+#app.theme-concert .vis-cell.active { background: linear-gradient(180deg, rgba(255, 63, 106, 0), rgba(255, 63, 106, 0.5), rgba(255, 154, 215, 0.9)); }
+#app.theme-concert .row.row--confirmed input.inline { border-color: #ff3f6a; }
+#app.theme-concert .session-panel { background-image: radial-gradient(circle at 50% 100%, #ff3f6a, #1a0030); border-color: #ff3f6a; }
+#app.theme-concert #view-review .hero.hero--small { background-image: radial-gradient(circle at 50% 100%, #ff3f6a, #1a0030); border-color: #ff3f6a; }
 #app.theme-concert #btn-session-notes,
 #app.theme-concert #btn-review-notes {
   background: linear-gradient(135deg, #ff3f6a, #ff9ad7);
   color: #21021e;
+  border: none;
+  font-weight: 600;
 }
 
-/* VIEWER */
+/* TOOLTIP */
+.btn[data-tooltip] { position: relative; }
+.btn[data-tooltip]::after {
+  content: attr(data-tooltip);
+  position: absolute; left: 50%; bottom: calc(100% + 8px); transform: translateX(-50%);
+  white-space: nowrap; padding: 6px 8px; border-radius: 8px; font-size: 0.75rem;
+  background: rgba(15, 23, 42, 0.95); color: var(--text); border: 1px solid var(--border);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6); opacity: 0; pointer-events: none;
+  transition: opacity 0.15s ease, transform 0.15s ease; z-index: 50;
+}
+.btn[data-tooltip]:hover::after { opacity: 1; transform: translateX(-50%) translateY(-2px); }
+
+/* NOTE TEXTAREA */
+#notes-textarea {
+  width: 100%; min-height: 120px; margin-top: 8px; padding: 8px 10px;
+  border-radius: 8px; border: 1px solid var(--border); background: #0d1117;
+  color: var(--text); resize: vertical; font-family: inherit; font-size: 0.9rem;
+}
+.review-notes {
+  display: none; margin-top: 10px; margin-bottom: 8px; padding: 10px 12px;
+  border-radius: 10px; border: 1px dashed var(--border); background: rgba(15, 23, 42, 0.7);
+}
+.review-notes h4 { margin: 0 0 4px; font-size: 0.9rem; color: var(--muted); }
+.review-notes-text { margin: 0; font-size: 0.9rem; white-space: pre-wrap; }
+
+/* VIEWER MODE (CSS Logic) */
 main[data-viewer="true"] .tools { display: none !important; }
-
 main[data-viewer="true"] .review-table .row { grid-template-columns: 0.2fr 1.5fr 2fr; }
+main[data-viewer="true"] input.inline { pointer-events: none; border-color: transparent; background: transparent; padding-left: 0; }
 
-main[data-viewer="true"] input.inline {
-  pointer-events: none;
-  border-color: transparent;
-  background: transparent;
-  padding-left: 0;
-}
+/* QR Image centered */
+#qr-image { display: block; margin: 0 auto; }
 
-/* QR IMG */
-#qr-image {
-  display: block;
-  margin: 0 auto;
-}
-
-/* restore modal buttons */
+/* Restore buttons width */
 #restore-modal .modal-actions button { min-width: 140px; }
+
+/* Spettatore Background Overlay Tweak */
+.viewer-bg + .app-background-overlay { background: rgba(11, 12, 16, 0.45); }
