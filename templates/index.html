@@ -7,6 +7,15 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
   </head>
   <body>
+    <div id="loading-overlay" style="display: none;">
+      <div class="loading-content">
+          <i class="fas fa-spinner fa-spin fa-3x"></i>
+          <h3>Finalizzazione Sessione...</h3>
+          <p>Ricerca approfondita compositori e metadati (Genius API).</p>
+          <p style="font-size: 0.9rem; opacity: 0.7;">Attendere prego, non chiudere la pagina.</p>
+      </div>
+    </div>
+
     <div id="app-background" class="app-background {{ 'viewer-bg' if viewer_mode }}"></div>
     <div class="app-background-overlay"></div>
 

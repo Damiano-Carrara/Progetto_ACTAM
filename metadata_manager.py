@@ -2,14 +2,26 @@ import musicbrainzngs
 import time
 import re
 import requests
+import os
 import json
 from difflib import SequenceMatcher
+try:
+    import lyricsgenius
+except ImportError:
+    lyricsgenius = None
 
 class MetadataManager:
     def __init__(self):
-        musicbrainzngs.set_useragent("SIAE_Project_Univ", "0.5", "tuamail@esempio.com")
+        musicbrainzngs.set_useragent("SIAE_Project_PoliMi", "0.5", "damiano.carrara00@gmail.com")
         self.itunes_url = "https://itunes.apple.com/search"
         self.deezer_search_url = "https://api.deezer.com/search"
+        self.genius_token = os.getenv('GENIUS_ACCESS_TOKEN')
+        self.genius = None
+        if lyricsgenius and self.genius_token:
+            # verbose=False evita che intasi la console durante l'init
+            self.genius = lyricsgenius.Genius(self.genius_token, verbose=False)
+            # Rimuoviamo le sezioni [Chorus], [Verse] dai testi per pulizia (opzionale)
+            self.genius.remove_section_headers = True
         print("📚 Metadata Manager (Composer + Cover Mode) Pronto.")
 
     def _clean_string(self, text):
@@ -22,6 +34,44 @@ class MetadataManager:
         for p in patterns:
             clean = re.sub(p, "", clean, flags=re.IGNORECASE)
         return clean.strip()
+    
+    def find_composer_via_genius(self, title, artist):
+        """
+        Cerca specificamente i Writer/Composer su Genius.
+        Ideale per il post-processing.
+        """
+        if not self.genius:
+            return None
+
+        clean_title = self._clean_title(title)
+        print(f"🧠 [Genius] Ricerca Deep: '{clean_title}' - '{artist}'...")
+
+        try:
+            # Cerca la canzone
+            song = self.genius.search_song(clean_title, artist)
+            
+            if song:
+                # --- CORREZIONE QUI SOTTO ---
+                # L'oggetto 'song' non ha l'attributo diretto. Dobbiamo estrarlo dal dizionario.
+                song_data = song.to_dict() 
+                writers = song_data.get('writer_artists', [])
+                # ----------------------------
+
+                if writers:
+                    # Estraiamo i nomi
+                    composer_names = [w.get('name') for w in writers]
+                    result = ", ".join(composer_names)
+                    print(f"   ✨ Genius ha trovato: {result}")
+                    return result
+                else:
+                    print("   ⚠️ Canzone trovata su Genius, ma credits mancanti.")
+            else:
+                print("   🚫 Nessun risultato su Genius.")
+
+        except Exception as e:
+            print(f"   ❌ Errore Genius API: {e}")
+        
+        return None
 
     def find_composer(self, title, detected_artist, isrc=None, upc=None, setlist_artist=None, raw_acr_meta=None):
         """

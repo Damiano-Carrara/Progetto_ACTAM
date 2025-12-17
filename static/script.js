@@ -464,6 +464,7 @@ async function sessionPause() {
 }
 
 async function sessionStop() {
+  // 1. Disabilita bottoni UI
   const btnStart = $("#btn-session-start");
   const btnPause = $("#btn-session-pause");
   const btnStop = $("#btn-session-stop");
@@ -471,20 +472,32 @@ async function sessionStop() {
   if (btnPause) btnPause.disabled = true;
   if (btnStop) btnStop.disabled = true;
 
+  // 2. Ferma timer e visualizer locali
   waveMode = "idle";
   pauseSessionTimer();
+  stopVisualizer();
+  setNow("In ascolto", "—");
+  
+  // 3. Chiama l'API di Stop (che avvia il thread Genius in background)
   await stopBackendRecognition();
-  stopPlaylistPolling();
-  await pollPlaylistOnce();
+  
+  // --- [MODIFICA CHIAVE] ---
+  // Invece di andare subito alla review, aspettiamo con l'overlay attivo.
+  // Questa funzione blocca l'esecuzione finché il backend non ha finito.
+  await awaitFixerCompletion(); 
+  // ------------------------
+  
+  // 4. Ora che Genius ha finito, facciamo l'ultimo polling per avere i dati freschi
+  await pollPlaylistOnce(); 
+  
+  // 5. Reset variabili e cambio schermata
   resetSessionTimer();
   currentSongId = null;
-  setNow("In ascolto", "—");
-
   undoStack = [];
-  renderReview();
-  setRoute("review");
+  
+  renderReview(); // Renderizza la tabella finale
+  setRoute("review"); // Cambia schermata
   showView("#view-review");
-  stopVisualizer();
 }
 
 async function sessionReset() {
@@ -933,3 +946,42 @@ document.addEventListener("DOMContentLoaded", () => {
     syncReviewNotes();
   }
 });
+
+async function awaitFixerCompletion() {
+    const overlay = $("#loading-overlay");
+    // Mostra l'overlay bloccante
+    if (overlay) overlay.style.display = "flex";
+    
+    console.log("⏳ In attesa del Fixer Genius...");
+    
+    let isStillWorking = true;
+    // Timeout di sicurezza (es. 20 secondi) per non bloccare l'app per sempre se il backend si incarta
+    const safetyTimeout = setTimeout(() => {
+        isStillWorking = false;
+        console.warn("⚠️ Fixer Genius timeout scaduto. Procedo comunque.");
+    }, 20000); 
+
+    // Ciclo di controllo (polling)
+    while (isStillWorking) {
+        try {
+            const res = await fetch('/api/get_fixer_status');
+            const data = await res.json();
+            
+            if (data.is_fixing === false) {
+                console.log("✅ Fixer Genius completato!");
+                isStillWorking = false; // Esci dal ciclo
+            } else {
+                // Aspetta 500ms prima di richiedere
+                await new Promise(r => setTimeout(r, 500));
+            }
+        } catch (e) {
+            console.error("Errore check status fixer:", e);
+            isStillWorking = false; // Esci in caso di errore di rete
+        }
+    }
+    
+    clearTimeout(safetyTimeout); // Cancella il timeout di sicurezza
+
+    // Nascondi l'overlay
+    if (overlay) overlay.style.display = "none";
+}

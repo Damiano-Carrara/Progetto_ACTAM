@@ -11,6 +11,8 @@ except ImportError:
 import atexit
 import io
 import qrcode
+import threading
+import time
 from pyngrok import ngrok, conf
 
 app = Flask(__name__)
@@ -31,15 +33,25 @@ def start_ngrok():
     """Avvia il tunnel Ngrok sulla porta 5000"""
     global public_url
     try:
-        # Chiudiamo tunnel precedenti per sicurezza
+        # 1. Tentiamo di uccidere il processo ngrok gestito da pyngrok
+        print("🔄 Pulizia tunnel precedenti...")
         ngrok.kill()
         
-        # Apriamo un tunnel HTTP sulla porta 5000
+        # 2. Aspettiamo un attimo che il sistema liberi la risorsa
+        time.sleep(1)
+        
+        # 3. Apriamo un tunnel HTTP sulla porta 5000
+        # Nota: Se vuoi forzare quel dominio specifico che vedi nell'errore,
+        # puoi aggiungerlo qui (opzionale, solo se hai un dominio statico configurato):
+        # tunnel = ngrok.connect(5000, domain="glaciered-placoid-aimee.ngrok-free.dev")
+        
         tunnel = ngrok.connect(5000)
         public_url = tunnel.public_url
         print(f"🌍 Tunnel Ngrok Attivo! URL Pubblico: {public_url}")
+        
     except Exception as e:
         print(f"⚠️ Errore avvio Ngrok: {e}")
+        print("💡 SUGGERIMENTO: Apri Task Manager e termina 'ngrok.exe' manualmente.")
         public_url = None
 
 @app.route('/')
@@ -86,11 +98,22 @@ def start_recognition():
     else:
         return jsonify({"status": "error", "message": "Già in esecuzione."})
 
-# --- API 2: FERMA IL MONITORAGGIO ---
+# --- API 2: FERMA IL MONITORAGGIO (VERSIONE CON FIXER GENIUS) ---
 @app.route('/api/stop_recognition', methods=['POST'])
 def stop_recognition():
+    # 1. Ferma l'audio in tempo reale
     audio_bot.stop_continuous_recognition()
-    return jsonify({"status": "stopped"})
+    
+    # 2. Avvia il "Fixer" in background per cercare i compositori mancanti su Genius
+    #    (Usa un thread per non bloccare l'interfaccia utente mentre cerca)
+    fixer_thread = threading.Thread(target=session_bot.trigger_post_process_enrichment)
+    fixer_thread.daemon = True
+    fixer_thread.start()
+    
+    return jsonify({
+        "status": "stopped", 
+        "message": "Monitoraggio fermato. Avvio ricerca approfondita compositori (Genius)..."
+    })
 
 # --- API 3: OTTIENI LA LISTA ---
 @app.route('/api/get_playlist', methods=['GET'])
@@ -106,6 +129,11 @@ def delete_song():
     if session_bot.delete_song(data.get('id')):
         return jsonify({"status": "deleted"})
     return jsonify({"status": "error"})
+
+@app.route('/api/get_fixer_status', methods=['GET'])
+def get_fixer_status():
+    """Restituisce true se Genius sta ancora lavorando in background"""
+    return jsonify({"is_fixing": session_bot.is_fixing_actively})
 
 # --- API 5: RESET TOTALE SESSIONE ---
 @app.route('/api/reset_session', methods=['POST'])

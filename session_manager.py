@@ -13,6 +13,7 @@ class SessionManager:
         self.db_path = "session_live.db"
         self.playlist = [] 
         self.known_songs_cache = {} 
+        self.is_fixing_actively = False
         self.meta_bot = MetadataManager()
         self._next_id = 1 
         self.lock = Lock()
@@ -341,3 +342,63 @@ class SessionManager:
                 return True
             except ValueError:
                 return False
+            
+    def trigger_post_process_enrichment(self):
+        """
+        [NUOVO] Funzione chiamata quando si ferma il monitoraggio.
+        Cerca di riempire i campi 'Sconosciuto' usando metodi più lenti (Genius).
+        """
+        # [INIZIO] Accendiamo il semaforo (l'interfaccia mostrerà lo spinner)
+        self.is_fixing_actively = True 
+        print("\n🧹 [FIXER] Avvio post-processing per compositori mancanti (SEMAFORO ROSSO)...")
+        
+        try:
+            with sqlite3.connect(self.db_path, check_same_thread=False) as conn:
+                conn.row_factory = sqlite3.Row
+                cursor = conn.cursor()
+                
+                # Seleziona solo quelli senza compositore
+                cursor.execute("SELECT id, title, artist FROM songs WHERE composer = 'Sconosciuto' OR composer IS NULL")
+                rows = cursor.fetchall()
+                
+                if not rows:
+                    print("✅ Nessun brano da riparare.")
+                    return # Il blocco 'finally' verrà eseguito comunque per spegnere il semaforo
+
+                print(f"🔧 Trovati {len(rows)} brani da analizzare con Genius...")
+
+                for row in rows:
+                    song_id = row['id']
+                    title = row['title']
+                    artist = row['artist']
+                    
+                    # Chiama la funzione specifica di Genius (Lenta ma precisa)
+                    genius_comp = self.meta_bot.find_composer_via_genius(title, artist)
+                    
+                    if genius_comp:
+                        # Aggiorna DB
+                        cursor.execute("UPDATE songs SET composer = ? WHERE id = ?", (genius_comp, song_id))
+                        conn.commit()
+                        
+                        # Aggiorna Playlist in memoria
+                        with self.lock:
+                            for s in self.playlist:
+                                if s['id'] == song_id:
+                                    s['composer'] = genius_comp
+                                    # Aggiorna anche la cache per il futuro
+                                    cache_key = f"{title} - {artist}".lower()
+                                    if cache_key in self.known_songs_cache:
+                                        self.known_songs_cache[cache_key]['composer'] = genius_comp
+                                    break
+                        
+                        # Pausa anti-spam per non far arrabbiare Genius
+                        time.sleep(1.5) 
+        
+        except Exception as e:
+            print(f"❌ Errore critico durante il Fixer Genius: {e}")
+
+        finally:
+            # [FINE] Questo codice viene eseguito SEMPRE, anche in caso di errori.
+            # Spegniamo il semaforo per sbloccare l'interfaccia utente.
+            self.is_fixing_actively = False
+            print("✨ [FIXER] Post-processing completato (SEMAFORO VERDE).")
