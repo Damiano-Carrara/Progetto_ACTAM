@@ -21,6 +21,8 @@ from difflib import SequenceMatcher
 
 load_dotenv()
 
+BLACKLIST_ARTISTS = ["darghayt"]
+
 class AudioManager:
     def __init__(self):
         self.host = os.getenv('ACR_HOST')
@@ -385,10 +387,21 @@ class AudioManager:
                     current_bonus_val = 50 if results_count == 1 else 40
 
                     for t in aggregated_list:
-                        raw_score = norm(t.get('score', 0))
-                        final_score = raw_score
+                        # --- [MODIFICA INIZIA QUI] ---
+                        # 1. Estrazione dati base
                         title = t.get('title', 'Sconosciuto')
                         artist_name = self._get_artist_name(t)
+                        
+                        # 2. CHECK BLACKLIST (NUOVO)
+                        # Se l'artista contiene una parola vietata, lo saltiamo subito
+                        if any(bad_word in artist_name.lower() for bad_word in ["darghayt", "best covers", "karaoke version"]):
+                            print(f"🚫 BLOCKED: '{title}' di '{artist_name}' (Blacklist)")
+                            continue
+                        # --- [MODIFICA FINISCE QUI] ---
+
+                        raw_score = norm(t.get('score', 0))
+                        final_score = raw_score
+
                         applied_bonus = 0
                         
                         # --- LOGICA BIAS ESISTENTE ---
