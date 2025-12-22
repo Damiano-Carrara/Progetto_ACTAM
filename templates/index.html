@@ -6,25 +6,39 @@
     <title>Borderò Assist</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
   </head>
+
   <body>
+    <div id="app-background" class="app-background {{ 'viewer-bg' if viewer_mode }}"></div>
+    <div class="app-background-overlay"></div>
     <main id="app" data-viewer="{{ 'true' if viewer_mode else 'false' }}">
-      
       <section id="view-welcome" class="view view--active">
         <div class="mode-page">
+          <div class="login-wrapper">
+            <div class="artist-access-btn" id="loginToggleBtn">
+                <span>Accedi</span>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                    <circle cx="12" cy="7" r="4"></circle>
+                </svg>
+            </div>
+
+            <div class="login-dropdown hidden" id="loginMenu">
+                <div class="dropdown-item" onclick="openArtistDashboard()">
+                    <span class="icon">🎤</span>
+                    <span>Artista</span>
+                </div>
+                <div class="dropdown-item" onclick="openUserDashboard()">
+                    <span class="icon">🎧</span>
+                    <span>Utente</span>
+                </div>
+            </div>
+          </div>
           <div class="mode-container">
             <h1 class="app-title">Seleziona la modalità</h1>
-            <p class="app-subtitle">
-              Scegli se stai compilando un DJ set, una live band o il concerto di un artista.
-            </p>
+            <p class="app-subtitle">Scegli se stai compilando un DJ set, una live band o il concerto di un artista.</p>
 
             <div class="mode-grid">
-              <div
-                class="mode-card"
-                data-mode="dj"
-                tabindex="0"
-                role="button"
-                aria-label="DJ set"
-              >
+              <div class="mode-card" data-mode="dj" tabindex="0" role="button" aria-label="DJ set">
                 <div class="mode-bg bg-dj"></div>
                 <div class="mode-overlay"></div>
                 <div class="mode-content">
@@ -42,13 +56,7 @@
                 </div>
               </div>
 
-              <div
-                class="mode-card"
-                data-mode="band"
-                tabindex="0"
-                role="button"
-                aria-label="Live band"
-              >
+              <div class="mode-card" data-mode="band" tabindex="0" role="button" aria-label="Live band">
                 <div class="mode-bg bg-live"></div>
                 <div class="mode-overlay"></div>
                 <div class="mode-content">
@@ -84,12 +92,7 @@
                   <div class="artist-input-wrapper" id="artistInputWrapper">
                     <label for="artistInput">Nome artista</label>
                     <div class="artist-input-row">
-                      <input
-                        type="text"
-                        id="artistInput"
-                        placeholder="Nome artista"
-                        autocomplete="off"
-                      />
+                      <input type="text" id="artistInput" placeholder="Nome artista" autocomplete="off" />
                       <button type="button" id="artistConfirmBtn">Invia</button>
                     </div>
                     <p class="artist-error" id="artistError"></p>
@@ -103,27 +106,31 @@
 
       <section id="view-session" class="view">
         <div class="session-grid">
-          <section class="card session-panel">
+          <section class="card session-panel {% if not viewer_mode %}session-panel--qr{% endif %}">
             <div class="left">
               <h2>Sessione</h2>
               <div class="meta">
-                Modalità:
-                <span id="mode-badge" class="badge">DJ set</span>
-                • Tempo sessione:
+                Modalità: <span id="mode-badge" class="badge">DJ set</span> • Tempo sessione:
                 <span id="session-timer">00:00</span>
               </div>
             </div>
+
             <div class="controls">
               {% if not viewer_mode %}
-                <button id="btn-session-start" class="btn">Start</button>
-                <button id="btn-session-pause" class="btn" disabled>Pause</button>
-                <button id="btn-session-stop" class="btn" disabled>Stop</button>
-                <button id="btn-session-reset" class="btn">Reset</button>
-                <button id="btn-show-qr" class="btn" style="margin-left: 10px;">📱 Share QR</button>
+              <button id="btn-session-start" class="btn btn--ctl">Start</button>
+              <button id="btn-session-pause" class="btn btn--ctl" disabled>Pause</button>
+              <button id="btn-session-stop" class="btn btn--ctl" disabled>Stop</button>
+              <button id="btn-session-reset" class="btn btn--ctl">Reset</button>
               {% else %}
-                <span class="badge" style="background: #7c3aed; color: white;">Modalità Spettatore</span>
+              <span class="badge" style="background: #7c3aed; color: white;">Modalità Spettatore</span>
               {% endif %}
             </div>
+
+            {% if not viewer_mode %}
+            <div class="qr-corner">
+              <button id="btn-show-qr" class="btn btn--qr" type="button" aria-label="Share QR" title="Share QR">QR</button>
+            </div>
+            {% endif %}
           </section>
 
           <section class="card log-card">
@@ -140,7 +147,7 @@
 
             <div class="log-head">
               <span>#</span>
-              <span>Brano</span>
+              <span>Cover</span> <span>Brano</span>
               <span>Compositore</span>
               <span>Artista</span>
             </div>
@@ -156,9 +163,7 @@
       <section id="view-review" class="view">
         <header class="hero hero--small">
           <h2>Review borderò</h2>
-          <p class="subtitle">
-            Controlla i brani rilevati live prima di generare il file SIAE.
-          </p>
+          <p class="subtitle">Controlla i brani rilevati live prima di generare il file SIAE.</p>
         </header>
 
         <div class="card review-card">
@@ -174,10 +179,7 @@
 
           <div class="table review-table">
             <div class="row row--head">
-              <span>#</span>
-              <span>Compositore</span>
-              <span>Titolo</span>
-              <span>Azioni</span>
+              <span>#</span><span>Compositore</span><span>Titolo</span><span>Azioni</span>
             </div>
 
             <div id="review-rows" class="review-rows-body"></div>
@@ -199,11 +201,214 @@
 
           <div class="actions">
             {% if not viewer_mode %}
-              <button id="btn-undo" class="btn btn--small" disabled>Undo</button>
-              <button id="btn-generate" class="btn btn--primary" disabled>
-                Generate
-              </button>
+            <button id="btn-undo" class="btn btn--small" disabled>Undo</button>
+            <button id="btn-generate" class="btn btn--primary" disabled>Generate</button>
             {% endif %}
+          </div>
+        </div>
+      </section>
+
+      <section id="view-artist-dashboard" class="view hidden">
+        <div class="dashboard-container">
+          <header class="dash-header">
+            <div class="dash-profile">
+              <div class="profile-pic">Example</div> <div class="profile-info">
+                <h2>The Midnight</h2>
+                <span class="badge">Verified Artist</span>
+              </div>
+            </div>
+            <button class="btn btn--small btn--secondary" onclick="closeArtistDashboard()">Esci</button>
+          </header>
+
+          <div class="dash-grid">
+            
+            <div class="dash-card kpi-card">
+              <h3>Ascoltatori Mensili</h3>
+              <div class="kpi-value animate-num" data-target="124.5" data-suffix="k">0</div>
+              <div class="kpi-trend positive">▲ 12% vs mese scorso</div>
+            </div>
+
+            <div class="dash-card kpi-card">
+              <h3>Stream Totali</h3>
+              <div class="kpi-value animate-num" data-target="1.2" data-suffix="M">0</div>
+              <div class="kpi-trend neutral">● Stabile</div>
+            </div>
+
+            <div class="dash-card kpi-card highlight">
+              <h3>Royalties Stimate</h3>
+              <div class="kpi-value animate-num" data-target="1420" data-prefix="€ " data-decimals="2">0</div>
+              <div class="kpi-sub">Aggiornato oggi</div>
+            </div>
+
+            <div class="dash-card wide-card" style="display: flex; flex-direction: column;">
+              <div class="card-header">
+                <h3>Top Tracks (Ultimi 28gg)</h3>
+                </div>
+              
+              <table class="dash-table" style="flex: 1;"> <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>Brano</th>
+                    <th>Stream</th>
+                    <th>Trend</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>1</td>
+                    <td><span class="song-title">Neon City</span><br><span class="song-meta">ISRC: US-X12-001</span></td>
+                    <td>45,200</td>
+                    <td><div class="fake-sparkline up"></div></td>
+                  </tr>
+                  <tr>
+                    <td>2</td>
+                    <td><span class="song-title">Sunset Drive</span><br><span class="song-meta">ISRC: US-X12-002</span></td>
+                    <td>32,100</td>
+                    <td><div class="fake-sparkline down"></div></td>
+                  </tr>
+                  <tr>
+                    <td>3</td>
+                    <td><span class="song-title">Cyber Heart</span><br><span class="song-meta">ISRC: US-X12-005</span></td>
+                    <td>12,800</td>
+                    <td><div class="fake-sparkline up"></div></td>
+                  </tr>
+                </tbody>
+              </table>
+
+              <div class="card-footer" style="margin-top: 15px; text-align: center; padding-top: 10px; border-top: 1px solid var(--border);">
+                <button class="btn btn--small">Vedi tutti i brani</button>
+              </div>
+            </div>
+
+            <div class="dash-card">
+              <h3>Fonti di Guadagno</h3>
+              <div class="chart-container">
+                <div class="donut-chart" style="--p-live: 40; --p-stream: 60;">
+                  <div class="center-text">
+                    <span>Totale</span>
+                    <strong>€ 4.2k</strong>
+                  </div>
+                </div>
+                <div class="chart-legend">
+                  <div class="legend-item">
+                    <span class="dot" style="background: var(--primary)"></span>
+                    <span>Streaming (60%)</span>
+                  </div>
+                  <div class="legend-item">
+                    <span class="dot" style="background: #ec4899"></span>
+                    <span>Live / SIAE (40%)</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="dash-card">
+              <h3>Audience</h3>
+              
+              <div class="demo-gender">
+                <div class="gender-item">
+                  <span>Donna</span>
+                  <div class="gender-bar" style="width: 45%; background: #f472b6;"></div>
+                  <span>45%</span>
+                </div>
+                <div class="gender-item">
+                  <span>Uomo</span>
+                  <div class="gender-bar" style="width: 55%; background: #60a5fa;"></div>
+                  <span>55%</span>
+                </div>
+              </div>
+
+              <div class="divider" style="margin: 15px 0; border-bottom: 1px dashed var(--border);"></div>
+
+              <h4 style="margin: 0 0 10px; font-size: 0.8rem; color: var(--muted);">Fascia d'età</h4>
+              <div class="age-bars">
+                <div class="age-row">
+                  <span>18-24</span>
+                  <div class="age-track"><div class="age-fill" style="width: 35%"></div></div>
+                </div>
+                <div class="age-row">
+                  <span>25-34</span>
+                  <div class="age-track"><div class="age-fill" style="width: 42%"></div></div>
+                </div>
+                <div class="age-row">
+                  <span>35-44</span>
+                  <div class="age-track"><div class="age-fill" style="width: 15%"></div></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="dash-card">
+              <h3>In Playlist</h3>
+              <ul class="playlist-list">
+                <li>
+                  <div class="pl-img" style="background: #1db954">IT</div>
+                  <div class="pl-info">
+                    <span class="pl-name">Indie Italia</span>
+                    <span class="pl-reach">450k likes</span>
+                  </div>
+                </li>
+                <li>
+                  <div class="pl-img" style="background: #ff5500">VP</div>
+                  <div class="pl-info">
+                    <span class="pl-name">Viral 50 Global</span>
+                    <span class="pl-reach">1.2M likes</span>
+                  </div>
+                </li>
+                <li>
+                  <div class="pl-img" style="background: #9333ea">NB</div>
+                  <div class="pl-info">
+                    <span class="pl-name">New Music Friday</span>
+                    <span class="pl-reach">890k likes</span>
+                  </div>
+                </li>
+              </ul>
+            </div>
+
+            <div class="dash-card tall-card">
+              <h3>Dove ti ascoltano</h3>
+              <ul class="geo-list">
+                <li>
+                  <div class="geo-info">
+                    <span>Milano, IT</span>
+                    <span>24%</span>
+                  </div>
+                  <div class="progress-bar"><div class="fill" style="width: 0%" data-width="24%"></div></div> </li>
+                <li>
+                  <div class="geo-info">
+                    <span>Roma, IT</span>
+                    <span>18%</span>
+                  </div>
+                  <div class="progress-bar"><div class="fill" style="width: 0%" data-width="18%"></div></div>
+                </li>
+                <li>
+                  <div class="geo-info">
+                    <span>Berlino, DE</span>
+                    <span>12%</span>
+                  </div>
+                  <div class="progress-bar"><div class="fill" style="width: 0%" data-width="12%"></div></div>
+                </li>
+                <li>
+                  <div class="geo-info">
+                    <span>London, UK</span>
+                    <span>9%</span>
+                  </div>
+                  <div class="progress-bar"><div class="fill" style="width: 0%" data-width="9%"></div></div>
+                </li>
+              </ul>
+              
+              <div class="divider" style="margin: 20px 0; border-bottom: 1px solid var(--border);"></div>
+              
+              <h3>Ultimi Pagamenti</h3>
+              <div class="payout-item">
+                <span>SIAE (Q3 2024)</span>
+                <span class="money">+ € 320.00</span>
+              </div>
+              <div class="payout-item">
+                <span>DistroKid</span>
+                <span class="money">+ $ 150.20</span>
+              </div>
+            </div>
+
           </div>
         </div>
       </section>
@@ -212,18 +417,11 @@
         <div class="modal-backdrop"></div>
         <div class="modal-dialog card notes-dialog">
           <h3>Note sessione</h3>
-          <p class="modal-message">
-            Segna qui eventuali mismatch o errori da correggere in review.
-          </p>
-          <textarea
-            id="notes-textarea"
-            placeholder="Es: Brano 3: autore errato, controllare..."
-          ></textarea>
+          <p class="modal-message">Segna qui eventuali mismatch o errori da correggere in review.</p>
+          <textarea id="notes-textarea" placeholder="Es: Brano 3: autore errato, controllare..."></textarea>
           <div class="modal-actions">
             <button id="notes-cancel" class="btn btn--small">Chiudi</button>
-            <button id="notes-save" class="btn btn--small btn--primary">
-              Salva
-            </button>
+            <button id="notes-save" class="btn btn--small btn--primary">Salva</button>
           </div>
         </div>
       </div>
@@ -231,14 +429,10 @@
       <div id="confirm-modal" class="modal modal--hidden">
         <div class="modal-backdrop"></div>
         <div class="modal-dialog card">
-          <p id="confirm-message" class="modal-message">
-            Sei sicuro di voler cancellare questo brano?
-          </p>
+          <p id="confirm-message" class="modal-message">Sei sicuro di voler cancellare questo brano?</p>
           <div class="modal-actions">
             <button id="confirm-cancel" class="btn btn--small">Annulla</button>
-            <button id="confirm-ok" class="btn btn--small btn--primary">
-              Ok
-            </button>
+            <button id="confirm-ok" class="btn btn--small btn--primary">Ok</button>
           </div>
         </div>
       </div>
@@ -248,8 +442,7 @@
         <div class="modal-dialog card">
           <h3>Sessione Trovata</h3>
           <p class="modal-message">
-            Ho trovato dei brani salvati nel database (probabile sessione precedente o crash).
-            <br><br>
+            Ho trovato dei brani salvati nel database (probabile sessione precedente o crash). <br /><br />
             Vuoi recuperarli o iniziare da zero?
           </p>
           <div class="modal-actions" style="justify-content: center;">
@@ -275,6 +468,175 @@
         </div>
       </div>
 
+      <div id="export-modal" class="modal modal--hidden">
+        <div class="modal-backdrop"></div>
+        <div class="modal-dialog card" style="max-width: 320px; padding: 20px;">
+          <h3 style="margin-top: 0; margin-bottom: 15px; font-size: 1.2rem;">Esporta Report</h3>
+
+          <div class="export-options" style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 20px;">
+            <button id="btn-export-excel" class="btn" style="justify-content: center; width: 100%;">Excel (SIAE)</button>
+            <button id="btn-export-pdf" class="btn" style="justify-content: center; width: 100%;">PDF Ufficiale</button>
+            <button
+              id="btn-export-raw"
+              class="btn"
+              style="justify-content: center; width: 100%; border-style: dashed; opacity: 0.8;"
+            >
+              Log Tecnico (Raw)
+            </button>
+          </div>
+
+          <div class="modal-actions" style="justify-content: center; margin-top: 0;">
+            <button
+              id="btn-export-close"
+              class="btn btn--small"
+              style="background: transparent; border: none; color: #999;"
+            >
+              Chiudi
+            </button>
+          </div>
+        </div>
+      </div>
+      <section id="view-user-dashboard" class="view hidden">
+        <div class="dashboard-container">
+          
+          <header class="dash-header">
+            <div class="dash-profile">
+              <div class="profile-pic" style="background: linear-gradient(45deg, #00ffc3, #007c9f); color: #000;">U</div> 
+              <div class="profile-info">
+                <h2>Music Explorer</h2>
+                <span class="badge" style="background: #007c9f; color: #fff;">Premium User</span>
+              </div>
+            </div>
+            <button class="btn btn--small btn--secondary" onclick="closeUserDashboard()">Esci</button>
+          </header>
+
+          <div class="dash-grid">
+            
+            <div class="dash-card kpi-card">
+              <h3>Brani Scoperti</h3>
+              <div class="kpi-value animate-num" data-target="342">0</div>
+              <div class="kpi-trend positive">▲ 15 questa settimana</div>
+            </div>
+
+            <div class="dash-card kpi-card">
+              <h3>Artista Preferito</h3>
+              <div class="kpi-value" style="font-size: 1.8rem; margin: 15px 0;">The Weeknd</div>
+              <div class="kpi-trend neutral">12 brani salvati</div>
+            </div>
+
+            <div class="dash-card kpi-card highlight" style="background: rgba(0, 255, 195, 0.1); border-color: rgba(0, 255, 195, 0.3);">
+              <h3>Generi Esplorati</h3>
+              <div class="kpi-value animate-num" data-target="24">0</div>
+              <div class="kpi-sub">Pop, Synthwave, Rock...</div>
+            </div>
+
+            <div class="dash-card wide-card" style="display: flex; flex-direction: column;">
+              <div class="card-header">
+                <h3>I tuoi 'Best Match'</h3>
+              </div>
+              
+              <table class="dash-table" style="flex: 1;">
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>Brano</th>
+                    <th>Data Scoperta</th>
+                    <th>Score</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>1</td>
+                    <td><span class="song-title">Blinding Lights</span><br><span class="song-meta">The Weeknd</span></td>
+                    <td>12 Ott 2024</td>
+                    <td>
+                      <div style="display: flex; align-items: center; gap: 8px;">
+                        <span style="color: #4ade80; font-weight: bold;">100%</span>
+                        <div class="progress-bar" style="width: 50px; height: 4px;"><div class="fill" style="width: 100%; background: #4ade80;"></div></div>
+                      </div>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>2</td>
+                    <td><span class="song-title">Midnight City</span><br><span class="song-meta">M83</span></td>
+                    <td>05 Set 2024</td>
+                    <td>
+                      <div style="display: flex; align-items: center; gap: 8px;">
+                        <span style="color: #4ade80; font-weight: bold;">98%</span>
+                        <div class="progress-bar" style="width: 50px; height: 4px;"><div class="fill" style="width: 98%; background: #4ade80;"></div></div>
+                      </div>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>3</td>
+                    <td><span class="song-title">Nightcall</span><br><span class="song-meta">Kavinsky</span></td>
+                    <td>20 Ago 2024</td>
+                    <td>
+                      <div style="display: flex; align-items: center; gap: 8px;">
+                        <span style="color: #facc15; font-weight: bold;">92%</span>
+                        <div class="progress-bar" style="width: 50px; height: 4px;"><div class="fill" style="width: 92%; background: #facc15;"></div></div>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+
+              <div class="card-footer" style="margin-top: 15px; text-align: center; padding-top: 10px; border-top: 1px solid var(--border);">
+                <button class="btn btn--small">Vedi cronologia completa</button>
+              </div>
+            </div>
+
+            <div class="dash-card tall-card">
+              <h3>I tuoi Gusti Musicali</h3>
+              
+              <div class="chart-container" style="margin: 20px 0;">
+                <div class="donut-chart" style="--p-stream: 75; width: 120px; height: 120px;">
+                  <div class="center-text">
+                    <span>Top</span>
+                    <strong>Pop</strong>
+                  </div>
+                </div>
+              </div>
+              
+              <ul class="geo-list">
+                <li>
+                  <div class="geo-info">
+                    <span>Pop / Dance</span>
+                    <span>75%</span>
+                  </div>
+                  <div class="progress-bar"><div class="fill" style="width: 0%; background: #ec4899;" data-width="75%"></div></div>
+                </li>
+                <li>
+                  <div class="geo-info">
+                    <span>Rock / Indie</span>
+                    <span>15%</span>
+                  </div>
+                  <div class="progress-bar"><div class="fill" style="width: 0%; background: #00ffc3;" data-width="15%"></div></div>
+                </li>
+                <li>
+                  <div class="geo-info">
+                    <span>Elettronica</span>
+                    <span>10%</span>
+                  </div>
+                  <div class="progress-bar"><div class="fill" style="width: 0%; background: #60a5fa;" data-width="10%"></div></div>
+                </li>
+              </ul>
+              
+              <div class="divider" style="margin: 20px 0; border-bottom: 1px dashed var(--border);"></div>
+              
+              <h3>Ultima attività</h3>
+              <div class="payout-item" style="justify-content: flex-start; gap: 10px;">
+                <span style="font-size: 1.2rem;">🕒</span>
+                <div style="display: flex; flex-direction: column;">
+                  <span style="font-weight: bold;">Ieri, 23:45</span>
+                  <span style="font-size: 0.8rem; color: var(--muted);">3 brani rilevati al "Club Neon"</span>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </section>
     </main>
 
     <script src="{{ url_for('static', filename='script.js') }}" defer></script>
