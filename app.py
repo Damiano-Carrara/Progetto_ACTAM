@@ -2,6 +2,8 @@ from flask import Flask, render_template, jsonify, request, send_file
 from audio_manager import AudioManager
 from session_manager import SessionManager
 from report_generator import ReportGenerator
+from lyrics_downloader import LyricsDownloader # <--- NUOVO IMPORT
+import threading
 import atexit
 import io
 import qrcode
@@ -19,7 +21,7 @@ public_url = None
 audio_bot = AudioManager()
 session_bot = SessionManager()
 report_bot = ReportGenerator()
-
+lyrics_bot = LyricsDownloader() # <--- NUOVO BOT
 
 def start_ngrok():
     """Avvia il tunnel Ngrok sulla porta 5000"""
@@ -71,9 +73,33 @@ def get_qr_image():
 @app.route("/api/start_recognition", methods=["POST"])
 def start_recognition():
     data = request.get_json() or {}
-    target_artist = data.get("targetArtist")
+    target_artist = data.get("targetArtist") # L'artista scritto nella input box
 
     print(f"🚀 Richiesta avvio monitoraggio. Bias: {target_artist}")
+
+    # === [MODIFICA SETLIST & LYRICS] ===
+    if target_artist:
+        print(f"🎸 Configuro scaletta e contesto per: {target_artist}")
+        # 1. Avvia ricerca scaletta (Setlist + Spotify)
+        audio_bot.update_target_artist(target_artist)
+        
+        # 2. Avvia Download Testi (Background)
+        # Aspettiamo che la scaletta sia pronta prima di scaricare i testi
+        def trigger_lyrics_download():
+            attempts = 0
+            while attempts < 15: # Aspetta max 15 secondi
+                # Accediamo alla lista dei brani trovati dal setlist_bot
+                songs = audio_bot.setlist_bot.cached_songs
+                if songs:
+                    print(f"📥 [App] Trovati {len(songs)} brani nella White List. Avvio download testi...")
+                    lyrics_bot.start_background_download(target_artist, songs)
+                    return
+                time.sleep(1)
+                attempts += 1
+            print("⚠️ [App] Timeout: Nessuna White List trovata per scaricare i testi.")
+        
+        threading.Thread(target=trigger_lyrics_download, daemon=True).start()
+    # ===================================
 
     started = audio_bot.start_continuous_recognition(
         callback_function=session_bot.add_song,
@@ -161,7 +187,12 @@ def generate_report():
 
 def cleanup_on_exit():
     """Pulizia alla chiusura dell'app"""
+    print("🛑 Chiusura Applicazione...")
     audio_bot.stop_continuous_recognition()
+    
+    # PULIZIA CACHE TESTI (NUOVO)
+    lyrics_bot.clear_cache()
+    
     ngrok.kill()
 
 

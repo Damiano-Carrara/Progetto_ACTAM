@@ -6,6 +6,7 @@ import unicodedata
 from datetime import datetime
 from threading import Lock
 from metadata_manager import MetadataManager
+from spotify_manager import SpotifyManager  # <--- NUOVO IMPORT
 from difflib import SequenceMatcher
 
 class SessionManager:
@@ -13,7 +14,11 @@ class SessionManager:
         self.db_path = "session_live.db"
         self.playlist = []
         self.known_songs_cache = {}
+        
+        # Inizializziamo i Bot
         self.meta_bot = MetadataManager()
+        self.spotify_bot = SpotifyManager() # <--- NUOVO BOT
+        
         self._next_id = 1
         self.lock = Lock()
         
@@ -21,7 +26,7 @@ class SessionManager:
         self._init_db()
         self._load_session_from_db()
         
-        print(f"📝 Session Manager Inizializzato (Accent-Insensitive + SQLite: {self.db_path})")
+        print(f"📝 Session Manager Inizializzato (Spotify HD + SQLite)")
 
     # --- GESTIONE DATABASE ---
     def _init_db(self):
@@ -46,7 +51,6 @@ class SessionManager:
             ''')
             
             # 2. Controllo/Migrazione Colonna 'cover'
-            # Controlla se la colonna 'cover' esiste già, se no la crea
             cursor.execute("PRAGMA table_info(songs)")
             columns = [info[1] for info in cursor.fetchall()]
             if 'cover' not in columns:
@@ -67,7 +71,6 @@ class SessionManager:
                 print(f"♻️ Ripristino sessione: trovati {len(rows)} brani nel database.")
                 for row in rows:
                     song = dict(row)
-                    # _raw_meta non viene salvato nel DB, lo ricreiamo vuoto
                     song['_raw_meta'] = {} 
                     self.playlist.append(song)
                     
@@ -90,7 +93,7 @@ class SessionManager:
                     song['id'], song['title'], song['artist'], song['composer'],
                     song['album'], song['timestamp'], song['duration_ms'],
                     song['score'], song['type'], song['isrc'], song['upc'],
-                    song.get('cover') # Può essere None
+                    song.get('cover') 
                 ))
                 conn.commit()
         except Exception as e:
@@ -117,7 +120,6 @@ class SessionManager:
             print(f"❌ Errore update Cover DB: {e}")
 
     def _delete_from_db(self, song_id):
-        """Rimuove un brano dal DB"""
         try:
             with sqlite3.connect(self.db_path, check_same_thread=False) as conn:
                 cursor = conn.cursor()
@@ -126,28 +128,22 @@ class SessionManager:
         except Exception as e:
             print(f"❌ Errore delete DB: {e}")
 
-    # --- LOGICA MATCHING (Tua versione robusta) ---
+    # --- LOGICA MATCHING ---
     def _normalize_string(self, text):
         if not text: return ""
-        # 1. Rimozione parentesi
         text = re.sub(r"[\(\[].*?[\)\]]", "", text)
-        # 2. Rimozione Keyword
         text = re.sub(r"(?i)\b(feat\.|ft\.|remix|edit|version|karaoke|live)\b.*", "", text)
-        # 3. Normalizzazione Accenti
         text = unicodedata.normalize('NFD', text).encode('ascii', 'ignore').decode("utf-8")
-        # 4. Solo alfanumerici
         clean = re.sub(r"[^a-zA-Z0-9\s]", "", text)
         return clean.strip().lower()
 
     def _are_songs_equivalent(self, new_s, existing_s):
-        # 1. CONTROLLO ARTISTA
         art_new = self._normalize_string(new_s['artist'])
         art_ex = self._normalize_string(existing_s['artist'])
         
         if art_new != art_ex and art_new not in art_ex and art_ex not in art_new:
             return False
 
-        # 2. CALCOLO SIMILARITÀ TITOLO
         tit_new = self._normalize_string(new_s['title'])
         tit_ex = self._normalize_string(existing_s['title'])
         similarity = SequenceMatcher(None, tit_new, tit_ex).ratio()
@@ -155,7 +151,6 @@ class SessionManager:
         if similarity < 0.40: return False
         if similarity > 0.60: return True
 
-        # 3. ZONA CRITICA (Durata)
         try:
             dur_new = int(new_s.get('duration_ms', 0) or 0)
             dur_ex = int(existing_s.get('duration_ms', 0) or 0)
@@ -165,14 +160,12 @@ class SessionManager:
         MIN_VALID_DURATION = 30000 
         if dur_new > MIN_VALID_DURATION and dur_ex > MIN_VALID_DURATION:
             diff = abs(dur_new - dur_ex)
-            # Tolleranza stretta
             if diff < 200: 
-                print(f"🔄 Duplicato (Zona Critica {similarity:.2f}): '{tit_new}' == '{tit_ex}' (Diff: {diff}ms)")
                 return True
         
         return False
 
-    # --- CORE LOGIC: ADD SONG ---
+    # --- ADD SONG ---
     def add_song(self, song_data, target_artist=None):
         with self.lock:
             if song_data.get('status') != 'success':
@@ -191,18 +184,17 @@ class SessionManager:
             for existing_song in self.playlist[-15:]:
                 if self._are_songs_equivalent(candidate_song, existing_song):
                     print(f"♻️ Duplicato Scartato: {title}")
-                    return {"added": False, "reason": "Duplicate (Smart Match)", "song": existing_song}
+                    return {"added": False, "reason": "Duplicate", "song": existing_song}
 
             track_key = f"{title} - {artist}".lower()
             cached_entry = self.known_songs_cache.get(track_key)
             
-            # Cache hit: recuperiamo tutto, incluse cover se presenti
+            # Cache hit
             if cached_entry:
                 print(f"⚡ Cache Hit! {title}")
                 composer_name = cached_entry['composer']
                 isrc = cached_entry.get('isrc')
                 upc = cached_entry.get('upc')
-                # Se la cache ha una cover, usiamola, altrimenti quella nuova (se c'è)
                 cover_url = cached_entry.get('cover') or song_data.get('cover')
                 status_enrichment = "Done"
             else:
@@ -229,7 +221,7 @@ class SessionManager:
                 "type": song_data.get('type', 'Original'),
                 "isrc": isrc, 
                 "upc": upc,
-                "cover": cover_url, # <--- CAMPO COVER
+                "cover": cover_url,
                 "_raw_isrc": isrc,
                 "_raw_upc": upc,
                 "_raw_meta": raw_meta_package
@@ -246,7 +238,7 @@ class SessionManager:
                     daemon=True
                 ).start()
 
-            print(f"✅ Aggiunto (Async + Persistente): {title}")
+            print(f"✅ Aggiunto: {title}")
             return {"added": True, "song": new_entry}
 
     # --- THREAD DI ARRICCHIMENTO ---
@@ -254,16 +246,26 @@ class SessionManager:
         attempts = 0
         max_attempts = 3
         found_composer = "Sconosciuto"
-        found_cover = None 
+        final_cover = entry.get('cover') # Partiamo con quella che abbiamo
         success = False
 
-        print(f"🧵 [Thread] Inizio ricerca per: {entry['title']}")
+        print(f"🧵 [Thread] Inizio arricchimento per: {entry['title']}")
 
+        # 1. TENTATIVO COVER SPOTIFY HD (Priorità Assoluta)
+        if self.spotify_bot:
+            try:
+                hd_cover = self.spotify_bot.get_hd_cover(entry['title'], entry['artist'])
+                if hd_cover:
+                    final_cover = hd_cover
+                    # print("     🎨 [Thread] Cover HD recuperata da Spotify.")
+            except Exception as e:
+                print(f"     ⚠️ Errore Spotify Cover: {e}")
+
+        # 2. TENTATIVO COMPOSITORE (MetadataManager)
         while attempts < max_attempts:
             try:
-                # ORA find_composer restituisce DUE valori (tupla)
-                # Assicurati di aver aggiornato metadata_manager.py
-                found_composer, found_cover = self.meta_bot.find_composer(
+                # meta_bot.find_composer restituisce (compositore, cover_fallback)
+                comp_result, cover_fallback = self.meta_bot.find_composer(
                     title=entry['title'], 
                     detected_artist=entry['artist'],
                     isrc=entry.get('_raw_isrc'),
@@ -271,33 +273,39 @@ class SessionManager:
                     setlist_artist=target_artist,
                     raw_acr_meta=entry.get('_raw_meta')
                 )
+                found_composer = comp_result
+                
+                # Usiamo la cover di fallback SOLO se non ne abbiamo trovata una su Spotify
+                if not final_cover and cover_fallback:
+                    final_cover = cover_fallback
+                
                 success = True
                 break 
 
             except Exception as e:
-                print(f"⚠️ Errore nel thread Enrichment (Tentativo {attempts+1}): {e}")
+                print(f"⚠️ Errore Enrichment (Tentativo {attempts+1}): {e}")
                 attempts += 1
                 if attempts >= max_attempts:
                     found_composer = "Errore Conn."
                 else:
                     time.sleep(1)
 
+        # 3. SALVATAGGIO FINALE
         with self.lock:
-            # Recuperiamo il brano dalla playlist in RAM per aggiornarlo
             target_song = next((s for s in self.playlist if s['id'] == entry['id']), None)
             
             if target_song:
-                # 1. Aggiorna Compositore
+                # Aggiorna Compositore
                 target_song['composer'] = found_composer
                 self._update_composer_in_db(target_song['id'], found_composer)
                 
-                # 2. Aggiorna Cover (solo se trovata una nuova E quella vecchia mancava)
-                if found_cover and not target_song.get('cover'):
-                    target_song['cover'] = found_cover
-                    self._update_cover_in_db(target_song['id'], found_cover)
-                    print(f"🖼️ [Thread] Cover trovata e aggiornata da MetadataManager!")
+                # Aggiorna Cover (se diversa da prima)
+                if final_cover and final_cover != target_song.get('cover'):
+                    target_song['cover'] = final_cover
+                    self._update_cover_in_db(target_song['id'], final_cover)
+                    print(f"🖼️ [Thread] Cover aggiornata!")
 
-                print(f"📝 [Thread] Compositore aggiornato: {found_composer}")
+                print(f"📝 [Thread] Compositore: {found_composer}")
                 
                 if success and found_composer not in ["Sconosciuto", "Errore Conn."]:
                     track_key = f"{target_song['title']} - {target_song['artist']}".lower()
@@ -316,7 +324,7 @@ class SessionManager:
                     cursor = conn.cursor()
                     cursor.execute('DELETE FROM songs')
                     conn.commit()
-                print("🧹 Sessione resettata: Database e memoria puliti.")
+                print("🧹 Sessione resettata.")
                 return True
             except Exception as e:
                 print(f"❌ Errore reset DB: {e}")
