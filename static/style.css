@@ -218,20 +218,16 @@ body.no-scroll {
   cursor: pointer;
   min-height: 280px;
   outline: none;
-  
-  /* [MODIFICA] Bordo base più spesso per accogliere il colore */
   border: 2px solid var(--border); 
-  
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35);
   transform: translateY(0);
   transition:
     transform 0.25s ease,
     box-shadow 0.25s ease,
-    border-color 0.25s ease; /* Aggiunta transizione colore */
+    border-color 0.25s ease;
   will-change: transform;
 }
 
-/* [MODIFICA] BORDI COLORATI PER OGNI CARD */
 .mode-card[data-mode="dj"] {
   border-color: #ff8a00;
   box-shadow: 0 10px 30px rgba(255, 138, 0, 0.1);
@@ -302,7 +298,6 @@ body.no-scroll {
   transform: translateY(-8px);
 }
 
-/* [MODIFICA] HOVER SPECIFICI CON GLOW COLORATO */
 .mode-card[data-mode="dj"]:hover, 
 .mode-card[data-mode="dj"]:focus-visible {
   box-shadow: 0 22px 50px rgba(255, 138, 0, 0.25);
@@ -329,7 +324,6 @@ body.no-scroll {
   opacity: 0.5;
 }
 
-/* [MODIFICA] RIMOSSA outline generica, ora usiamo il bordo colorato intenso per la selezione */
 .mode-card:focus-visible {
   outline: none; 
 }
@@ -346,7 +340,6 @@ body.no-scroll {
   background-image: radial-gradient(circle at 50% 100%, #ff3f6a, #1a0030);
 }
 
-/* [MODIFICA] CARD SELEZIONATA (Mantiene il colore specifico ma più luminoso) */
 .mode-card.mode-card--selected[data-mode="dj"] {
   box-shadow: 0 0 0 2px rgba(255, 138, 0, 0.6), 0 16px 40px rgba(0, 0, 0, 0.5);
   border-color: #ffca4d;
@@ -486,13 +479,11 @@ body.no-scroll {
   min-height: 0;
 }
 
-/* SESSION PANEL: Senza sfondo (trasparente per mostrare gradiente tema) */
 .session-panel {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 10px 14px;
-  
   border: 1px solid rgba(255, 255, 255, 0.15);
   position: relative;
   z-index: 2;
@@ -556,7 +547,6 @@ body.no-scroll {
   box-shadow: 0 8px 18px rgba(0, 0, 0, 0.35);
 }
 
-/* LOG CARD: MODIFICATO PER TOOLTIP */
 .log-card {
   display: flex;
   flex-direction: column;
@@ -564,18 +554,10 @@ body.no-scroll {
   min-height: 0;
   height: auto !important; 
   max-height: none !important;
-  
-  /* [FIX] RIMOSSO overflow:hidden sulla card principale 
-     per permettere al tooltip di uscire fuori */
-  /* overflow: hidden;  <-- RIMOSSO */
-  
   background: rgba(18, 21, 26, 0.6) !important;
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border: 1px solid rgba(255, 255, 255, 0.15);
-  
-  /* Assicuriamo che il contenuto non esca dai bordi arrotondati 
-     dato che abbiamo tolto l'overflow dalla card */
   border-radius: 16px;
 }
 
@@ -585,8 +567,6 @@ body.no-scroll {
   justify-content: space-between;
   gap: 8px;
   margin-bottom: 4px;
-  
-  /* Padding extra per staccare dal bordo superiore arrotondato */
   padding-top: 4px; 
 }
 
@@ -628,11 +608,8 @@ body.no-scroll {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  overflow: auto; /* Lo scroll rimane qui */
-  
-  /* Padding per evitare che la scrollbar tocchi il bordo destro */
+  overflow: auto; 
   padding-right: 2px;
-  /* Margine bottom per staccare dal bordo inferiore arrotondato */
   margin-bottom: 4px;
 }
 
@@ -645,7 +622,7 @@ body.no-scroll {
   width: 100vw;
   margin: 0;
   padding: 0;
-  z-index: 1; /* Sotto le card (z=2) ma sopra sfondo */
+  z-index: 1; 
   opacity: 0.75;
   pointer-events: none;
 }
@@ -745,7 +722,7 @@ body.no-scroll {
 }
 
 .review-table .row {
-  grid-template-columns: 0.2fr 1.5fr 1.3fr 300px;
+  grid-template-columns: 0.2fr 1.5fr 1.3fr 360px;
 }
 
 .row--head {
@@ -760,7 +737,7 @@ body.no-scroll {
 
 .review-table .row .tools {
   display: flex;
-  gap: 6px;
+  gap: 4px;
   justify-content: flex-start;
 }
 
@@ -842,11 +819,10 @@ body::-webkit-scrollbar-thumb {
 #confirm-ok { font-weight: 500; text-transform: none; }
 
 /* TEMA E COLORI */
-/* [MODIFICA] Inclusione del selettore #btn-review-notes per applicare il gradiente anche in page3 */
 
 #app.theme-dj .btn--primary { background: linear-gradient(135deg, #ff8a00, #ffca4d); color: #140616; }
 #app.theme-dj .vis-cell.active { background: linear-gradient(180deg, rgba(255, 138, 0, 0), rgba(255, 138, 0, 0.45), rgba(255, 202, 77, 0.85)); }
-#app.theme-dj .row.row--confirmed input.inline { border-color: #ff8a00; }
+#app.theme-dj .row.row--confirmed input.inline { border-color: #ff8a00; color: #ffca4d; }
 #app.theme-dj .session-panel, #app.theme-dj #view-review .hero.hero--small {
   background-image: linear-gradient(90deg, rgba(0, 0, 0, 0.4), rgba(0, 0, 0, 0.05) 55%, rgba(0, 0, 0, 0) 100%), radial-gradient(circle at 20% 0%, #ff8a00, #1b0033);
   border-color: #ff8a00;
@@ -861,7 +837,7 @@ body::-webkit-scrollbar-thumb {
 
 #app.theme-band .btn--primary { background: linear-gradient(135deg, #00ffc3, #007c9f); color: #021315; }
 #app.theme-band .vis-cell.active { background: linear-gradient(180deg, rgba(0, 255, 195, 0), rgba(0, 255, 195, 0.5), rgba(0, 124, 159, 0.85)); }
-#app.theme-band .row.row--confirmed input.inline { border-color: #00ffc3; }
+#app.theme-band .row.row--confirmed input.inline { border-color: #00ffc3; color: #00ffc3; }
 #app.theme-band .session-panel { background-image: radial-gradient(circle at 80% 0%, #00ffc3, #003848); border-color: #00ffc3; }
 #app.theme-band #view-review .hero.hero--small { background-image: radial-gradient(circle at 80% 0%, #00ffc3, #003848); border-color: #00ffc3; }
 #app.theme-band #btn-session-notes,
@@ -874,7 +850,7 @@ body::-webkit-scrollbar-thumb {
 
 #app.theme-concert .btn--primary { background: linear-gradient(135deg, #ff3f6a, #ff9ad7); color: #21021e; }
 #app.theme-concert .vis-cell.active { background: linear-gradient(180deg, rgba(255, 63, 106, 0), rgba(255, 63, 106, 0.5), rgba(255, 154, 215, 0.9)); }
-#app.theme-concert .row.row--confirmed input.inline { border-color: #ff3f6a; }
+#app.theme-concert .row.row--confirmed input.inline { border-color: #ff3f6a; color: #ff9ad7; }
 #app.theme-concert .session-panel { background-image: radial-gradient(circle at 50% 100%, #ff3f6a, #1a0030); border-color: #ff3f6a; }
 #app.theme-concert #view-review .hero.hero--small { background-image: radial-gradient(circle at 50% 100%, #ff3f6a, #1a0030); border-color: #ff3f6a; }
 #app.theme-concert #btn-session-notes,
@@ -923,3 +899,135 @@ main[data-viewer="true"] input.inline { pointer-events: none; border-color: tran
 
 /* Spettatore Background Overlay Tweak */
 .viewer-bg + .app-background-overlay { background: rgba(11, 12, 16, 0.45); }
+
+/* ==========================================================================
+   NUOVI STILI AGGIUNTI PER LE FUNZIONALITÀ RUOLI & COMPOSITORE
+   ========================================================================== */
+
+/* RUOLI - PAGE 0 */
+.role-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem; }
+.role-card {
+  position: relative; overflow: hidden; border-radius: 18px; cursor: pointer;
+  min-height: 280px; border: 2px solid var(--border);
+  box-shadow: 0 16px 40px rgba(0,0,0,0.35); transition: transform 0.25s;
+}
+.role-card:hover { transform: translateY(-8px); }
+
+/* Gradienti specifici per i ruoli */
+.bg-user { background-image: radial-gradient(circle at 50% 50%, #7c3aed, #1b0033); }
+.bg-org { background-image: radial-gradient(circle at 50% 50%, #ffd700, #332b00); }
+.bg-comp { background-image: radial-gradient(circle at 50% 50%, #ff3f6a, #300010); }
+
+/* Tasto Indietro nella Welcome */
+.btn-back-top { position: absolute; left: 24px; top: 24px; z-index: 10; }
+
+/* Badge Incasso in Sessione */
+.badge--revenue {
+  border-color: #ffd700; color: #ffd700; margin-left: 8px; font-weight: bold;
+}
+
+/* DASHBOARD COMPOSITORE */
+.composer-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 20px; }
+.stat-card { text-align: left; display: flex; flex-direction: column; justify-content: space-between; }
+.stat-card h3 { font-size: 0.9rem; color: var(--muted); margin: 0 0 10px; text-transform: uppercase; letter-spacing: 0.05em; }
+.stat-value { font-size: 2.2rem; font-weight: bold; margin-bottom: 5px; }
+.stat-value.highlight { color: #ff3f6a; }
+.stat-trend { font-size: 0.85rem; color: #00ffc3; }
+.stat-list { list-style: none; padding: 0; margin: 0; font-size: 0.9rem; color: var(--text); }
+.stat-list li { margin-bottom: 6px; padding-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,0.1); }
+.chart-card { grid-column: span 3; min-height: 340px; }
+
+/* VISTA ROYALTIES (24ESIMI) - AGGIORNATA */
+.royalties-card { display: flex; flex-direction: column; height: 100%; min-height: 500px; }
+.royalties-header { display: flex; gap: 20px; align-items: center; margin-bottom: 24px; border-bottom: 1px solid var(--border); padding-bottom: 16px; }
+
+/* Box dettagli aggiornati (gradiente solo sul titolo) */
+.royalties-details {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 20px;
+  margin-bottom: 30px;
+}
+
+.detail-box {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 16px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #fff;
+  background: rgba(18, 21, 26, 0.6); /* Sfondo scuro neutro per default */
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+}
+
+.detail-box span { font-size: 0.9rem; opacity: 0.8; }
+.detail-box h1 { margin: 0; font-size: 1.4rem; }
+.highlight-val { font-weight: bold; font-size: 1.3rem; }
+.currency-wrapper { display: flex; gap: 10px; align-items: center; }
+
+/* TABELLA RIPARTIZIONE - AGGIORNATA */
+.split-table-wrapper h3 { margin-bottom: 12px; font-size: 1.1rem; }
+
+.split-table {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Definizione griglia UNICA per header e righe */
+.split-table .row {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr 140px; 
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.split-body { flex: 1; overflow: auto; }
+
+/* Allineamento forzato colonne tramite nth-child */
+.split-table .row > *:nth-child(1) {
+  text-align: left;
+  padding-left: 8px;
+}
+.split-table .row > *:nth-child(2) {
+  text-align: center;
+}
+.split-table .row > *:nth-child(3) {
+  text-align: right;
+  padding-right: 20px;
+}
+.split-table .row > *:nth-child(4) {
+  display: flex;
+  justify-content: center;
+}
+
+/* TEMI AGGIUNTIVI PER ROYALTIES - Modificato per applicare gradiente solo a detail-box--title */
+
+/* DJ THEME */
+#app.theme-dj .detail-box--title {
+  background: linear-gradient(135deg, #ff8a00cc, #332b00);
+  border-color: #ff8a00;
+}
+#app.theme-dj .detail-box { border-color: rgba(255, 138, 0, 0.3); }
+
+/* BAND THEME */
+#app.theme-band .detail-box--title {
+  background: linear-gradient(135deg, #00ffc3cc, #002b36);
+  border-color: #00ffc3;
+}
+#app.theme-band .detail-box { border-color: rgba(0, 255, 195, 0.3); }
+
+/* CONCERT THEME */
+#app.theme-concert .detail-box--title {
+  background: linear-gradient(135deg, #ff3f6a, #1a0030);
+  border-color: #ff3f6a;
+}
+#app.theme-concert .detail-box { border-color: rgba(255, 63, 106, 0.3); }
+
+@media (max-width: 880px) {
+  .role-grid, .composer-grid, .royalties-details { grid-template-columns: 1fr; }
+  .review-table .row { grid-template-columns: 0.2fr 1.5fr 300px; }
+  .review-table .row .tools { flex-wrap: wrap; }
+}

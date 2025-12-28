@@ -1,67 +1,59 @@
 // --- STATO APP ---
 const state = {
-  mode: null,          // "dj" | "band" | "concert"
-  route: "welcome",    // "welcome" | "session" | "review"
+  // Nuovi stati per i ruoli
+  role: null,           // "user" | "org" | "composer"
+  orgRevenue: 0,        // Incasso totale (solo per Org)
+  currentRoyaltySong: null, // Brano in visione per 24esimi
+
+  // Stati originali
+  mode: null,           // "dj" | "band" | "concert"
+  route: "roles",       // Default ora è "roles" (Page 0)
   concertArtist: "",
-  bandArtist: "",      // artista opzionale per live band
-  notes: ""            // note su mismatch/errori dalla sessione
+  bandArtist: "",
+  notes: ""
 };
 
 // playlist locale (frontend)
-let songs = []; // ogni song può avere .order (indice originale)
-
-// id massimo visto (per capire quali brani sono nuovi quando facciamo polling)
+let songs = [];
 let lastMaxSongId = 0;
-
-// brano attualmente mostrato come "Now playing"
 let currentSongId = null;
-
-// [NUOVO] URL Copertina attuale (per evitare refresh inutili dello sfondo)
 let currentCoverUrl = null;
 
-// polling della playlist backend
+// Polling & Timer
 let playlistPollInterval = null;
-
-// timer sessione
 let sessionStartMs = 0;
 let sessionAccumulatedMs = 0;
 let sessionTick = null;
 
-// undo stack (ultimi 5 stati della playlist in review)
+// Undo & Snapshot
 let undoStack = [];
-
-// snapshot eventuale per tornare da review a sessione (se servirà)
 let lastSessionSnapshot = null;
 
-// stato dell'onda
-let waveMode = "idle"; // "idle" | "playing" | "paused"
-
-// --- VISUALIZER: equalizzatore continuo full-width ---
+// Visualizer
+let waveMode = "idle";
 const VIS_COLS = 96;
 const VIS_ROWS = 16;
-
 let visTick = null;
 let visLevels = new Array(VIS_COLS).fill(0);
 
-// contesto attuale del modal note: "session" | "review"
 let notesModalContext = "session";
 
-/** selettore rapido */
 const $ = (sel) => document.querySelector(sel);
 
 // --- UTILS ---
-function pad2(n) {
-  return n.toString().padStart(2, "0");
-}
-
+function pad2(n) { return n.toString().padStart(2, "0"); }
 function fmt(ms) {
   const sec = Math.floor(ms / 1000);
   const m = Math.floor(sec / 60);
   const s = sec % 60;
   return `${pad2(m)}:${pad2(s)}`;
 }
+// Nuova utility per valuta
+function formatMoney(amount, currency = "EUR") {
+  return new Intl.NumberFormat('it-IT', { style: 'currency', currency: currency }).format(amount);
+}
 
-// --- SALVATAGGIO STATO LOCALE ---
+// --- SALVATAGGIO STATO LOCALE (Originale) ---
 function saveStateToLocal() {
   if (!state.mode) return;
   localStorage.setItem("appMode", state.mode);
@@ -71,23 +63,23 @@ function saveStateToLocal() {
   else localStorage.removeItem("bandArtist");
 }
 
-// --- THEME (colore coerente alla modalità) ---
+// --- THEME ---
 function applyTheme() {
   const app = document.getElementById("app");
   if (!app) return;
   app.classList.remove("theme-dj", "theme-band", "theme-concert");
-
   if (state.mode === "band") app.classList.add("theme-band");
   else if (state.mode === "concert") app.classList.add("theme-concert");
   else if (state.mode === "dj") app.classList.add("theme-dj");
 }
 
-// --- NAVIGAZIONE / ROUTE ---
+// --- NAVIGAZIONE ---
 function setRoute(route) {
   state.route = route;
   const body = document.body;
   if (body) {
-    if (route === "welcome" || route === "session") body.classList.add("no-scroll");
+    // Aggiungo "roles" e "composer" alle pagine senza scroll
+    if (["welcome", "session", "roles"].includes(route)) body.classList.add("no-scroll");
     else body.classList.remove("no-scroll");
   }
 }
@@ -98,7 +90,129 @@ function showView(id) {
   if (el) el.classList.add("view--active");
 }
 
-// --- VISUALIZER ---
+// ============================================================================
+// NUOVA LOGICA: GESTIONE RUOLI (PAGINA 0)
+// ============================================================================
+function initRoleSelection() {
+  const roleCards = document.querySelectorAll(".role-card");
+  const modalRevenue = $("#revenue-modal");
+  const inputRevenue = $("#revenue-input");
+  const btnRevConfirm = $("#revenue-confirm");
+  const btnRevCancel = $("#revenue-cancel");
+  const backBtn = $("#btn-back-roles");
+
+  // Click su una card ruolo
+  roleCards.forEach(card => {
+    card.addEventListener("click", () => {
+      const role = card.dataset.role;
+      state.role = role;
+
+      if (role === "composer") {
+        setRoute("composer");
+        showView("#view-composer");
+        initComposerDashboard();
+      } else if (role === "org") {
+        modalRevenue.classList.remove("modal--hidden");
+      } else {
+        // Utente normale -> Welcome
+        setRoute("welcome");
+        showView("#view-welcome");
+        initWelcome();
+      }
+    });
+  });
+
+  // Gestione Modale Incasso (Org)
+  if(btnRevConfirm) {
+    btnRevConfirm.onclick = () => {
+      const val = parseFloat(inputRevenue.value);
+      if(isNaN(val) || val < 0) return alert("Inserisci un importo valido");
+      state.orgRevenue = val;
+      modalRevenue.classList.add("modal--hidden");
+      // Aggiorna Badge Revenue in sessione
+      const badgeRev = $("#org-revenue-badge");
+      if(badgeRev) {
+        badgeRev.textContent = `Incasso: ${formatMoney(state.orgRevenue)}`;
+        badgeRev.classList.remove("hidden");
+      }
+      setRoute("welcome");
+      showView("#view-welcome");
+      initWelcome();
+    };
+  }
+  
+  if(btnRevCancel) {
+    btnRevCancel.onclick = () => {
+      modalRevenue.classList.add("modal--hidden");
+      state.role = null; 
+    };
+  }
+
+  // Tasto Indietro nella Welcome Page
+  if(backBtn) {
+    backBtn.onclick = () => {
+      setRoute("roles");
+      showView("#view-roles");
+      state.role = null;
+      state.orgRevenue = 0;
+      const br = $("#org-revenue-badge");
+      if(br) br.classList.add("hidden");
+    };
+  }
+
+  // Logout Compositore
+  const logoutComp = $("#btn-comp-logout");
+  if(logoutComp) {
+    logoutComp.onclick = () => {
+      setRoute("roles");
+      showView("#view-roles");
+    };
+  }
+}
+
+// ============================================================================
+// NUOVA LOGICA: DASHBOARD COMPOSITORE
+// ============================================================================
+function initComposerDashboard() {
+  // Dati finti Mockup
+  $("#comp-total-plays").textContent = Math.floor(Math.random() * 500) + 1000;
+  $("#comp-est-revenue").textContent = formatMoney(Math.random() * 5000 + 12000);
+
+  // Chart.js Mock
+  const ctx = document.getElementById('composerChart');
+  if(ctx && window.Chart) {
+    if(window.compChartInstance) window.compChartInstance.destroy();
+    
+    window.compChartInstance = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: ['Lug', 'Ago', 'Set', 'Ott', 'Nov', 'Dic'],
+        datasets: [{
+          label: 'Esecuzioni',
+          data: [65, 120, 80, 85, 95, 130],
+          borderColor: '#ff3f6a',
+          backgroundColor: 'rgba(255, 63, 106, 0.1)',
+          tension: 0.4,
+          fill: true
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          y: { grid: { color: 'rgba(255,255,255,0.1)' }, ticks: { color: '#9fb0c2' } },
+          x: { grid: { display: false }, ticks: { color: '#9fb0c2' } }
+        }
+      }
+    });
+  }
+}
+
+// ============================================================================
+// LOGICA ORIGINALE (VISUALIZER, POLLING, SESSIONE)
+// ============================================================================
+
 function buildVisualizer() {
   const container = document.querySelector("#visualizer");
   if (!container) return;
@@ -161,7 +275,6 @@ function stopVisualizer() {
   visLevels = new Array(VIS_COLS).fill(0);
 }
 
-// --- SESSION HEADER ---
 function hydrateSessionHeader() {
   const badge = $("#mode-badge");
   if (!badge) return;
@@ -175,7 +288,6 @@ function hydrateSessionHeader() {
   applyTheme();
 }
 
-// --- NOW PLAYING ---
 function setNow(title, composer) {
   const titleEl = $("#now-title");
   const compEl = $("#now-composer");
@@ -183,13 +295,10 @@ function setNow(title, composer) {
   if (compEl) compEl.textContent = composer || "—";
 }
 
-// --- LOG LIVE (AGGIORNATO PER COVER) ---
 function pushLog({ id, index, title, composer, artist, cover }) {
   const row = document.createElement("div");
   row.className = "log-row";
   if (id != null) row.dataset.id = id;
-
-  // Se c'è cover -> tag IMG. Se no -> Placeholder grigio.
   const imgHtml = cover 
     ? `<img src="${cover}" alt="Cover" loading="lazy">` 
     : `<div style="width:32px; height:32px; background: rgba(255,255,255,0.1); border-radius:4px;"></div>`;
@@ -201,7 +310,6 @@ function pushLog({ id, index, title, composer, artist, cover }) {
     <span class="col-composer">${composer || "—"}</span>
     <span class="col-artist">${artist || "—"}</span>
   `;
-
   $("#live-log").prepend(row);
 }
 
@@ -264,9 +372,7 @@ async function startBackendRecognition() {
 
   try {
     await fetch("/api/start_recognition", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body)
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body)
     });
   } catch (err) { console.error(err); }
 }
@@ -274,20 +380,15 @@ async function startBackendRecognition() {
 async function stopBackendRecognition() {
   try {
     await fetch("/api/stop_recognition", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({})
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({})
     });
   } catch (err) { console.error(err); }
 }
 
-// --- AGGIORNAMENTO SFONDO (NUOVO) ---
 function updateBackground(url) {
     const bgEl = document.getElementById("app-background");
     if (!bgEl) return;
-
     if (url) {
-        // Precarica immagine per evitare "flash" neri
         const img = new Image();
         img.src = url;
         img.onload = () => {
@@ -295,20 +396,16 @@ function updateBackground(url) {
             bgEl.style.opacity = "1";
         };
     } else {
-        bgEl.style.opacity = "0"; // Nasconde se non c'è cover
+        bgEl.style.opacity = "0"; 
     }
 }
 
-// --- POLLING PLAYLIST (MERGED: COVER + METADATA) ---
 async function pollPlaylistOnce() {
   try {
-    // Aggiungiamo timestamp per evitare cache
     const res = await fetch("/api/get_playlist?t=" + Date.now());
     if (!res.ok) return;
-
     const data = await res.json();
     const playlist = Array.isArray(data.playlist) ? data.playlist : [];
-
     let maxIdSeen = lastMaxSongId;
     let updatedExisting = false;
 
@@ -318,77 +415,46 @@ async function pollPlaylistOnce() {
       const existing = songs.find((t) => t.id === id);
 
       if (!existing) {
-        // NUOVO BRANO
         if (id > lastMaxSongId) {
           const track = {
-            id,
-            order: songs.length + 1,
-            title: song.title || "Titolo sconosciuto",
-            composer: song.composer || "—",
-            artist: song.artist || "",
-            album: song.album || "",
-            type: song.type || "",
-            isrc: song.isrc || null,
-            upc: song.upc || null,
-            ms: song.duration_ms || 0,
-            confirmed: false,
-            timestamp: song.timestamp || null,
-            cover: song.cover || null, // [NUOVO]
-            // Backup dati originali per Raw Report
-            original_title: song.title,
-            original_composer: song.composer,
-            original_artist: song.artist
+            id, order: songs.length + 1, title: song.title || "Titolo sconosciuto",
+            composer: song.composer || "—", artist: song.artist || "",
+            album: song.album || "", type: song.type || "",
+            isrc: song.isrc || null, upc: song.upc || null,
+            ms: song.duration_ms || 0, confirmed: false,
+            timestamp: song.timestamp || null, cover: song.cover || null,
+            original_title: song.title, original_composer: song.composer, original_artist: song.artist
           };
-
           songs.push(track);
           currentSongId = track.id;
           setNow(track.title, track.composer);
-
-          pushLog({
-            id: track.id,
-            index: track.order,
-            title: track.title,
-            composer: track.composer,
-            artist: track.artist,
-            cover: track.cover // [NUOVO]
-          });
+          pushLog({ id: track.id, index: track.order, title: track.title, composer: track.composer, artist: track.artist, cover: track.cover });
         }
       } else {
-        // BRANO ESISTENTE
         const oldComposer = existing.composer;
         const oldArtist = existing.artist;
         const oldCover = existing.cover;
 
-        // Aggiorna metadati se non confermati dall'utente
         if (!existing.confirmed) {
             existing.title = song.title || existing.title;
             existing.composer = song.composer || existing.composer;
             existing.artist = song.artist || existing.artist;
-            // ...altri campi se servono...
         }
-        
-        // La cover si aggiorna SEMPRE se ne arriva una nuova migliore
-        if (song.cover && song.cover !== existing.cover) {
-             existing.cover = song.cover;
-        }
+        if (song.cover && song.cover !== existing.cover) existing.cover = song.cover;
 
         const composerChanged = existing.composer !== oldComposer;
         const artistChanged = existing.artist !== oldArtist;
         const coverChanged = existing.cover !== oldCover;
         const logRow = document.querySelector(`.log-row[data-id="${id}"]`);
 
-        // AGGIORNAMENTO DOM IMMEDIATO
         if (logRow && coverChanged && existing.cover) {
              const coverSpan = logRow.querySelector(".col-cover");
-             if (coverSpan) {
-                 coverSpan.innerHTML = `<img src="${existing.cover}" alt="Cover" loading="lazy">`;
-             }
+             if (coverSpan) coverSpan.innerHTML = `<img src="${existing.cover}" alt="Cover" loading="lazy">`;
         }
 
         if (composerChanged || artistChanged) {
           updatedExisting = true;
           if (currentSongId === id) setNow(existing.title, existing.composer);
-
           if (logRow) {
             const compSpan = logRow.querySelector(".col-composer");
             if (compSpan) compSpan.textContent = existing.composer;
@@ -402,8 +468,6 @@ async function pollPlaylistOnce() {
 
     lastMaxSongId = maxIdSeen;
 
-    // [NUOVO] Logica Sfondo Dinamico
-    // Trova l'ultimo brano che ha una cover
     const lastSongWithCover = [...songs].reverse().find(s => s.cover);
     if (lastSongWithCover && lastSongWithCover.cover !== currentCoverUrl) {
         currentCoverUrl = lastSongWithCover.cover;
@@ -411,7 +475,6 @@ async function pollPlaylistOnce() {
     }
 
     if (updatedExisting && state.route === "review") renderReview();
-
   } catch (err) { console.error(err); }
 }
 
@@ -427,12 +490,10 @@ function stopPlaylistPolling() {
   playlistPollInterval = null;
 }
 
-// --- SESSION ACTIONS ---
 async function sessionStart() {
   setRoute("session");
   showView("#view-session");
   hydrateSessionHeader();
-
   const btnStart = $("#btn-session-start");
   const btnPause = $("#btn-session-pause");
   const btnStop = $("#btn-session-stop");
@@ -442,7 +503,6 @@ async function sessionStart() {
 
   waveMode = "playing";
   if (!sessionTick) startSessionTimer();
-
   await startBackendRecognition();
   startPlaylistPolling();
   startVisualizer();
@@ -455,7 +515,6 @@ async function sessionPause() {
   if (btnStart) btnStart.disabled = false;
   if (btnPause) btnPause.disabled = true;
   if (btnStop) btnStop.disabled = false;
-
   waveMode = "paused";
   pauseSessionTimer();
   await stopBackendRecognition();
@@ -479,12 +538,8 @@ async function sessionStop() {
   resetSessionTimer();
   currentSongId = null;
   setNow("In ascolto", "—");
-
-  // === MODIFICA: Reset dello sfondo quando ci si ferma ===
   currentCoverUrl = null;
   updateBackground(null);
-  // ====================================================
-
   undoStack = [];
   renderReview();
   setRoute("review");
@@ -498,19 +553,14 @@ async function sessionReset() {
   stopPlaylistPolling();
   pauseSessionTimer();
   resetSessionTimer();
-
   try {
     await fetch("/api/reset_session", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({})
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({})
     });
   } catch (err) { console.error(err); }
-
   localStorage.removeItem("appMode");
   localStorage.removeItem("concertArtist");
   localStorage.removeItem("bandArtist");
-
   currentSongId = null;
   setNow("In ascolto", "—");
   songs = [];
@@ -518,11 +568,8 @@ async function sessionReset() {
   updateUndoButton();
   $("#live-log").innerHTML = "";
   lastMaxSongId = 0;
-  
-  // Reset Sfondo
   currentCoverUrl = null;
   updateBackground(null);
-
   const btnStart = $("#btn-session-start");
   const btnPause = $("#btn-session-pause");
   const btnStop = $("#btn-session-stop");
@@ -532,7 +579,7 @@ async function sessionReset() {
   stopVisualizer();
 }
 
-// --- REVIEW LOGIC ---
+// --- REVIEW LOGIC & 24ESIMI ---
 function renderReview() {
   const container = $("#review-rows");
   const template = $("#review-row-template");
@@ -548,27 +595,44 @@ function renderReview() {
     const inputComposer = node.querySelector('[data-field="composer"]');
     const inputTitle = node.querySelector('[data-field="title"]');
     const btnConfirm = node.querySelector(".btn-confirm");
-    const btnEdit = node.querySelector(".btn-edit");
     const btnDelete = node.querySelector(".btn-delete");
     const btnAdd = node.querySelector(".btn-add");
+    // Tasto Royalties
+    const btn24 = node.querySelector(".btn-24ths");
 
     if (indexSpan) indexSpan.textContent = index + 1;
     inputComposer.value = song.composer || "";
     inputTitle.value = song.title || "";
-    inputComposer.readOnly = true;
-    inputTitle.readOnly = true;
+    
+    // LOGICA EDIT AL CLICK:
+    // Se confermato -> readOnly = true. Altrimenti false.
+    const setEditable = (isLocked) => {
+        inputComposer.readOnly = isLocked;
+        inputTitle.readOnly = isLocked;
+        if(isLocked) node.classList.add("row--confirmed");
+        else node.classList.remove("row--confirmed");
+    };
+    
+    setEditable(song.confirmed);
+
+    // Gestione click per sbloccare se confermato
+    const unlockHandler = () => {
+        if(song.confirmed) {
+            song.confirmed = false;
+            setEditable(false);
+            updateGenerateState();
+        }
+    };
+    inputComposer.onclick = unlockHandler;
+    inputTitle.onclick = unlockHandler;
 
     if (song.confirmed) node.classList.add("row--confirmed");
 
-    btnEdit.addEventListener("click", (e) => {
-      e.preventDefault();
-      inputComposer.readOnly = false;
-      inputTitle.readOnly = false;
-      song.confirmed = false;
-      node.classList.remove("row--confirmed");
-      updateGenerateState();
-      inputTitle.focus();
-    });
+    // Mostra bottone 24esimi SOLO se Organizzazione
+    if (state.role === "org") {
+        btn24.classList.remove("hidden");
+        btn24.onclick = (e) => { e.preventDefault(); openRoyaltiesView(song); };
+    }
 
     btnConfirm.addEventListener("click", (e) => {
       e.preventDefault();
@@ -576,9 +640,7 @@ function renderReview() {
       song.composer = inputComposer.value || "";
       song.title = inputTitle.value || "";
       song.confirmed = true;
-      inputComposer.readOnly = true;
-      inputTitle.readOnly = true;
-      node.classList.add("row--confirmed");
+      setEditable(true);
       updateGenerateState();
     });
 
@@ -587,13 +649,10 @@ function renderReview() {
       const ok = await showConfirm("Sei sicuro di voler cancellare questo brano?");
       if (!ok) return;
       pushUndoState();
-
       if (song.id != null) {
         try {
           await fetch("/api/delete_song", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ id: song.id })
+            method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: song.id })
           });
         } catch (err) { console.error(err); }
       }
@@ -624,9 +683,88 @@ function renderReview() {
   updateGenerateState();
   updateUndoButton();
   syncReviewNotes();
+
+  const btnBackRev = $("#btn-back-review");
+  if(btnBackRev) btnBackRev.onclick = () => { setRoute("review"); showView("#view-review"); };
 }
 
-// --- WELCOME & MODALS ---
+// --- LOGICA DIVISIONE 24ESIMI ---
+function openRoyaltiesView(song) {
+    state.currentRoyaltySong = song;
+    setRoute("royalties");
+    showView("#view-royalties");
+    
+    $("#roy-song-title").textContent = song.title;
+    $("#roy-total-revenue").textContent = formatMoney(state.orgRevenue);
+    
+    // Calcolo mock: 10% diritto d'autore diviso numero brani
+    const totalSongs = songs.length || 1;
+    const pot = state.orgRevenue * 0.10; 
+    const songValue = pot / totalSongs;
+    
+    $("#roy-song-value").textContent = formatMoney(songValue);
+    
+    // Lista Compositori
+    const compList = $("#roy-composers-list");
+    compList.innerHTML = "";
+    
+    let composers = [];
+    if (song.composer && song.composer !== "Sconosciuto" && song.composer !== "—") {
+        composers = song.composer.split(",").map(c => c.trim());
+    } else {
+        // Mock se sconosciuto
+        composers = ["Mario Rossi", "Giuseppe Verdi"];
+    }
+    
+    const share = Math.floor(24 / composers.length);
+    const remainder = 24 % composers.length;
+    
+    composers.forEach((comp, i) => {
+        const myShare = share + (i === 0 ? remainder : 0);
+        const amount = (songValue * myShare) / 24;
+        
+        const row = document.createElement("div");
+        row.className = "row";
+        
+        row.innerHTML = `
+            <span>${comp}</span>
+            <span>${myShare}/24</span>
+            <span class="amount-cell">${formatMoney(amount)}</span>
+            <button class="btn btn--small btn--primary btn-pay">Pay Now</button>
+        `;
+        
+        row.querySelector(".btn-pay").onclick = (e) => {
+             e.target.textContent = "Pagato ✔";
+             e.target.disabled = true;
+             e.target.style.background = "#22c55e";
+             e.target.style.borderColor = "#22c55e";
+        };
+        compList.appendChild(row);
+    });
+
+    // Toggle Valuta
+    let isEur = true;
+    const btnCur = $("#btn-toggle-currency");
+    // Clona bottone per evitare listener multipli se si apre/chiude
+    const newBtn = btnCur.cloneNode(true);
+    btnCur.parentNode.replaceChild(newBtn, btnCur);
+    
+    newBtn.onclick = () => {
+        isEur = !isEur;
+        const rate = isEur ? 1 : 1.1; 
+        const cur = isEur ? "EUR" : "USD";
+        newBtn.textContent = isEur ? "Cambia ($)" : "Cambia (€)";
+        
+        $("#roy-song-value").textContent = formatMoney(songValue * rate, cur);
+        document.querySelectorAll(".amount-cell").forEach((cell, i) => {
+             const myShare = share + (i === 0 ? remainder : 0);
+             const amount = (songValue * myShare) / 24;
+             cell.textContent = formatMoney(amount * rate, cur);
+        });
+    };
+}
+
+// --- BOOTSTRAP WELCOME ---
 function syncWelcomeModeRadios() {
   const cards = document.querySelectorAll(".mode-card");
   cards.forEach((card) => card.classList.remove("mode-card--selected", "active"));
@@ -679,6 +817,9 @@ function initWelcome() {
 
   modeCards.forEach((card) => {
     card.addEventListener("click", () => {
+      // Ignora le carte ruolo se siamo nella pagina welcome
+      if(card.classList.contains("role-card")) return;
+
       state.mode = card.dataset.mode;
       // Reset artisti se cambio modalità
       if (state.mode === "dj") { state.concertArtist = ""; state.bandArtist = ""; }
@@ -691,32 +832,32 @@ function initWelcome() {
   });
 
   if (artistConfirmBtn) {
-    artistConfirmBtn.addEventListener("click", (e) => {
+    artistConfirmBtn.onclick = (e) => {
       e.preventDefault(); e.stopPropagation();
       const name = artistInput.value.trim();
       if (!name) return alert("Inserisci nome artista");
       state.concertArtist = name;
       saveStateToLocal();
       goToSession();
-    });
+    };
   }
 
   if (bandConfirmBtn) {
-    bandConfirmBtn.addEventListener("click", (e) => {
+    bandConfirmBtn.onclick = (e) => {
       e.preventDefault(); e.stopPropagation();
       state.bandArtist = bandInput ? bandInput.value.trim() : "";
       saveStateToLocal();
       goToSession();
-    });
+    };
   }
 
   if (djConfirmBtn) {
-    djConfirmBtn.addEventListener("click", (e) => {
+    djConfirmBtn.onclick = (e) => {
       e.preventDefault(); e.stopPropagation();
       state.concertArtist = ""; state.bandArtist = "";
       saveStateToLocal();
       goToSession();
-    });
+    };
   }
 }
 
@@ -731,9 +872,9 @@ function wireSessionButtons() {
 
   if (btnShowQr) {
     btnShowQr.addEventListener("click", () => {
-       const img = document.getElementById("qr-image");
-       img.src = "/api/get_qr_image?t=" + Date.now();
-       qrModal.classList.remove("modal--hidden");
+        const img = document.getElementById("qr-image");
+        img.src = "/api/get_qr_image?t=" + Date.now();
+        qrModal.classList.remove("modal--hidden");
     });
   }
 
@@ -806,15 +947,9 @@ function wireSessionButtons() {
   if(btnRaw) btnRaw.onclick = () => downloadReport("pdf_raw");
   if(btnCloseExp) btnCloseExp.onclick = () => exportModal.classList.add("modal--hidden");
 
-  // Altri bottoni standard (undo, back, notes)...
+  // Altri bottoni standard
   const btnUndo = $("#btn-undo");
   if(btnUndo) btnUndo.onclick = (e) => { e.preventDefault(); undoLast(); };
-  
-  const btnBackSession = $("#btn-back-session");
-  if(btnBackSession) btnBackSession.onclick = backToSessionFromReview;
-  
-  const btnBackWelcome = $("#btn-back-welcome");
-  if(btnBackWelcome) btnBackWelcome.onclick = () => { setRoute("welcome"); showView("#view-welcome"); };
   
   const btnNotes = $("#btn-session-notes");
   if(btnNotes) btnNotes.onclick = () => openNotesModal("session");
@@ -931,9 +1066,11 @@ document.addEventListener("DOMContentLoaded", () => {
     const rm = document.getElementById("restore-modal");
     if(rm) rm.classList.add("modal--hidden");
   } else {
-    setRoute("welcome");
-    showView("#view-welcome");
-    initWelcome();
+    // Admin: Inizia da Scelta Ruolo (Page 0)
+    initRoleSelection();
+    setRoute("roles");
+    showView("#view-roles");
+    
     checkRestoreSession();
     syncReviewNotes();
   }

@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>Borderò Assist</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   </head>
   <body>
     <div id="app-background" class="app-background {{ 'viewer-bg' if viewer_mode }}"></div>
@@ -12,16 +13,90 @@
 
     <main id="app" data-viewer="{{ 'true' if viewer_mode else 'false' }}">
       
-      <section id="view-welcome" class="view view--active">
+      <section id="view-roles" class="view view--active">
         <div class="mode-page">
           <div class="mode-container">
+            <h1 class="app-title">Borderò Assist</h1>
+            <p class="app-subtitle">Seleziona il tuo profilo per accedere.</p>
+
+            <div class="mode-grid role-grid">
+              <div class="mode-card role-card" data-role="user" tabindex="0" role="button">
+                <div class="mode-bg bg-user"></div>
+                <div class="mode-overlay"></div>
+                <div class="mode-content">
+                  <h2>Utente</h2>
+                  <p>Accesso standard per compilazione borderò live.</p>
+                </div>
+              </div>
+
+              <div class="mode-card role-card" data-role="org" tabindex="0" role="button">
+                <div class="mode-bg bg-org"></div>
+                <div class="mode-overlay"></div>
+                <div class="mode-content">
+                  <h2>Organizzazione</h2>
+                  <p>Gestione incassi, pagamenti e royalties.</p>
+                </div>
+              </div>
+
+              <div class="mode-card role-card" data-role="composer" tabindex="0" role="button">
+                <div class="mode-bg bg-comp"></div>
+                <div class="mode-overlay"></div>
+                <div class="mode-content">
+                  <h2>Compositore</h2>
+                  <p>Area Riservata: Statistiche e preventivi.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="view-composer" class="view">
+        <header class="hero">
+          <button id="btn-comp-logout" class="btn btn--small" style="float:right;">Esci</button>
+          <h2>Dashboard Artista</h2>
+          <p class="subtitle">Benvenuto. Ecco le proiezioni annuali basate sui live rilevati.</p>
+        </header>
+
+        <div class="composer-grid">
+          <div class="card stat-card">
+            <h3>Esecuzioni Totali</h3>
+            <div class="stat-value" id="comp-total-plays">0</div>
+            <div class="stat-trend">↑ 12% questo mese</div>
+          </div>
+          <div class="card stat-card">
+            <h3>Stima Compenso Annuale</h3>
+            <div class="stat-value highlight" id="comp-est-revenue">€ 0</div>
+            <div class="stat-trend">Preventivo basato sui borderò attivi</div>
+          </div>
+          <div class="card stat-card">
+            <h3>Luoghi Top</h3>
+            <ul class="stat-list">
+              <li>📍 Alcatraz (MI) - 42 play</li>
+              <li>📍 Estragon (BO) - 28 play</li>
+              <li>📍 Atlantico (RO) - 15 play</li>
+            </ul>
+          </div>
+          <div class="card chart-card">
+            <h3>Andamento Esecuzioni (Ultimi 6 mesi)</h3>
+            <div style="position: relative; height: 300px;">
+              <canvas id="composerChart"></canvas>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="view-welcome" class="view">
+        <div class="mode-page">
+          <div class="mode-container">
+            <button id="btn-back-roles" class="btn btn--small btn-back-top">← Indietro</button>
             <h1 class="app-title">Seleziona la modalità</h1>
             <p class="app-subtitle">
               Scegli se stai compilando un DJ set, una live band o il concerto di un artista.
             </p>
 
             <div class="mode-grid">
-              <div class="mode-card" data-mode="dj" tabindex="0" role="button" aria-label="DJ set">
+              <div class="mode-card" data-mode="dj" tabindex="0" role="button">
                 <div class="mode-bg bg-dj"></div>
                 <div class="mode-overlay"></div>
                 <div class="mode-content">
@@ -38,7 +113,7 @@
                 </div>
               </div>
 
-              <div class="mode-card" data-mode="band" tabindex="0" role="button" aria-label="Live band">
+              <div class="mode-card" data-mode="band" tabindex="0" role="button">
                 <div class="mode-bg bg-live"></div>
                 <div class="mode-overlay"></div>
                 <div class="mode-content">
@@ -55,7 +130,7 @@
                 </div>
               </div>
 
-              <div class="mode-card mode-card-concerto" data-mode="concert" tabindex="0" role="button" aria-label="Concerto">
+              <div class="mode-card mode-card-concerto" data-mode="concert" tabindex="0" role="button">
                 <div class="mode-bg bg-concerto"></div>
                 <div class="mode-overlay"></div>
                 <div class="mode-content">
@@ -86,6 +161,7 @@
               <div class="meta">
                 Modalità: <span id="mode-badge" class="badge">DJ set</span>
                 • Tempo sessione: <span id="session-timer">00:00</span>
+                <span id="org-revenue-badge" class="badge badge--revenue hidden">Incasso: € 0</span>
               </div>
             </div>
             
@@ -102,7 +178,7 @@
 
             {% if not viewer_mode %}
             <div class="qr-corner">
-              <button id="btn-show-qr" class="btn btn--qr" type="button" aria-label="Share QR" title="Share QR">QR</button>
+              <button id="btn-show-qr" class="btn btn--qr" type="button">QR</button>
             </div>
             {% endif %}
           </section>
@@ -110,7 +186,7 @@
           <section class="card log-card">
             <div class="log-header-row">
               <h3>Log live</h3>
-              <button id="btn-session-notes" class="btn btn--small" data-tooltip="Scrivi note da consultare durante la revisione">Note</button>
+              <button id="btn-session-notes" class="btn btn--small">Note</button>
             </div>
 
             <div class="log-head">
@@ -158,11 +234,11 @@
             <template id="review-row-template">
               <div class="row">
                 <span class="review-index"></span>
-                <input class="inline" data-field="composer" />
-                <input class="inline" data-field="title" />
+                <input class="inline" data-field="composer" title="Clicca per modificare" />
+                <input class="inline" data-field="title" title="Clicca per modificare" />
                 <div class="tools">
+                  <button class="btn btn--small btn--primary btn-24ths hidden">Vai alla ripartizione</button>
                   <button class="btn btn--small btn-confirm">Conferma</button>
-                  <button class="btn btn--small btn-edit">Modifica</button>
                   <button class="btn btn--small btn-delete">Delete</button>
                   <button class="btn btn--small btn-add">Aggiungi ↓</button>
                 </div>
@@ -179,12 +255,53 @@
         </div>
       </section>
 
+      <section id="view-royalties" class="view">
+        <div class="card royalties-card">
+          <header class="royalties-header">
+            <button id="btn-back-review" class="btn btn--small">Indietro</button>
+            <h2 style="flex:1; text-align:center;">Ripartizione Royalties</h2>
+            <div style="width: 80px;"></div> 
+          </header>
+
+          <div class="royalties-details">
+            <div class="detail-box detail-box--title">
+              <span>Brano:</span>
+              <h1 id="roy-song-title">Titolo Brano</h1>
+            </div>
+            <div class="detail-box">
+              <span>Incasso Serata:</span>
+              <span id="roy-total-revenue" class="highlight-val">€ 0,00</span>
+            </div>
+            <div class="detail-box">
+              <span>Quota brano (Stimata):</span>
+              <div class="currency-wrapper">
+                 <span id="roy-song-value" class="highlight-val">€ 0,00</span>
+                 <button id="btn-toggle-currency" class="btn btn--small" style="background: rgba(0,0,0,0.3); border:none;">Cambia ($)</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="split-table-wrapper">
+             <h3 style="margin-left: 8px;">Divisione in 24/24esimi</h3>
+             <div class="table split-table">
+               <div class="row row--head">
+                 <span class="col-left">Compositore</span>
+                 <span class="col-center">Quota</span>
+                 <span class="col-right">Importo</span>
+                 <span class="col-center">Azione</span>
+               </div>
+               <div id="roy-composers-list" class="split-body">
+                 </div>
+             </div>
+          </div>
+        </div>
+      </section>
+
       <div id="notes-modal" class="modal modal--hidden">
         <div class="modal-backdrop"></div>
         <div class="modal-dialog card notes-dialog">
           <h3>Note sessione</h3>
-          <p class="modal-message">Segna qui eventuali mismatch o errori.</p>
-          <textarea id="notes-textarea" placeholder="Es: Brano 3: autore errato..."></textarea>
+          <textarea id="notes-textarea" placeholder="Note..."></textarea>
           <div class="modal-actions">
             <button id="notes-cancel" class="btn btn--small">Chiudi</button>
             <button id="notes-save" class="btn btn--small btn--primary">Salva</button>
@@ -195,7 +312,7 @@
       <div id="confirm-modal" class="modal modal--hidden">
         <div class="modal-backdrop"></div>
         <div class="modal-dialog card">
-          <p id="confirm-message" class="modal-message">Sei sicuro di voler cancellare questo brano?</p>
+          <p id="confirm-message" class="modal-message">Sei sicuro?</p>
           <div class="modal-actions">
             <button id="confirm-cancel" class="btn btn--small">Annulla</button>
             <button id="confirm-ok" class="btn btn--small btn--primary">Ok</button>
@@ -207,10 +324,10 @@
         <div class="modal-backdrop"></div>
         <div class="modal-dialog card">
           <h3>Sessione Trovata</h3>
-          <p class="modal-message">Ho trovato dei brani salvati nel database. Vuoi recuperarli?</p>
+          <p class="modal-message">Recuperare i dati precedenti?</p>
           <div class="modal-actions" style="justify-content: center;">
-            <button id="restore-new" class="btn btn--small">🗑️ Nuova Sessione</button>
-            <button id="restore-ok" class="btn btn--small btn--primary">♻️ Recupera Dati</button>
+            <button id="restore-new" class="btn btn--small">🗑️ Nuova</button>
+            <button id="restore-ok" class="btn btn--small btn--primary">♻️ Recupera</button>
           </div>
         </div>
       </div>
@@ -218,8 +335,7 @@
       <div id="qr-modal" class="modal modal--hidden">
         <div class="modal-backdrop"></div>
         <div class="modal-dialog card" style="max-width: 360px;">
-          <h3>Scansiona per seguire Live</h3>
-          <p class="modal-message">Inquadra per vedere la lista brani in tempo reale.</p>
+          <h3>QR Code Live</h3>
           <div style="background: white; padding: 10px; border-radius: 8px; margin: 10px auto; width: fit-content;">
             <img id="qr-image" src="" alt="QR Code" style="display: block; width: 200px; height: 200px;" />
           </div>
@@ -232,14 +348,27 @@
       <div id="export-modal" class="modal modal--hidden">
         <div class="modal-backdrop"></div>
         <div class="modal-dialog card" style="max-width: 320px; padding: 20px;">
-          <h3 style="margin-top: 0; margin-bottom: 15px; font-size: 1.2rem;">Esporta Report</h3>
+          <h3 style="margin-top: 0; margin-bottom: 15px;">Esporta Report</h3>
           <div class="export-options" style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 20px;">
-            <button id="btn-export-excel" class="btn" style="justify-content: center; width: 100%;">Excel (SIAE)</button>
-            <button id="btn-export-pdf" class="btn" style="justify-content: center; width: 100%;">PDF Ufficiale</button>
-            <button id="btn-export-raw" class="btn" style="justify-content: center; width: 100%; border-style: dashed; opacity: 0.8;">Log Tecnico (Raw)</button>
+            <button id="btn-export-excel" class="btn" style="width: 100%;">Excel (SIAE)</button>
+            <button id="btn-export-pdf" class="btn" style="width: 100%;">PDF Ufficiale</button>
+            <button id="btn-export-raw" class="btn" style="width: 100%; border-style: dashed; opacity: 0.8;">Log Tecnico</button>
           </div>
           <div class="modal-actions" style="justify-content: center; margin-top: 0;">
             <button id="btn-export-close" class="btn btn--small" style="background: transparent; border: none; color: #999;">Chiudi</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="revenue-modal" class="modal modal--hidden">
+        <div class="modal-backdrop"></div>
+        <div class="modal-dialog card">
+          <h3>Dati Organizzazione</h3>
+          <p class="modal-message">Inserisci l'incasso totale previsto.</p>
+          <input type="number" id="revenue-input" placeholder="Es. 5000" style="width: 100%; padding: 10px; background: #0d1117; border: 1px solid #1f242d; color: white; border-radius: 8px; margin-bottom: 16px; font-size: 1.1rem;" />
+          <div class="modal-actions">
+            <button id="revenue-cancel" class="btn btn--small">Indietro</button>
+            <button id="revenue-confirm" class="btn btn--small btn--primary">Conferma</button>
           </div>
         </div>
       </div>
