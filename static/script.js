@@ -102,9 +102,20 @@ function setRoute(route) {
 }
 
 function showView(id) {
-  document.querySelectorAll(".view").forEach((v) => v.classList.remove("view--active"));
+  // 1. Rimuovi active da tutte le viste
+  document.querySelectorAll(".view").forEach((v) => {
+    v.classList.remove("view--active");
+  });
+
   const el = document.querySelector(id);
-  if (el) el.classList.add("view--active");
+  if (el) {
+    // 2. FIX FONDAMENTALE: Rimuovi la classe 'hidden' che potrebbe 
+    // essere rimasta bloccata dalla Dashboard o dal Menu Login
+    el.classList.remove("hidden"); 
+    
+    // 3. Attiva la vista
+    el.classList.add("view--active");
+  }
 }
 
 // --- VISUALIZER BUILD + UPDATE (Tua logica originale completa) ---
@@ -1465,22 +1476,54 @@ function triggerDashboardAnimations() {
 
 // --- LOGIN MENU LOGIC ---
 
+// --- CODICE DA AGGIUNGERE ALLA FINE DI SCRIPT.JS ---
+
 document.addEventListener("DOMContentLoaded", () => {
-    // Gestione Toggle Menu
+    // --- GESTIONE LOGIN MENU ---
     const loginBtn = document.getElementById("loginToggleBtn");
     const loginMenu = document.getElementById("loginMenu");
-    
-    if(loginBtn && loginMenu) {
+
+    if (loginBtn && loginMenu) {
         loginBtn.addEventListener("click", (e) => {
-            e.stopPropagation(); // Evita che il click si propaghi al document
-            toggleLoginMenu();
+            e.stopPropagation(); 
+            // Assicurati che la funzione toggleLoginMenu sia definita nel file (lo era nel tuo script originale)
+            if (typeof toggleLoginMenu === "function") {
+                toggleLoginMenu();
+            } else {
+                // Fallback nel caso la funzione non venga trovata
+                loginMenu.classList.toggle("show");
+                loginBtn.classList.toggle("active");
+            }
         });
-        
-        // Chiudi menu se clicco ovunque altro nella pagina
+
+        // Chiudi menu se clicco ovunque altro
         document.addEventListener("click", (e) => {
             if (!loginMenu.contains(e.target) && !loginBtn.contains(e.target)) {
                 loginMenu.classList.remove("show");
                 loginBtn.classList.remove("active");
+            }
+        });
+    }
+
+    // --- GESTIONE TEMA CHIARO/SCURO ---
+    const themeBtn = document.getElementById("themeToggleBtn");
+
+    // 1. Controlla preferenza salvata
+    const savedTheme = localStorage.getItem("appTheme");
+    if (savedTheme === "light") {
+        document.body.classList.add("light-mode");
+    }
+
+    // 2. Gestione Click Cambio Tema
+    if (themeBtn) {
+        themeBtn.addEventListener("click", () => {
+            document.body.classList.toggle("light-mode");
+
+            // Salva preferenza
+            if (document.body.classList.contains("light-mode")) {
+                localStorage.setItem("appTheme", "light");
+            } else {
+                localStorage.setItem("appTheme", "dark");
             }
         });
     }

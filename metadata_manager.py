@@ -6,7 +6,7 @@ import json
 from difflib import SequenceMatcher
 import lyricsgenius
 import os
-from spotify_manager import SpotifyManager  # <--- NUOVO IMPORT
+from spotify_manager import SpotifyManager
 
 class MetadataManager:
     def __init__(self):
@@ -23,7 +23,7 @@ class MetadataManager:
         # Inizializzazione Spotify
         self.spotify_bot = SpotifyManager()
 
-        print("📚 Metadata Manager (iTunes + Spotify HD + Genius + MB) Pronto.")
+        print("📚 Metadata Manager (Aggregation Mode: ON) Pronto.")
 
     def _clean_string(self, text):
         if not text: return ""
@@ -36,17 +36,31 @@ class MetadataManager:
             clean = re.sub(p, "", clean, flags=re.IGNORECASE)
         return clean.strip()
 
+    def _add_to_set(self, source_set, names_str):
+        """Helper per pulire e aggiungere nomi separati da virgola al set"""
+        if not names_str: return
+        # Rimuove etichette tra parentesi tipo (Apple) se presenti
+        clean_str = re.sub(r"\(.*?\)", "", names_str)
+        # Divide per virgola, slash o &
+        parts = re.split(r'[,/&]', clean_str)
+        for p in parts:
+            p = p.strip()
+            if len(p) > 2: # Evita robaccia corta
+                # Capitalizza ogni parola per uniformità (es. "Mogol" e "mogol" diventano uguali)
+                source_set.add(p.title())
+
     def find_composer(self, title, detected_artist, isrc=None, upc=None, setlist_artist=None, raw_acr_meta=None):
         """
-        Cerca metadati avanzati (Compositore e Cover HD).
-        Sequenza: Spotify (Cover) -> iTunes (Comp+Cover) -> ACR -> MB -> Genius -> Deezer
+        Cerca metadati aggregando i risultati da più fonti.
+        Non si ferma al primo risultato ma cerca di arricchire la lista.
         """
         clean_title = self._clean_title(title)
         search_title = clean_title if len(clean_title) > 2 else title
         
-        print(f"\n🔎 [META] Cerco Dettagli per: '{search_title}' (Art: '{detected_artist}')")
+        print(f"\n🔎 [META] Aggregazione Dati per: '{search_title}' (Art: '{detected_artist}')")
 
-        final_composer = "Sconosciuto"
+        # Insieme per i compositori (evita duplicati automaticamente)
+        found_composers = set()
         final_cover = None
         
         artists_to_try = []
@@ -56,143 +70,141 @@ class MetadataManager:
         # ---------------------------------------------------------
         # 1. SPOTIFY (COVER HD - PRIORITÀ ASSOLUTA)
         # ---------------------------------------------------------
-        # Usiamo Spotify per la cover perché ha la qualità migliore (640x640)
-        # Purtroppo Spotify NON fornisce i compositori via API.
         if self.spotify_bot:
             try:
-                # Proviamo col primo artista della lista (solitamente il più corretto)
                 hd_cover = self.spotify_bot.get_hd_cover(search_title, artists_to_try[0])
                 if hd_cover:
                     final_cover = hd_cover
-                    # print("     🎨 [Spotify] Cover HD trovata.")
             except: pass
 
         # ---------------------------------------------------------
         # 2. ITUNES (COMPOSITORE + FALLBACK COVER)
         # ---------------------------------------------------------
-        # iTunes è ottimo per i compositori ("Written By").
-        print("🍏 [Apple] Provo iTunes (Store IT)...")
+        print("   🍏 [Apple] Scansione iTunes...")
         for artist in artists_to_try:
             comp, cover = self._search_itunes(search_title, artist)
             
-            # Se Spotify ha fallito, prendiamo la cover di iTunes
             if cover and not final_cover:
                 final_cover = cover
             
             if comp:
-                final_composer = f"{comp} (Apple)"
-                print(f"     ✅ Compositore trovato su iTunes: {comp}")
-                break # Trovato compositore, usciamo dal loop artisti
+                print(f"     -> Trovato su iTunes: {comp}")
+                self._add_to_set(found_composers, comp)
+                break # Se iTunes trova qualcosa per questo artista, bene, ma proseguiamo con altri motori
 
         # ---------------------------------------------------------
-        # 3. ACRCLOUD NATIVE (FALLBACK)
+        # 3. MUSICBRAINZ (PRECISIONE STORICA)
         # ---------------------------------------------------------
-        if final_composer == "Sconosciuto" and raw_acr_meta and "contributors" in raw_acr_meta:
-            composers_list = raw_acr_meta["contributors"].get("composers", [])
-            if composers_list:
-                final_composer = ", ".join(composers_list)
-                print(f"   💎 ACRCloud Native Match: {final_composer}")
+        # Cerchiamo SEMPRE su MusicBrainz, anche se iTunes ha trovato qualcosa
+        print("   🧠 [MB] Scansione MusicBrainz...")
+        mb_found = False
+        
+        # A) Via ISRC (Molto preciso)
+        if isrc:
+            res = self._search_mb_by_isrc(isrc)
+            if res: 
+                print(f"     -> Trovato via ISRC: {res}")
+                self._add_to_set(found_composers, res)
+                mb_found = True
 
-        # ---------------------------------------------------------
-        # 4. MUSICBRAINZ (PRECISIONE STORICA)
-        # ---------------------------------------------------------
-        if final_composer == "Sconosciuto":
-            # A) Via ISRC
-            if isrc:
-                res = self._search_mb_by_isrc(isrc)
-                if res: final_composer = res
-
-            # B) Via Testo
-            if final_composer == "Sconosciuto":
-                for artist in artists_to_try:
-                    res = self._strategy_musicbrainz(search_title, artist)
-                    if res: 
-                        final_composer = res
-                        break
-
-        # ---------------------------------------------------------
-        # 5. GENIUS (ULTIMA SPIAGGIA POTENTE)
-        # ---------------------------------------------------------
-        if final_composer == "Sconosciuto":
-            print("🧠 [Genius] Avvio ricerca approfondita crediti...")
+        # B) Via Testo (Se ISRC fallisce o vogliamo conferme)
+        if not mb_found:
             for artist in artists_to_try:
-                found_genius = self._search_genius_composers(search_title, artist)
-                if found_genius:
-                    final_composer = f"{found_genius} (Genius)"
+                res = self._strategy_musicbrainz(search_title, artist)
+                if res: 
+                    print(f"     -> Trovato via Search: {res}")
+                    self._add_to_set(found_composers, res)
                     break
 
         # ---------------------------------------------------------
-        # 6. DEEZER (DISPERATO)
+        # 4. GENIUS (PRODUTTORI E AUTORI)
         # ---------------------------------------------------------
-        if final_cover is None or final_composer == "Sconosciuto":
-            # print("🎵 [Deezer] Tentativo finale...")
+        # Genius spesso ha dati che gli altri non hanno (Producer, Co-Writer)
+        print("   🧬 [Genius] Scansione Genius...")
+        for artist in artists_to_try:
+            found_genius = self._search_genius_composers(search_title, artist)
+            if found_genius:
+                print(f"     -> Trovato su Genius: {found_genius}")
+                self._add_to_set(found_composers, found_genius)
+                break
+
+        # ---------------------------------------------------------
+        # 5. ACRCLOUD NATIVE & DEEZER (FALLBACKS)
+        # ---------------------------------------------------------
+        # Questi li usiamo solo se la lista è ancora povera o vuota, per non rallentare troppo
+        if len(found_composers) == 0:
+            print("   ⚠️ Risultati scarsi, attivo scansione profonda (ACR/Deezer)...")
+            
+            # ACR Native
+            if raw_acr_meta and "contributors" in raw_acr_meta:
+                composers_list = raw_acr_meta["contributors"].get("composers", [])
+                for c in composers_list:
+                     self._add_to_set(found_composers, c)
+
+            # Deezer
             for artist in artists_to_try:
                 comp, cover = self._search_deezer(search_title, artist)
                 if cover and not final_cover: final_cover = cover
-                if comp and final_composer == "Sconosciuto": final_composer = f"{comp} (Deezer)"
-                if final_cover and final_composer != "Sconosciuto": break
+                if comp:
+                    self._add_to_set(found_composers, comp)
+                    break
+        
+        # ---------------------------------------------------------
+        # IMPACCHETTAMENTO FINALE
+        # ---------------------------------------------------------
+        if not found_composers:
+            final_composer_str = "Sconosciuto"
+        else:
+            # Ordiniamo alfabeticamente per pulizia
+            final_composer_str = ", ".join(sorted(list(found_composers)))
+            print(f"   ✅ [AGGR] Lista Finale Compositori: {final_composer_str}")
 
-        return final_composer, final_cover
+        return final_composer_str, final_cover
 
     # ---------------------------------------------------------
-    # MOTORI DI RICERCA
+    # MOTORI DI RICERCA (INVARIATI, TRANNE LOGICA INTERNA)
     # ---------------------------------------------------------
 
     def _search_genius_composers(self, title, artist):
-        """Cerca Autori e Produttori su Genius con logica 'Fuzzy'"""
         try:
-            if not self.genius_token:
-                print("     ❌ [Genius] Token mancante (.env).")
-                return None
-                
+            if not self.genius_token: return None
             if self.genius is None:
                 self.genius = lyricsgenius.Genius(self.genius_token)
                 self.genius.verbose = False 
             
-            # Pulizia titolo per Genius (toglie featuring e parentesi)
             clean_t = title.split("(")[0].strip()
-            
-            # 1. Ricerca Esatta (Titolo + Artista)
             song = self.genius.search_song(clean_t, artist)
             
-            # 2. Fallback: Cerca solo Titolo (se l'artista su Genius ha un nome diverso)
             if not song:
-                # print(f"     ⚠️ Genius: Ricerca esatta fallita. Provo solo '{clean_t}'...")
-                # Cerca top 5 risultati solo per titolo
+                # Fallback ricerca generica
                 search_res = self.genius.search_songs(clean_t, per_page=5)
                 if search_res and 'hits' in search_res:
                     for hit in search_res['hits']:
                         hit_artist = hit['result']['primary_artist']['name']
-                        # Se l'artista trovato contiene quello che cerchiamo (o viceversa)
                         if self._clean_string(artist) in self._clean_string(hit_artist):
-                            # Trovato match indiretto! Scarichiamo i dettagli
                             song = self.genius.song(hit['result']['id'])
-                            # print(f"     ✅ Genius: Match recuperato ({hit_artist})")
                             break
             
-            if not song:
-                return None
+            if not song: return None
 
-            # Estrazione Dati
             res = song.to_dict()
             writers = res.get('writer_artists', [])
             producers = res.get('producer_artists', [])
             
             names = set()
             for w in writers: names.add(w['name'])
-            # Opzionale: aggiungi produttori se non ci sono scrittori
-            if not names:
-                for p in producers: names.add(p['name'])
+            # Genius separa Writers e Producers. Li prendiamo entrambi?
+            # Per la SIAE spesso servono solo gli autori, ma "meglio abbondare".
+            for p in producers: names.add(p['name'])
             
             if names:
                 return ", ".join(list(names))
 
-        except Exception as e:
-            print(f"     ⚠️ Errore Genius: {e}")
-        
+        except Exception: pass
         return None
 
     def _search_itunes(self, title, artist):
+        # ... (Codice esistente invariato) ...
         try:
             simple_artist = re.sub(r"(?i)\b(feat\.|ft\.|&|the)\b.*", "", artist).strip()
             params = {
@@ -205,7 +217,6 @@ class MetadataManager:
             resp = requests.get(self.itunes_url, params=params, timeout=5)
             results = resp.json().get("results", []) if resp.status_code == 200 else []
 
-            # Fallback solo titolo
             if not results:
                 params["term"] = title
                 resp = requests.get(self.itunes_url, params=params, timeout=5)
@@ -217,11 +228,9 @@ class MetadataManager:
                 track_name = res.get("trackName", "")
                 artist_name = res.get("artistName", "")
                 
-                # Check Titolo
                 if SequenceMatcher(None, title.lower(), track_name.lower()).ratio() < 0.6: 
                     continue
                 
-                # Check Artista
                 found_art_clean = self._clean_string(artist_name)
                 if target_norm in found_art_clean or found_art_clean in target_norm:
                     cover = res.get('artworkUrl100', '').replace('100x100', '600x600')
@@ -232,6 +241,7 @@ class MetadataManager:
         return None, None
 
     def _search_deezer(self, title, artist):
+        # ... (Codice esistente invariato) ...
         try:
             query = f"{title} {artist}"
             params = {"q": query, "limit": 3}
@@ -252,7 +262,6 @@ class MetadataManager:
                 cover = res.get('album', {}).get('cover_medium', None)
                 composer = None
                 
-                # Deep scan per compositori
                 try:
                     track_resp = requests.get(f"https://api.deezer.com/track/{res['id']}", timeout=3)
                     if track_resp.status_code == 200:
@@ -271,8 +280,8 @@ class MetadataManager:
         return None, None
 
     def _strategy_musicbrainz(self, title, artist):
+        # ... (Codice esistente invariato) ...
         try:
-            # 1. Cerca Recording
             query = f'recording:"{title}" AND artist:"{artist}"'
             res = musicbrainzngs.search_recordings(query=query, limit=3)
             if res.get("recording-list"):
@@ -280,7 +289,6 @@ class MetadataManager:
                     c = self._get_comp(r["id"])
                     if c: return c
             
-            # 2. Cerca Work
             time.sleep(0.5) 
             query_w = f'work:"{title}" AND artist:"{artist}"'
             res_w = musicbrainzngs.search_works(query=query_w, limit=3)
@@ -290,6 +298,7 @@ class MetadataManager:
         return None
 
     def _search_mb_by_isrc(self, isrc):
+        # ... (Codice esistente invariato) ...
         try:
             res = musicbrainzngs.get_recordings_by_isrc(isrc, includes=["work-rels", "artist-rels"])
             if res.get("isrc", {}).get("recording-list"):

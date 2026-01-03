@@ -511,72 +511,81 @@ class AudioManager:
                 def process_section(track_list, threshold, type_label):
                     aggregated_list = aggregate_tracks(track_list)
                     results_count = len(aggregated_list)
-                    current_bonus_val = 50 if results_count == 1 else 40
+                    
+                    # Bonus base se c'è un solo risultato (meno confusione = più fiducia)
+                    current_bonus_val = 40 if results_count == 1 else 20
 
                     for t in aggregated_list:
                         raw_score = norm(t.get("score", 0))
                         final_score = raw_score
                         title = t.get("title", "Sconosciuto")
                         artist_name = self._get_artist_name(t)
-                        applied_bonus = 0
+                        
+                        applied_boost_type = "None"
+                        boost_amount = 0
 
-                        # === [MODIFICA 5: DEEP BOOST INSERITO QUI] ===
-                        # Se è nella whitelist, boostiamo PRIMA di qualsiasi controllo
+                        # === 1. SUPER BOOST SCALETTA (Priorità Massima) ===
+                        # Se il titolo è nella White List (Setlist o Spotify), vince quasi sempre.
                         is_in_whitelist = self.setlist_bot.check_is_likely(title)
+                        
                         if is_in_whitelist:
-                            boost_val = 25 # Boost enorme
-                            final_score += boost_val
-                            print(f"🚀 [BOOST] '{title}' è in scaletta! (+{boost_val}%) -> {final_score}%")
-
-                        # --- MANTENUTA LOGICA BIAS BOOST ---
+                            # AUMENTO DRASTICO: +65%. 
+                            # Trasforma un match audio mediocre (40%) in una certezza (105%)
+                            # Questo garantisce che superi qualsiasi altro brano con score alto (es. 75%)
+                            boost_amount = 65 
+                            final_score += boost_amount
+                            applied_boost_type = "Whitelist/Setlist"
+                        
+                        # === 2. BOOST ARTISTA BIAS (Solo se non è già boostato dalla Whitelist) ===
                         elif bias_artist:
-                            bias_norm_str = self._normalize_for_match(bias_artist)
-                            bias_tokens = set(bias_norm_str.split())
-                            def check_match_smart(text_to_check):
-                                if not text_to_check: return False
-                                text_norm = self._normalize_for_match(text_to_check)
-                                if bias_norm_str in text_norm: return True
-                                target_tokens = set(text_norm.split())
-                                if bias_tokens.issubset(target_tokens): return True
-                                return False
+                            # Normalizzazione stringhe per confronto
+                            bias_norm = self._normalize_for_match(bias_artist)
+                            art_norm = self._normalize_for_match(artist_name)
+                            
+                            # Check rapido
+                            is_artist_match = (bias_norm in art_norm) or (art_norm in bias_norm)
+                            
+                            # Check approfondito (token per token) se quello rapido fallisce
+                            if not is_artist_match:
+                                bias_tokens = set(bias_norm.split())
+                                target_tokens = set(art_norm.split())
+                                if bias_tokens.issubset(target_tokens): is_artist_match = True
+                            
+                            # Check nei metadati esterni (es. Spotify metadata dentro ACR)
+                            if not is_artist_match and "external_metadata" in t:
+                                ext_dump = json.dumps(t["external_metadata"]).lower()
+                                if bias_norm in ext_dump: is_artist_match = True
 
-                            is_match = False
-                            if check_match_smart(artist_name): is_match = True
-                            if not is_match and check_match_smart(title): is_match = True
-                            if not is_match and "artists" in t:
-                                for art in t["artists"]:
-                                    if check_match_smart(art["name"]): is_match = True; break
-                            if not is_match and "external_metadata" in t:
-                                ext_meta_dump = json.dumps(t["external_metadata"])
-                                if self._normalize_for_match(bias_artist) in self._normalize_for_match(ext_meta_dump):
-                                    is_match = True
+                            if is_artist_match:
+                                # Se l'artista è quello giusto, diamo un bel boost (+40%)
+                                # Questo serve per far vincere i brani dell'artista target rispetto a cover sconosciute
+                                boost_amount = 40 
+                                final_score += boost_amount
+                                applied_boost_type = "Artist Match"
 
-                            if is_match:
-                                applied_bonus = current_bonus_val
-                                final_score += applied_bonus
-
-                        # --- MANTENUTA LOGICA ID PENALTY ---
+                        # === 3. PENALITÀ GENERIC ID ===
                         clean_check = re.sub(r"[\(\[].*?[\)\]]", "", title)
                         clean_check = re.sub(r"(?i)\b(feat\.|ft\.|remix|edit|version|live|mixed|vip)\b.*", "", clean_check)
                         clean_check = re.sub(r"[^a-zA-Z0-9]", "", clean_check).lower().strip()
                         if re.match(r"^(id|track)\d*$", clean_check):
-                            penalty = final_score * 0.30
+                            penalty = final_score * 0.30 
                             final_score -= penalty
-                            print(f"📉 PENALITÀ GENERIC ID: '{title}' -> -30%")
+                            print(f"📉 PENALITÀ GENERIC ID: '{title}' -> -30% (Score ridotto)")
 
+                        # === LOG DI DEBUG ===
+                        if boost_amount > 0:
+                            print(f"🚀 [BOOST {applied_boost_type}] '{title}': {raw_score}% + {boost_amount}% = {final_score}%")
+
+                        # === SOGLIA DI ACCETTAZIONE ===
                         if final_score >= threshold:
-                            if raw_score < threshold:
-                                print(f"🚀 BOOST DECISIVO (+{applied_bonus}): '{title}' ({raw_score}% -> {final_score}%)")
-                            elif applied_bonus > 0:
-                                print(f"✨ Boost applicato (+{applied_bonus}): '{title}'")
-
                             cover_url = self._extract_best_cover(t)
+                            
                             all_found.append({
                                 "status": "success", "type": type_label,
                                 "title": title, "artist": artist_name,
                                 "album": t.get("album", {}).get("name"),
                                 "cover": cover_url,
-                                "score": final_score,
+                                "score": final_score, 
                                 "duration_ms": t.get("duration_ms"),
                                 "external_metadata": t.get("external_metadata", {}),
                                 "contributors": t.get("contributors", {}),

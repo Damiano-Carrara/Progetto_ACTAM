@@ -1390,3 +1390,270 @@ body:has(.viewer-bg) .app-background-overlay {
     rgba(255, 255, 255, 0.1) calc(var(--p-stream) * 1%) 100%
   );
 }
+
+/* === THEME SWITCHER & CUSTOM LIGHT MODE === */
+
+/* Stile del Bottone Flottante */
+.theme-toggle-btn {
+  position: fixed;
+  bottom: 24px;
+  left: 24px;
+  z-index: 100;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  transition: all 0.2s ease;
+}
+
+.theme-toggle-btn:hover {
+  transform: scale(1.1);
+  border-color: #7c3aed; /* Viola brand */
+  color: #7c3aed;
+  background: #fff;
+}
+
+/* === DEFINIZIONE LIGHT MODE === */
+/* === TEMA LIGHT MODE (FIX TESTO CONCERTO + TENDINA LOGIN) === */
+
+/* 1. Pulizia Overlay Sfondo */
+body.light-mode .app-background-overlay {
+  background: transparent;
+  pointer-events: none;
+}
+
+/* 2. Sfondo Pagina */
+body.light-mode .app-background {
+  opacity: 1;
+  filter: grayscale(0); 
+}
+
+body.light-mode {
+  /* Palette Neon */
+  --neon-green:  #C3FF93;
+  --neon-yellow: #FFDB5C;
+  --neon-orange: #FFAF61;
+  --neon-pink:   #FF70AB;
+  
+  /* Viola Brand */
+  --brand-purple: #7c3aed;
+
+  /* SFONDO: Gradiente delicato */
+  --bg: #f8fdf4;
+  background: linear-gradient(180deg, #ffffff 40%, #f4fdf2 75%, rgba(195, 255, 147, 0.4) 100%);
+  background-attachment: fixed;
+  
+  /* Pannelli: Bianco */
+  --panel: #ffffff;
+  --border: #e5e7eb;
+  
+  /* TESTO: Nero Pieno */
+  --text: #000000;      
+  --muted: #4b5563;     
+  
+  --primary: var(--neon-pink);
+}
+
+/* 3. CARD MODALITÀ */
+
+/* Reset Overlay */
+body.light-mode .mode-overlay { display: none; }
+
+/* Sfondi Card (Vividi) */
+body.light-mode .bg-dj {
+  background-image: linear-gradient(135deg, var(--neon-yellow) 0%, var(--neon-orange) 100%);
+  filter: none; opacity: 1;
+}
+body.light-mode .bg-live {
+  background-image: linear-gradient(135deg, #ffffff 0%, var(--neon-green) 100%);
+  filter: none; opacity: 1;
+}
+body.light-mode .bg-concerto {
+  background-image: linear-gradient(135deg, var(--neon-pink) 0%, #d946ef 100%);
+  filter: none; opacity: 1;
+}
+
+/* TESTI DENTRO LE CARD -> TUTTI NERI */
+body.light-mode .mode-card .mode-content h2,
+body.light-mode .mode-card .mode-content p {
+  color: #000000 !important;
+  text-shadow: none !important;
+}
+
+/* BORDER & HOVER SPECIFICI */
+body.light-mode .mode-card {
+  border: 2px solid transparent; 
+  box-shadow: 0 15px 30px rgba(0,0,0,0.1); 
+  transition: all 0.2s ease;
+}
+
+/* Colori bordo Hover */
+body.light-mode .mode-card[data-mode="dj"]:hover,
+body.light-mode .mode-card[data-mode="dj"]:focus-visible {
+  border-color: var(--neon-orange);
+  transform: translateY(-5px);
+  outline: none;
+}
+body.light-mode .mode-card[data-mode="band"]:hover,
+body.light-mode .mode-card[data-mode="band"]:focus-visible {
+  border-color: #a3e635; 
+  transform: translateY(-5px);
+  outline: none;
+}
+body.light-mode .mode-card[data-mode="concert"]:hover,
+body.light-mode .mode-card[data-mode="concert"]:focus-visible {
+  border-color: var(--neon-pink);
+  transform: translateY(-5px);
+  outline: none;
+}
+
+/* 4. FIX TENDINA LOGIN & PULSANTE ACCEDI */
+/* Pulsante Accedi in Light Mode */
+body.light-mode .artist-access-btn {
+  background: #ffffff;
+  border-color: #d1d5db;
+  color: #1f2937;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+}
+body.light-mode .artist-access-btn:hover,
+body.light-mode .artist-access-btn.active {
+  background: var(--neon-pink);
+  color: #fff;
+  border-color: var(--neon-pink);
+}
+
+/* Tendina Dropdown (Sfondo Bianco) */
+body.light-mode .login-dropdown {
+  background: rgba(255, 255, 255, 0.95) !important; /* Bianco quasi solido */
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.15); /* Ombra grigia non nera */
+}
+
+/* Elementi dentro la tendina */
+body.light-mode .dropdown-item {
+  color: #1f2937; /* Testo scuro */
+  border-bottom-color: #f3f4f6;
+}
+body.light-mode .dropdown-item:hover {
+  background: #f3f4f6; /* Grigio chiarissimo all'hover */
+}
+
+
+/* 5. HEADER REVIEW */
+body.light-mode #view-review .hero.hero--small {
+  background-image: linear-gradient(90deg, #2e1065 0%, #be185d 100%) !important;
+  background-color: transparent !important;
+  border: none;
+  box-shadow: 0 10px 20px rgba(190, 24, 93, 0.3);
+  color: #ffffff;
+}
+body.light-mode #view-review .hero.hero--small h2,
+body.light-mode #view-review .hero.hero--small .subtitle {
+  color: #ffffff !important;
+  text-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+/* 6. NOTE (Sfondo Bianco) */
+body.light-mode #notes-textarea,
+body.light-mode .review-notes {
+  background-color: #ffffff !important; 
+  color: #000000 !important;            
+  border: 1px solid #d1d5db;
+}
+body.light-mode #notes-textarea::placeholder {
+  color: #6b7280;
+}
+
+/* 7. Pannelli Generici */
+body.light-mode .review-card,
+body.light-mode .session-panel, 
+body.light-mode .log-card,
+body.light-mode .modal-dialog {
+  background: #ffffff !important;
+  border: 1px solid #e5e7eb;
+  color: #000;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+}
+
+/* Intestazioni e Tabelle */
+body.light-mode .row--head,
+body.light-mode .log-head {
+    color: var(--brand-purple);
+    border-bottom-color: #f3f4f6;
+    font-weight: 700; 
+}
+body.light-mode .row,
+body.light-mode .log-row {
+  border-bottom-color: #f3f4f6;
+  color: #1f2937;
+}
+
+/* 8. Input */
+body.light-mode input,
+body.light-mode textarea {
+  background: #ffffff;
+  color: #000;
+  border: 1px solid #d1d5db;
+}
+/* Input dentro le card Home (devono rimanere scuri per contrasto con i colori vividi) */
+body.light-mode .artist-input-wrapper input {
+    background: rgba(0,0,0,0.7);
+    color: #fff;
+    border-color: rgba(255,255,255,0.4);
+}
+
+/* 9. Bottoni */
+body.light-mode .btn--primary {
+  background: linear-gradient(90deg, var(--neon-pink), #f472b6);
+  color: #fff;
+  border: none;
+  font-weight: bold;
+}
+body.light-mode .btn:not(.btn--primary):not(#artistConfirmBtn):not(#bandConfirmBtn):not(#djConfirmBtn) {
+  background: #ffffff;
+  color: #374151;
+  border: 1px solid #d1d5db;
+}
+
+/* 10. Visualizer */
+body.light-mode .vis-cell.active {
+  background: linear-gradient(180deg, var(--neon-pink), var(--brand-purple));
+  opacity: 1;
+}
+body.light-mode .vis-cell {
+    background: rgba(0,0,0,0.05);
+}
+
+/* Icone */
+body.light-mode .icon-sun { display: none; }
+body.light-mode .icon-moon { display: block !important; }
+body.light-mode .vis-cell {
+    background: rgba(0,0,0,0.05);
+}
+
+/* Icone */
+body.light-mode .icon-sun { display: none; }
+body.light-mode .icon-moon { display: block !important; }
+
+/* --- FIX BADGE SESSIONE (Leggibilità) --- */
+/* Rende il badge "Concerto - Bruno Mars" viola su sfondo chiaro invece che blu scuro */
+body.light-mode .session-panel .badge {
+  background-color: rgba(124, 58, 237, 0.1) !important; /* Viola chiarissimo */
+  color: #7c3aed !important; /* Testo Viola Scuro */
+  border: 1px solid #7c3aed !important;
+  font-weight: 600;
+}
+
+/* --- FIX SELEZIONE TESTO --- */
+/* Quando evidenzi il testo col mouse diventa Rosa invece che blu standard */
+body.light-mode ::selection {
+  background: #FF70AB; 
+  color: #ffffff;
+}
