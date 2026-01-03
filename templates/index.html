@@ -77,6 +77,7 @@
               <li>📍 Atlantico (RO) - 15 play</li>
             </ul>
           </div>
+
           <div class="card chart-card">
             <h3>Andamento Esecuzioni (Ultimi 6 mesi)</h3>
             <div style="position: relative; height: 300px;">
@@ -90,13 +91,14 @@
         <div class="mode-page">
           <div class="mode-container">
             <button id="btn-back-roles" class="btn btn--small btn-back-top">← Indietro</button>
+            
             <h1 class="app-title">Seleziona la modalità</h1>
             <p class="app-subtitle">
               Scegli se stai compilando un DJ set, una live band o il concerto di un artista.
             </p>
 
             <div class="mode-grid">
-              <div class="mode-card" data-mode="dj" tabindex="0" role="button">
+              <div class="mode-card" data-mode="dj" tabindex="0" role="button" aria-label="DJ set">
                 <div class="mode-bg bg-dj"></div>
                 <div class="mode-overlay"></div>
                 <div class="mode-content">
@@ -113,7 +115,7 @@
                 </div>
               </div>
 
-              <div class="mode-card" data-mode="band" tabindex="0" role="button">
+              <div class="mode-card" data-mode="band" tabindex="0" role="button" aria-label="Live band">
                 <div class="mode-bg bg-live"></div>
                 <div class="mode-overlay"></div>
                 <div class="mode-content">
@@ -130,7 +132,7 @@
                 </div>
               </div>
 
-              <div class="mode-card mode-card-concerto" data-mode="concert" tabindex="0" role="button">
+              <div class="mode-card mode-card-concerto" data-mode="concert" tabindex="0" role="button" aria-label="Concerto">
                 <div class="mode-bg bg-concerto"></div>
                 <div class="mode-overlay"></div>
                 <div class="mode-content">
@@ -178,7 +180,7 @@
 
             {% if not viewer_mode %}
             <div class="qr-corner">
-              <button id="btn-show-qr" class="btn btn--qr" type="button">QR</button>
+              <button id="btn-show-qr" class="btn btn--qr" type="button" aria-label="Share QR" title="Share QR">QR</button>
             </div>
             {% endif %}
           </section>
@@ -186,7 +188,7 @@
           <section class="card log-card">
             <div class="log-header-row">
               <h3>Log live</h3>
-              <button id="btn-session-notes" class="btn btn--small">Note</button>
+              <button id="btn-session-notes" class="btn btn--small" data-tooltip="Scrivi note da consultare durante la revisione">Note</button>
             </div>
 
             <div class="log-head">
@@ -260,8 +262,7 @@
           <header class="royalties-header">
             <button id="btn-back-review" class="btn btn--small">Indietro</button>
             <h2 style="flex:1; text-align:center;">Ripartizione Royalties</h2>
-            <div style="width: 80px;"></div> 
-          </header>
+            <div style="width: 80px;"></div> </header>
 
           <div class="royalties-details">
             <div class="detail-box detail-box--title">
@@ -301,7 +302,8 @@
         <div class="modal-backdrop"></div>
         <div class="modal-dialog card notes-dialog">
           <h3>Note sessione</h3>
-          <textarea id="notes-textarea" placeholder="Note..."></textarea>
+          <p class="modal-message">Segna qui eventuali mismatch o errori.</p>
+          <textarea id="notes-textarea" placeholder="Es: Brano 3: autore errato..."></textarea>
           <div class="modal-actions">
             <button id="notes-cancel" class="btn btn--small">Chiudi</button>
             <button id="notes-save" class="btn btn--small btn--primary">Salva</button>
@@ -312,7 +314,7 @@
       <div id="confirm-modal" class="modal modal--hidden">
         <div class="modal-backdrop"></div>
         <div class="modal-dialog card">
-          <p id="confirm-message" class="modal-message">Sei sicuro?</p>
+          <p id="confirm-message" class="modal-message">Sei sicuro di voler cancellare questo brano?</p>
           <div class="modal-actions">
             <button id="confirm-cancel" class="btn btn--small">Annulla</button>
             <button id="confirm-ok" class="btn btn--small btn--primary">Ok</button>
@@ -324,10 +326,10 @@
         <div class="modal-backdrop"></div>
         <div class="modal-dialog card">
           <h3>Sessione Trovata</h3>
-          <p class="modal-message">Recuperare i dati precedenti?</p>
+          <p class="modal-message">Ho trovato dei brani salvati nel database. Vuoi recuperarli?</p>
           <div class="modal-actions" style="justify-content: center;">
-            <button id="restore-new" class="btn btn--small">🗑️ Nuova</button>
-            <button id="restore-ok" class="btn btn--small btn--primary">♻️ Recupera</button>
+            <button id="restore-new" class="btn btn--small">🗑️ Nuova Sessione</button>
+            <button id="restore-ok" class="btn btn--small btn--primary">♻️ Recupera Dati</button>
           </div>
         </div>
       </div>
@@ -335,7 +337,8 @@
       <div id="qr-modal" class="modal modal--hidden">
         <div class="modal-backdrop"></div>
         <div class="modal-dialog card" style="max-width: 360px;">
-          <h3>QR Code Live</h3>
+          <h3>Scansiona per seguire Live</h3>
+          <p class="modal-message">Inquadra per vedere la lista brani in tempo reale.</p>
           <div style="background: white; padding: 10px; border-radius: 8px; margin: 10px auto; width: fit-content;">
             <img id="qr-image" src="" alt="QR Code" style="display: block; width: 200px; height: 200px;" />
           </div>
@@ -348,11 +351,11 @@
       <div id="export-modal" class="modal modal--hidden">
         <div class="modal-backdrop"></div>
         <div class="modal-dialog card" style="max-width: 320px; padding: 20px;">
-          <h3 style="margin-top: 0; margin-bottom: 15px;">Esporta Report</h3>
+          <h3 style="margin-top: 0; margin-bottom: 15px; font-size: 1.2rem;">Esporta Report</h3>
           <div class="export-options" style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 20px;">
-            <button id="btn-export-excel" class="btn" style="width: 100%;">Excel (SIAE)</button>
-            <button id="btn-export-pdf" class="btn" style="width: 100%;">PDF Ufficiale</button>
-            <button id="btn-export-raw" class="btn" style="width: 100%; border-style: dashed; opacity: 0.8;">Log Tecnico</button>
+            <button id="btn-export-excel" class="btn" style="justify-content: center; width: 100%;">Excel (SIAE)</button>
+            <button id="btn-export-pdf" class="btn" style="justify-content: center; width: 100%;">PDF Ufficiale</button>
+            <button id="btn-export-raw" class="btn" style="justify-content: center; width: 100%; border-style: dashed; opacity: 0.8;">Log Tecnico (Raw)</button>
           </div>
           <div class="modal-actions" style="justify-content: center; margin-top: 0;">
             <button id="btn-export-close" class="btn btn--small" style="background: transparent; border: none; color: #999;">Chiudi</button>
@@ -364,7 +367,7 @@
         <div class="modal-backdrop"></div>
         <div class="modal-dialog card">
           <h3>Dati Organizzazione</h3>
-          <p class="modal-message">Inserisci l'incasso totale previsto.</p>
+          <p class="modal-message">Inserisci l'incasso totale previsto o effettivo della serata.</p>
           <input type="number" id="revenue-input" placeholder="Es. 5000" style="width: 100%; padding: 10px; background: #0d1117; border: 1px solid #1f242d; color: white; border-radius: 8px; margin-bottom: 16px; font-size: 1.1rem;" />
           <div class="modal-actions">
             <button id="revenue-cancel" class="btn btn--small">Indietro</button>
