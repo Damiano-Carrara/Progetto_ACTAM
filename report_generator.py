@@ -14,14 +14,25 @@ class ReportGenerator:
         print("📊 Report Generator Inizializzato")
 
     def _format_composer(self, comp_text):
-        """Formatta il compositore: se vuoto/sconosciuto -> 'Non rilevato'"""
+        """
+        Formatta il compositore per il report.
+        - Se è 'Sconosciuto' o vuoto -> 'Non rilevato'.
+        - Se è 'Ricerca...' -> Lo lascia (così si capisce che è in corso).
+        """
         if not comp_text: return "Non rilevato"
         t = str(comp_text).strip().lower()
-        if t in ["sconosciuto", "ricerca...", "—", "-"]:
+        
+        # Lista di termini che significano "Nessun risultato trovato"
+        invalid_terms = ["sconosciuto", "errore", "—", "-", "nessuno"]
+        
+        # Se contiene termini di errore -> Non rilevato
+        if any(x in t for x in invalid_terms):
             return "Non rilevato"
+            
+        # Nota: NON filtro più "ricerca" o "pending", così l'utente vede lo stato reale
         return str(comp_text).strip()
 
-    # --- 1. EXCEL (OFFICIAL - MODIFICATO) ---
+    # --- 1. EXCEL (OFFICIAL - SOLO CONFERMATI E NON CANCELLATI) ---
     def generate_excel(self, playlist, metadata=None):
         wb = Workbook()
         ws = wb.active
@@ -53,17 +64,16 @@ class ReportGenerator:
         index_display = 1
         
         for song in playlist:
-            # [MODIFICA] Salta brani cancellati o non confermati
+            # Salta brani cancellati o non confermati
             if song.get('is_deleted', False):
                 continue
             if not song.get("confirmed", False):
                 continue
 
-            # [MODIFICA] Usa i dati MODIFICATI (title, artist, composer)
+            # Usa i dati MODIFICATI (title, artist, composer)
             title = song.get("title", "").strip().upper()
             artist = song.get("artist", "").strip().title()
             
-            # [MODIFICA] Logica "Non rilevato" per Compositore
             raw_comp = song.get("composer", "")
             composer = self._format_composer(raw_comp).upper()
 
@@ -96,7 +106,7 @@ class ReportGenerator:
         output.seek(0)
         return output
 
-    # --- 2. PDF OFFICIAL (MODIFICATO) ---
+    # --- 2. PDF OFFICIAL (SOLO CONFERMATI E NON CANCELLATI) ---
     def generate_pdf_official(self, playlist, metadata=None):
         buffer = io.BytesIO()
         doc = SimpleDocTemplate(buffer, pagesize=A4)
@@ -131,13 +141,12 @@ class ReportGenerator:
 
         idx = 1
         for song in playlist:
-            # [MODIFICA] Filtra cancellati e non confermati
             if song.get('is_deleted', False):
                 continue
             if not song.get("confirmed", False):
                 continue
 
-            # [MODIFICA] Usa dati modificati
+            # Usa dati modificati
             title = (song.get("title") or "").strip()
             artist = (song.get("artist") or "").strip()
             
@@ -176,15 +185,14 @@ class ReportGenerator:
         buffer.seek(0)
         return buffer
 
-    # --- 3. PDF RAW (LOG TECNICO - ORIGINALE + CANCELLATI) ---
+    # --- 3. PDF RAW (TUTTI: RED = DELETED, GREEN = MANUAL) ---
     def generate_pdf_raw(self, playlist, metadata=None):
         """
         PDF 'Log Tecnico':
         - Include TUTTI i brani (anche deleted).
-        - Usa SOLO dati ORIGINALI (non modificati in Page3).
+        - Usa dati ORIGINALI per gli automatici (original_composer).
         - Deleted -> Testo Rosso.
-        - Manual -> "Inserimento Manuale".
-        - Sconosciuto -> "Non rilevato".
+        - Manual (Added) -> Testo Verde.
         """
         buffer = io.BytesIO()
         doc = SimpleDocTemplate(buffer, pagesize=A4)
@@ -194,8 +202,7 @@ class ReportGenerator:
         story.append(Paragraph("Log di Rilevamento Automatico", styles["Title"]))
 
         subtitle_text = (
-            "Report tecnico di legittimità. I dati riportati corrispondono a quanto rilevato "
-            "dall'algoritmo, escludendo modifiche manuali."
+            "Report tecnico di legittimità. Rosso = Cancellati. Verde = Aggiunti Manualmente."
         )
         story.append(Paragraph(subtitle_text, styles["Normal"]))
         story.append(Spacer(1, 12))
@@ -231,12 +238,12 @@ class ReportGenerator:
 
         data = [[
             Paragraph("ID", h_style),
-            Paragraph("Titolo (Rilevato)", h_style),
-            Paragraph("Compositore (Rilevato)", h_style),
-            Paragraph("Artista (Rilevato)", h_style),
+            Paragraph("Titolo (Originale)", h_style),
+            Paragraph("Compositore (Originale)", h_style),
+            Paragraph("Artista (Originale)", h_style),
         ]]
 
-        # Lista di stili condizionali (per colorare di rosso i cancellati)
+        # Lista di stili condizionali
         table_styles = [
             ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#2b2b2b")),
             ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
@@ -245,7 +252,6 @@ class ReportGenerator:
             ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
             ("LEFTPADDING", (0, 0), (-1, -1), 4),
             ("RIGHTPADDING", (0, 0), (-1, -1), 4),
-            # Background alternato per leggibilità
             ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f4f4f4")]),
         ]
 
@@ -253,47 +259,43 @@ class ReportGenerator:
             data.append(["—", "Nessun dato", "", ""])
         else:
             for i, song in enumerate(playlist):
-                # Calcola indice riga (header è 0, prima song è 1)
-                row_idx = i + 1
-                
                 is_manual = song.get("manual", False)
                 is_deleted = song.get("is_deleted", False)
 
-                # --- LOGICA INSERIMENTO MANUALE ---
-                if is_manual:
-                    song_id = "—"
-                    display_title = "(Inserimento Manuale)"
-                    display_comp = "(Inserimento Manuale)"
-                    display_art = "—"
-
-                # --- LOGICA RILEVAMENTO AUTOMATICO ---
+                # Definizione Colore
+                if is_deleted:
+                    row_color = colors.red
+                elif is_manual:
+                    row_color = colors.HexColor("#008f00") # Verde scuro
                 else:
-                    song_id = str(song.get("id", "?"))
+                    row_color = colors.black
 
-                    # Recupero dati ORIGINALI (non modificati)
-                    orig_title = song.get("original_title")
-                    orig_comp = song.get("original_composer")
-                    orig_art = song.get("original_artist")
-
-                    # Titolo
-                    display_title = orig_title if orig_title else "(Dati mancanti)"
-
-                    # Compositore: Normalizzazione "Non rilevato"
-                    display_comp = self._format_composer(orig_comp)
-
-                    # Artista
-                    display_art = orig_art if orig_art else "—"
+                song_id = str(song.get("id", "?"))
+                
+                # --- RECUPERO DATI ---
+                if is_manual:
+                    display_title = song.get("title", "") + " (MANUAL)"
+                    display_comp = song.get("composer", "")
+                    display_art = song.get("artist", "")
+                else:
+                    # Usa original_title/composer se esistono
+                    display_title = song.get("original_title") or song.get("title", "")
+                    
+                    # Usa _format_composer ma questa volta "Ricerca..." passerà
+                    orig_comp_raw = song.get("original_composer") or song.get("composer", "")
+                    display_comp = self._format_composer(orig_comp_raw)
+                    
+                    display_art = song.get("original_artist") or song.get("artist", "")
+                
+                # Tag Deleted
+                if is_deleted:
+                    display_title = "[DEL] " + display_title
 
                 # Creazione Paragrafi con Colore Condizionale
-                # Se è cancellato, forza il colore rosso direttamente nello stile del paragrafo
-                # (ReportLab Table Style TEXTCOLOR a volte fa i capricci con Paragraphs, meglio stile diretto)
-                
-                curr_color = colors.red if is_deleted else colors.black
-                
-                p_id = Paragraph(song_id, ParagraphStyle("tmp_id", parent=c_center, textColor=curr_color))
-                p_tit = Paragraph(display_title, ParagraphStyle("tmp_tit", parent=c_style, textColor=curr_color))
-                p_comp = Paragraph(display_comp, ParagraphStyle("tmp_comp", parent=c_style, textColor=curr_color))
-                p_art = Paragraph(display_art, ParagraphStyle("tmp_art", parent=c_style, textColor=curr_color))
+                p_id = Paragraph(song_id, ParagraphStyle("tmp_id", parent=c_center, textColor=row_color))
+                p_tit = Paragraph(display_title, ParagraphStyle("tmp_tit", parent=c_style, textColor=row_color))
+                p_comp = Paragraph(display_comp, ParagraphStyle("tmp_comp", parent=c_style, textColor=row_color))
+                p_art = Paragraph(display_art, ParagraphStyle("tmp_art", parent=c_style, textColor=row_color))
 
                 data.append([p_id, p_tit, p_comp, p_art])
 
@@ -311,7 +313,7 @@ class ReportGenerator:
 
         story.append(Spacer(1, 4))
         story.append(Paragraph(
-            "Questo documento certifica l'output del sistema di riconoscimento automatico.",
+            "Questo documento certifica l'output del sistema di riconoscimento.",
             styles["Italic"],
         ))
 

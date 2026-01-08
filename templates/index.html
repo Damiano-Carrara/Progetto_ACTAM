@@ -251,6 +251,7 @@
           <div class="actions">
             {% if not viewer_mode %}
               <button id="btn-undo" class="btn btn--small" disabled>Undo</button>
+              <button id="btn-global-payments" class="btn btn--primary" disabled>Vai ai Pagamenti</button>
               <button id="btn-generate" class="btn btn--primary" disabled>Generate</button>
             {% endif %}
           </div>
@@ -261,7 +262,7 @@
         <div class="card royalties-card">
           <header class="royalties-header">
             <button id="btn-back-review" class="btn btn--small">Indietro</button>
-            <h2 style="flex:1; text-align:center;">Ripartizione Royalties</h2>
+            <h2 style="flex:1; text-align:center;">Ripartizione Royalties (Singolo Brano)</h2>
             <div style="width: 80px;"></div> </header>
 
           <div class="royalties-details">
@@ -283,17 +284,50 @@
           </div>
 
           <div class="split-table-wrapper">
-             <h3 style="margin-left: 8px;">Divisione in 24/24esimi</h3>
-             <div class="table split-table">
-               <div class="row row--head">
-                 <span class="col-left">Compositore</span>
-                 <span class="col-center">Quota</span>
-                 <span class="col-right">Importo</span>
-                 <span class="col-center">Azione</span>
-               </div>
-               <div id="roy-composers-list" class="split-body">
+              <h3 style="margin-left: 8px;">Divisione in 24/24esimi</h3>
+              <div class="table split-table">
+                <div class="row row--head">
+                  <span class="col-left">Compositore</span>
+                  <span class="col-center">Quota</span>
+                  <span class="col-right">Importo</span>
+                  <span class="col-center">Nota</span>
+                </div>
+                <div id="roy-composers-list" class="split-body">
+                  </div>
+              </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="view-payments" class="view">
+        <div class="card payment-card">
+          <header class="royalties-header">
+            <button id="btn-back-from-payments" class="btn btn--small">Indietro</button>
+            <h2 style="flex:1; text-align:center;">Riepilogo Pagamenti</h2>
+            <div style="width: 80px;"></div>
+          </header>
+
+          <div class="payment-layout">
+            <div class="chart-container">
+               <canvas id="paymentsChart"></canvas>
+            </div>
+
+            <div class="payment-list-wrapper">
+               <h3>Dettaglio Compositori</h3>
+               <div class="table payment-table">
+                 <div class="row row--head">
+                   <span style="flex:1">Compositore</span>
+                   <span style="width: 100px; text-align:right">Totale</span>
+                   <span style="width: 100px; text-align:center">Azione</span>
                  </div>
-             </div>
+                 <div id="global-payment-rows" class="payment-body"></div>
+               </div>
+               
+               <div class="total-footer">
+                  <span>Totale Ripartito:</span>
+                  <span id="total-distributed-amount" class="highlight-val">€ 0,00</span>
+               </div>
+            </div>
           </div>
         </div>
       </section>

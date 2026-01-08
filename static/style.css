@@ -764,9 +764,12 @@ input.inline {
   font-size: 0.9rem;
 }
 
+/* --- CORREZIONE FEEDBACK CONFERMA (Testo bianco) --- */
 .row.row--confirmed input.inline {
   border-style: solid;
-  border-color: #22c55e;
+  /* Il colore del bordo viene impostato dalle classi theme-*, qui forziamo il testo */
+  color: #ffffff !important; 
+  background: rgba(255, 255, 255, 0.05); /* Un leggero sfondo per evidenziare */
 }
 
 /* SCROLLBAR */
@@ -822,7 +825,7 @@ body::-webkit-scrollbar-thumb {
 
 #app.theme-dj .btn--primary { background: linear-gradient(135deg, #ff8a00, #ffca4d); color: #140616; }
 #app.theme-dj .vis-cell.active { background: linear-gradient(180deg, rgba(255, 138, 0, 0), rgba(255, 138, 0, 0.45), rgba(255, 202, 77, 0.85)); }
-#app.theme-dj .row.row--confirmed input.inline { border-color: #ff8a00; color: #ffca4d; }
+#app.theme-dj .row.row--confirmed input.inline { border-color: #ff8a00; }
 #app.theme-dj .session-panel, #app.theme-dj #view-review .hero.hero--small {
   background-image: linear-gradient(90deg, rgba(0, 0, 0, 0.4), rgba(0, 0, 0, 0.05) 55%, rgba(0, 0, 0, 0) 100%), radial-gradient(circle at 20% 0%, #ff8a00, #1b0033);
   border-color: #ff8a00;
@@ -837,7 +840,7 @@ body::-webkit-scrollbar-thumb {
 
 #app.theme-band .btn--primary { background: linear-gradient(135deg, #00ffc3, #007c9f); color: #021315; }
 #app.theme-band .vis-cell.active { background: linear-gradient(180deg, rgba(0, 255, 195, 0), rgba(0, 255, 195, 0.5), rgba(0, 124, 159, 0.85)); }
-#app.theme-band .row.row--confirmed input.inline { border-color: #00ffc3; color: #00ffc3; }
+#app.theme-band .row.row--confirmed input.inline { border-color: #00ffc3; }
 #app.theme-band .session-panel { background-image: radial-gradient(circle at 80% 0%, #00ffc3, #003848); border-color: #00ffc3; }
 #app.theme-band #view-review .hero.hero--small { background-image: radial-gradient(circle at 80% 0%, #00ffc3, #003848); border-color: #00ffc3; }
 #app.theme-band #btn-session-notes,
@@ -850,7 +853,7 @@ body::-webkit-scrollbar-thumb {
 
 #app.theme-concert .btn--primary { background: linear-gradient(135deg, #ff3f6a, #ff9ad7); color: #21021e; }
 #app.theme-concert .vis-cell.active { background: linear-gradient(180deg, rgba(255, 63, 106, 0), rgba(255, 63, 106, 0.5), rgba(255, 154, 215, 0.9)); }
-#app.theme-concert .row.row--confirmed input.inline { border-color: #ff3f6a; color: #ff9ad7; }
+#app.theme-concert .row.row--confirmed input.inline { border-color: #ff3f6a; }
 #app.theme-concert .session-panel { background-image: radial-gradient(circle at 50% 100%, #ff3f6a, #1a0030); border-color: #ff3f6a; }
 #app.theme-concert #view-review .hero.hero--small { background-image: radial-gradient(circle at 50% 100%, #ff3f6a, #1a0030); border-color: #ff3f6a; }
 #app.theme-concert #btn-session-notes,
@@ -901,7 +904,7 @@ main[data-viewer="true"] input.inline { pointer-events: none; border-color: tran
 .viewer-bg + .app-background-overlay { background: rgba(11, 12, 16, 0.45); }
 
 /* ==========================================================================
-   NUOVI STILI AGGIUNTI PER LE FUNZIONALITÀ RUOLI & COMPOSITORE
+   NUOVI STILI AGGIUNTI PER LE FUNZIONALITÀ RUOLI & COMPOSITORE & PAYMENTS
    ========================================================================== */
 
 /* RUOLI - PAGE 0 */
@@ -937,11 +940,10 @@ main[data-viewer="true"] input.inline { pointer-events: none; border-color: tran
 .stat-list li { margin-bottom: 6px; padding-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,0.1); }
 .chart-card { grid-column: span 3; min-height: 340px; }
 
-/* VISTA ROYALTIES (24ESIMI) - AGGIORNATA */
+/* VISTA ROYALTIES (24ESIMI) */
 .royalties-card { display: flex; flex-direction: column; height: 100%; min-height: 500px; }
 .royalties-header { display: flex; gap: 20px; align-items: center; margin-bottom: 24px; border-bottom: 1px solid var(--border); padding-bottom: 16px; }
 
-/* Box dettagli aggiornati (gradiente solo sul titolo) */
 .royalties-details {
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
@@ -957,7 +959,7 @@ main[data-viewer="true"] input.inline { pointer-events: none; border-color: tran
   border-radius: 12px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   color: #fff;
-  background: rgba(18, 21, 26, 0.6); /* Sfondo scuro neutro per default */
+  background: rgba(18, 21, 26, 0.6); 
   text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
 }
 
@@ -966,16 +968,9 @@ main[data-viewer="true"] input.inline { pointer-events: none; border-color: tran
 .highlight-val { font-weight: bold; font-size: 1.3rem; }
 .currency-wrapper { display: flex; gap: 10px; align-items: center; }
 
-/* TABELLA RIPARTIZIONE - AGGIORNATA */
+/* TABELLA RIPARTIZIONE */
 .split-table-wrapper h3 { margin-bottom: 12px; font-size: 1.1rem; }
-
-.split-table {
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-}
-
-/* Definizione griglia UNICA per header e righe */
+.split-table { width: 100%; display: flex; flex-direction: column; }
 .split-table .row {
   display: grid;
   grid-template-columns: 2fr 1fr 1fr 140px; 
@@ -983,51 +978,95 @@ main[data-viewer="true"] input.inline { pointer-events: none; border-color: tran
   padding: 12px 0;
   border-bottom: 1px solid var(--border);
 }
-
 .split-body { flex: 1; overflow: auto; }
+.split-table .row > *:nth-child(1) { text-align: left; padding-left: 8px; }
+.split-table .row > *:nth-child(2) { text-align: center; }
+.split-table .row > *:nth-child(3) { text-align: right; padding-right: 20px; }
+.split-table .row > *:nth-child(4) { display: flex; justify-content: center; }
 
-/* Allineamento forzato colonne tramite nth-child */
-.split-table .row > *:nth-child(1) {
-  text-align: left;
-  padding-left: 8px;
-}
-.split-table .row > *:nth-child(2) {
-  text-align: center;
-}
-.split-table .row > *:nth-child(3) {
-  text-align: right;
-  padding-right: 20px;
-}
-.split-table .row > *:nth-child(4) {
-  display: flex;
-  justify-content: center;
-}
-
-/* TEMI AGGIUNTIVI PER ROYALTIES - Modificato per applicare gradiente solo a detail-box--title */
-
-/* DJ THEME */
-#app.theme-dj .detail-box--title {
-  background: linear-gradient(135deg, #ff8a00cc, #332b00);
-  border-color: #ff8a00;
-}
+/* TEMI AGGIUNTIVI PER ROYALTIES */
+#app.theme-dj .detail-box--title { background: linear-gradient(135deg, #ff8a00cc, #332b00); border-color: #ff8a00; }
 #app.theme-dj .detail-box { border-color: rgba(255, 138, 0, 0.3); }
 
-/* BAND THEME */
-#app.theme-band .detail-box--title {
-  background: linear-gradient(135deg, #00ffc3cc, #002b36);
-  border-color: #00ffc3;
-}
+#app.theme-band .detail-box--title { background: linear-gradient(135deg, #00ffc3cc, #002b36); border-color: #00ffc3; }
 #app.theme-band .detail-box { border-color: rgba(0, 255, 195, 0.3); }
 
-/* CONCERT THEME */
-#app.theme-concert .detail-box--title {
-  background: linear-gradient(135deg, #ff3f6a, #1a0030);
-  border-color: #ff3f6a;
-}
+#app.theme-concert .detail-box--title { background: linear-gradient(135deg, #ff3f6a, #1a0030); border-color: #ff3f6a; }
 #app.theme-concert .detail-box { border-color: rgba(255, 63, 106, 0.3); }
 
+
+/* --- NUOVA VISTA GLOBAL PAYMENTS --- */
+.payment-card {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 80px); /* Massimizza altezza */
+  min-height: 550px;
+}
+
+.payment-layout {
+  display: flex;
+  gap: 24px;
+  flex: 1;
+  min-height: 0; /* Importante per lo scroll */
+}
+
+.chart-container {
+  flex: 1;
+  background: rgba(0,0,0,0.2);
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+.payment-list-wrapper {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: rgba(0,0,0,0.2);
+  border-radius: 12px;
+  padding: 16px;
+}
+
+.payment-table {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  margin-top: 10px;
+  min-height: 0;
+}
+
+.payment-body {
+  flex: 1;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.payment-table .row {
+  display: flex;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.total-footer {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 1.1rem;
+}
+
+/* Responsive */
 @media (max-width: 880px) {
   .role-grid, .composer-grid, .royalties-details { grid-template-columns: 1fr; }
   .review-table .row { grid-template-columns: 0.2fr 1.5fr 300px; }
   .review-table .row .tools { flex-wrap: wrap; }
+  
+  .payment-layout { flex-direction: column; }
+  .chart-container { max-height: 300px; }
 }
