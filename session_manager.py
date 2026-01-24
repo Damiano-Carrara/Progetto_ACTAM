@@ -6,7 +6,7 @@ import unicodedata
 from datetime import datetime
 from threading import Lock
 from metadata_manager import MetadataManager
-from spotify_manager import SpotifyManager  # <--- NUOVO IMPORT
+from spotify_manager import SpotifyManager
 from difflib import SequenceMatcher
 
 class SessionManager:
@@ -17,7 +17,7 @@ class SessionManager:
         
         # Inizializziamo i Bot
         self.meta_bot = MetadataManager()
-        self.spotify_bot = SpotifyManager() # <--- NUOVO BOT
+        self.spotify_bot = SpotifyManager()
         
         self._next_id = 1
         self.lock = Lock()
@@ -26,14 +26,12 @@ class SessionManager:
         self._init_db()
         self._load_session_from_db()
         
-        print(f"📝 Session Manager Inizializzato (Spotify HD + SQLite)")
+        print(f"📝 Session Manager Inizializzato (Smart Upgrade + Strict Title Check)")
 
     # --- GESTIONE DATABASE ---
     def _init_db(self):
-        """Crea la tabella se non esiste e aggiunge colonne mancanti (Auto-Migrazione)"""
         with sqlite3.connect(self.db_path, check_same_thread=False) as conn:
             cursor = conn.cursor()
-            # 1. Crea tabella base se non esiste
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS songs (
                     id INTEGER PRIMARY KEY,
@@ -50,17 +48,13 @@ class SessionManager:
                 )
             ''')
             
-            # 2. Controllo/Migrazione Colonna 'cover'
             cursor.execute("PRAGMA table_info(songs)")
             columns = [info[1] for info in cursor.fetchall()]
             if 'cover' not in columns:
-                print("🔧 [DB] Aggiungo colonna mancante: 'cover'")
                 cursor.execute("ALTER TABLE songs ADD COLUMN cover TEXT")
-            
             conn.commit()
 
     def _load_session_from_db(self):
-        """Ricarica la sessione precedente in caso di crash/riavvio"""
         with sqlite3.connect(self.db_path, check_same_thread=False) as conn:
             conn.row_factory = sqlite3.Row 
             cursor = conn.cursor()
@@ -82,7 +76,6 @@ class SessionManager:
                 print("🆕 Nessuna sessione precedente trovata. Parto da zero.")
 
     def _save_song_to_db(self, song):
-        """Salva un nuovo brano nel DB"""
         try:
             with sqlite3.connect(self.db_path, check_same_thread=False) as conn:
                 cursor = conn.cursor()
@@ -99,8 +92,24 @@ class SessionManager:
         except Exception as e:
             print(f"❌ Errore salvataggio DB: {e}")
 
+    def _update_full_song_in_db(self, song):
+        """Aggiorna TUTTI i dati di un brano (usato per lo Smart Upgrade)"""
+        try:
+            with sqlite3.connect(self.db_path, check_same_thread=False) as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    UPDATE songs 
+                    SET artist=?, album=?, score=?, type=?, isrc=?, upc=?, cover=?
+                    WHERE id=?
+                ''', (
+                    song['artist'], song['album'], song['score'], song['type'],
+                    song['isrc'], song['upc'], song.get('cover'), song['id']
+                ))
+                conn.commit()
+        except Exception as e:
+            print(f"❌ Errore Full Update DB: {e}")
+
     def _update_composer_in_db(self, song_id, composer):
-        """Aggiorna solo il compositore di un brano esistente"""
         try:
             with sqlite3.connect(self.db_path, check_same_thread=False) as conn:
                 cursor = conn.cursor()
@@ -110,7 +119,6 @@ class SessionManager:
             print(f"❌ Errore update DB: {e}")
 
     def _update_cover_in_db(self, song_id, cover_url):
-        """Aggiorna solo la cover di un brano esistente"""
         try:
             with sqlite3.connect(self.db_path, check_same_thread=False) as conn:
                 cursor = conn.cursor()
@@ -138,31 +146,43 @@ class SessionManager:
         return clean.strip().lower()
 
     def _are_songs_equivalent(self, new_s, existing_s):
-        art_new = self._normalize_string(new_s['artist'])
-        art_ex = self._normalize_string(existing_s['artist'])
-        
-        if art_new != art_ex and art_new not in art_ex and art_ex not in art_new:
-            return False
-
+        """
+        Versione PULITA: Solo Titolo e Artista.
+        Rimosso il controllo durata che causava falsi positivi.
+        """
         tit_new = self._normalize_string(new_s['title'])
         tit_ex = self._normalize_string(existing_s['title'])
-        similarity = SequenceMatcher(None, tit_new, tit_ex).ratio()
-
-        if similarity < 0.40: return False
-        if similarity > 0.60: return True
-
-        try:
-            dur_new = int(new_s.get('duration_ms', 0) or 0)
-            dur_ex = int(existing_s.get('duration_ms', 0) or 0)
-        except:
-            dur_new, dur_ex = 0, 0
-
-        MIN_VALID_DURATION = 30000 
-        if dur_new > MIN_VALID_DURATION and dur_ex > MIN_VALID_DURATION:
-            diff = abs(dur_new - dur_ex)
-            if diff < 200: 
-                return True
         
+        # 1. Check Titolo (Dominante)
+        similarity = SequenceMatcher(None, tit_new, tit_ex).ratio()
+        if similarity > 0.90:
+            return True
+
+        # 2. Check Standard (Titolo Simile + Artista Simile)
+        if similarity > 0.60:
+            art_new = self._normalize_string(new_s['artist'])
+            art_ex = self._normalize_string(existing_s['artist'])
+            if art_new == art_ex or art_new in art_ex or art_ex in art_new:
+                return True
+
+        # RIMOSSO BLOCCO 3 (Durata)
+        
+        return False
+
+    def _is_better_match(self, new_artist, old_artist, target_artist):
+        """Verifica se il nuovo artista è 'migliore' (matcha il target bias) rispetto al vecchio"""
+        if not target_artist: return False
+        
+        target_norm = self._normalize_string(target_artist)
+        new_norm = self._normalize_string(new_artist)
+        old_norm = self._normalize_string(old_artist)
+        
+        new_matches = (target_norm in new_norm) or (new_norm in target_norm)
+        old_matches = (target_norm in old_norm) or (old_norm in target_norm)
+        
+        # Se il nuovo è il target e il vecchio NO -> Upgrade!
+        if new_matches and not old_matches:
+            return True
         return False
 
     # --- ADD SONG ---
@@ -180,16 +200,49 @@ class SessionManager:
                 'duration_ms': song_data.get('duration_ms', 0)
             }
 
-            # Check duplicati
+            # Check duplicati negli ultimi 15 brani
             for existing_song in self.playlist[-15:]:
                 if self._are_songs_equivalent(candidate_song, existing_song):
-                    print(f"♻️ Duplicato Scartato: {title}")
+                    
+                    # === SMART UPGRADE ===
+                    # Se il titolo è lo stesso, ma il nuovo artista è quello giusto (Target)
+                    # mentre quello vecchio era sbagliato (es. Cover Band), AGGIORNIAMO l'esistente!
+                    if self._is_better_match(artist, existing_song['artist'], target_artist):
+                        print(f"🔄 Smart Upgrade: '{existing_song['artist']}' -> '{artist}'")
+                        
+                        # Aggiorniamo i dati in RAM
+                        existing_song['artist'] = artist
+                        existing_song['album'] = song_data.get('album', existing_song['album'])
+                        existing_song['score'] = song_data.get('score', existing_song['score'])
+                        existing_song['type'] = song_data.get('type', existing_song['type'])
+                        existing_song['isrc'] = song_data.get('isrc')
+                        existing_song['upc'] = song_data.get('upc')
+                        
+                        # Se il nuovo ha una cover, usala
+                        new_cover = song_data.get('cover')
+                        if new_cover: existing_song['cover'] = new_cover
+
+                        # Aggiorniamo i dati nel DB
+                        self._update_full_song_in_db(existing_song)
+                        
+                        # Rilanciamo l'arricchimento (magari ora troviamo i compositori giusti!)
+                        existing_song['composer'] = "⏳ Aggiornamento..."
+                        threading.Thread(
+                            target=self._background_enrichment,
+                            args=(existing_song, target_artist),
+                            daemon=True
+                        ).start()
+                        
+                        return {"added": True, "updated": True, "song": existing_song}
+                    
+                    # Se non è un upgrade, scartiamo come duplicato normale
+                    print(f"♻️ Duplicato Scartato: {title} (Artist: {artist})")
                     return {"added": False, "reason": "Duplicate", "song": existing_song}
 
+            # --- NUOVO INSERIMENTO (Se non è duplicato) ---
             track_key = f"{title} - {artist}".lower()
             cached_entry = self.known_songs_cache.get(track_key)
             
-            # Cache hit
             if cached_entry:
                 print(f"⚡ Cache Hit! {title}")
                 composer_name = cached_entry['composer']
@@ -246,25 +299,21 @@ class SessionManager:
         attempts = 0
         max_attempts = 3
         found_composer = "Sconosciuto"
-        final_cover = entry.get('cover') # Partiamo con quella che abbiamo
+        final_cover = entry.get('cover') 
         success = False
 
         print(f"🧵 [Thread] Inizio arricchimento per: {entry['title']}")
 
-        # 1. TENTATIVO COVER SPOTIFY HD (Priorità Assoluta)
+        # 1. SPOTIFY HD
         if self.spotify_bot:
             try:
                 hd_cover = self.spotify_bot.get_hd_cover(entry['title'], entry['artist'])
-                if hd_cover:
-                    final_cover = hd_cover
-                    # print("     🎨 [Thread] Cover HD recuperata da Spotify.")
-            except Exception as e:
-                print(f"     ⚠️ Errore Spotify Cover: {e}")
+                if hd_cover: final_cover = hd_cover
+            except: pass
 
-        # 2. TENTATIVO COMPOSITORE (MetadataManager)
+        # 2. RICERCA COMPOSITORE
         while attempts < max_attempts:
             try:
-                # meta_bot.find_composer restituisce (compositore, cover_fallback)
                 comp_result, cover_fallback = self.meta_bot.find_composer(
                     title=entry['title'], 
                     detected_artist=entry['artist'],
@@ -275,7 +324,6 @@ class SessionManager:
                 )
                 found_composer = comp_result
                 
-                # Usiamo la cover di fallback SOLO se non ne abbiamo trovata una su Spotify
                 if not final_cover and cover_fallback:
                     final_cover = cover_fallback
                 
@@ -285,21 +333,17 @@ class SessionManager:
             except Exception as e:
                 print(f"⚠️ Errore Enrichment (Tentativo {attempts+1}): {e}")
                 attempts += 1
-                if attempts >= max_attempts:
-                    found_composer = "Errore Conn."
-                else:
-                    time.sleep(1)
+                time.sleep(1)
 
         # 3. SALVATAGGIO FINALE
         with self.lock:
+            # Ricarichiamo l'oggetto dalla playlist per essere sicuri di aggiornare quello vivo
             target_song = next((s for s in self.playlist if s['id'] == entry['id']), None)
             
             if target_song:
-                # Aggiorna Compositore
                 target_song['composer'] = found_composer
                 self._update_composer_in_db(target_song['id'], found_composer)
                 
-                # Aggiorna Cover (se diversa da prima)
                 if final_cover and final_cover != target_song.get('cover'):
                     target_song['cover'] = final_cover
                     self._update_cover_in_db(target_song['id'], final_cover)
@@ -307,6 +351,7 @@ class SessionManager:
 
                 print(f"📝 [Thread] Compositore: {found_composer}")
                 
+                # Salviamo in cache solo se abbiamo trovato dati validi
                 if success and found_composer not in ["Sconosciuto", "Errore Conn."]:
                     track_key = f"{target_song['title']} - {target_song['artist']}".lower()
                     self.known_songs_cache[track_key] = target_song.copy()
