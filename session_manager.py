@@ -1,142 +1,85 @@
 import threading
 import time
 import re
-import sqlite3
 import unicodedata
 from datetime import datetime
 from threading import Lock
 from metadata_manager import MetadataManager
 from spotify_manager import SpotifyManager
 from difflib import SequenceMatcher
+from firebase_admin import firestore
 
 class SessionManager:
-    def __init__(self):
-        self.db_path = "session_live.db"
-        self.playlist = []
+    def __init__(self, db_instance):
+        """
+        Gestisce la sessione usando Google Firestore.
+        Richiede un'istanza 'db' (firestore.client()) passata da app.py.
+        """
+        self.db = db_instance
+        self.playlist = []     # Cache locale per velocità e controlli duplicati
         self.known_songs_cache = {}
         
-        # Inizializziamo i Bot
+        # Bot ausiliari
         self.meta_bot = MetadataManager()
         self.spotify_bot = SpotifyManager()
         
-        self._next_id = 1
         self.lock = Lock()
         
-        # Inizializza il DB e ricarica sessioni precedenti
-        self._init_db()
-        self._load_session_from_db()
+        # --- GESTIONE SESSIONE UTENTE ---
+        # In un'app reale, questo ID dovrebbe arrivare dal Login. 
+        # Per ora usiamo un utente "demo" fisso o passalo dinamicamente.
+        self.user_id = "demo_user_01" 
         
-        print(f"📝 Session Manager Inizializzato (Smart Upgrade + Strict Title Check)")
+        # Creiamo un ID sessione basato sul timestamp
+        session_id = f"session_{int(time.time())}"
+        
+        # Riferimenti Firestore
+        # Struttura: users -> {uid} -> sessions -> {sess_id} -> songs -> {song_id}
+        self.user_ref = self.db.collection('users').document(self.user_id)
+        self.session_ref = self.user_ref.collection('sessions').document(session_id)
+        
+        # Inizializza il documento della sessione
+        self.session_ref.set({
+            'created_at': firestore.SERVER_TIMESTAMP,
+            'status': 'live',
+            'device': 'python_backend'
+        }, merge=True)
 
-    # --- GESTIONE DATABASE ---
-    def _init_db(self):
-        with sqlite3.connect(self.db_path, check_same_thread=False) as conn:
-            cursor = conn.cursor()
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS songs (
-                    id INTEGER PRIMARY KEY,
-                    title TEXT,
-                    artist TEXT,
-                    composer TEXT,
-                    album TEXT,
-                    timestamp TEXT,
-                    duration_ms INTEGER,
-                    score INTEGER,
-                    type TEXT,
-                    isrc TEXT,
-                    upc TEXT
-                )
-            ''')
-            
-            cursor.execute("PRAGMA table_info(songs)")
-            columns = [info[1] for info in cursor.fetchall()]
-            if 'cover' not in columns:
-                cursor.execute("ALTER TABLE songs ADD COLUMN cover TEXT")
-            conn.commit()
+        print(f"🔥 Session Manager Connesso a Firestore. Session ID: {session_id}")
 
-    def _load_session_from_db(self):
-        with sqlite3.connect(self.db_path, check_same_thread=False) as conn:
-            conn.row_factory = sqlite3.Row 
-            cursor = conn.cursor()
-            cursor.execute('SELECT * FROM songs ORDER BY id ASC')
-            rows = cursor.fetchall()
-            
-            if rows:
-                print(f"♻️ Ripristino sessione: trovati {len(rows)} brani nel database.")
-                for row in rows:
-                    song = dict(row)
-                    song['_raw_meta'] = {} 
-                    self.playlist.append(song)
-                    
-                    track_key = f"{song['title']} - {song['artist']}".lower()
-                    self.known_songs_cache[track_key] = song
-                    if song['id'] >= self._next_id:
-                        self._next_id = song['id'] + 1
-            else:
-                print("🆕 Nessuna sessione precedente trovata. Parto da zero.")
-
+    # --- SALVATAGGIO SU FIREBASE ---
     def _save_song_to_db(self, song):
         try:
-            with sqlite3.connect(self.db_path, check_same_thread=False) as conn:
-                cursor = conn.cursor()
-                cursor.execute('''
-                    INSERT INTO songs (id, title, artist, composer, album, timestamp, duration_ms, score, type, isrc, upc, cover)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ''', (
-                    song['id'], song['title'], song['artist'], song['composer'],
-                    song['album'], song['timestamp'], song['duration_ms'],
-                    song['score'], song['type'], song['isrc'], song['upc'],
-                    song.get('cover') 
-                ))
-                conn.commit()
+            # Usiamo l'ID numerico come ID del documento (convertito in stringa)
+            doc_ref = self.session_ref.collection('songs').document(str(song['id']))
+            doc_ref.set(song)
+            print(f"☁️ Salvato su Cloud: {song['title']}")
         except Exception as e:
-            print(f"❌ Errore salvataggio DB: {e}")
+            print(f"❌ Errore scrittura Firestore: {e}")
 
     def _update_full_song_in_db(self, song):
-        """Aggiorna TUTTI i dati di un brano (usato per lo Smart Upgrade)"""
         try:
-            with sqlite3.connect(self.db_path, check_same_thread=False) as conn:
-                cursor = conn.cursor()
-                cursor.execute('''
-                    UPDATE songs 
-                    SET artist=?, album=?, score=?, type=?, isrc=?, upc=?, cover=?
-                    WHERE id=?
-                ''', (
-                    song['artist'], song['album'], song['score'], song['type'],
-                    song['isrc'], song['upc'], song.get('cover'), song['id']
-                ))
-                conn.commit()
+            doc_ref = self.session_ref.collection('songs').document(str(song['id']))
+            doc_ref.set(song, merge=True) # merge=True aggiorna solo i campi cambiati
+            print(f"🔄 Aggiornato su Cloud: {song['title']}")
         except Exception as e:
-            print(f"❌ Errore Full Update DB: {e}")
+            print(f"❌ Errore update Firestore: {e}")
 
-    def _update_composer_in_db(self, song_id, composer):
+    def _update_single_field(self, song_id, field, value):
         try:
-            with sqlite3.connect(self.db_path, check_same_thread=False) as conn:
-                cursor = conn.cursor()
-                cursor.execute('UPDATE songs SET composer = ? WHERE id = ?', (composer, song_id))
-                conn.commit()
+            doc_ref = self.session_ref.collection('songs').document(str(song_id))
+            doc_ref.update({field: value})
         except Exception as e:
-            print(f"❌ Errore update DB: {e}")
-
-    def _update_cover_in_db(self, song_id, cover_url):
-        try:
-            with sqlite3.connect(self.db_path, check_same_thread=False) as conn:
-                cursor = conn.cursor()
-                cursor.execute('UPDATE songs SET cover = ? WHERE id = ?', (cover_url, song_id))
-                conn.commit()
-        except Exception as e:
-            print(f"❌ Errore update Cover DB: {e}")
+            print(f"❌ Errore update campo '{field}': {e}")
 
     def _delete_from_db(self, song_id):
         try:
-            with sqlite3.connect(self.db_path, check_same_thread=False) as conn:
-                cursor = conn.cursor()
-                cursor.execute('DELETE FROM songs WHERE id = ?', (song_id,))
-                conn.commit()
+            self.session_ref.collection('songs').document(str(song_id)).delete()
+            print(f"🗑️ Eliminato da Cloud: ID {song_id}")
         except Exception as e:
-            print(f"❌ Errore delete DB: {e}")
+            print(f"❌ Errore delete Firestore: {e}")
 
-    # --- LOGICA MATCHING ---
+    # --- LOGICA MATCHING (Invariata, usa la cache locale) ---
     def _normalize_string(self, text):
         if not text: return ""
         text = re.sub(r"[\(\[].*?[\)\]]", "", text)
@@ -146,46 +89,37 @@ class SessionManager:
         return clean.strip().lower()
 
     def _are_songs_equivalent(self, new_s, existing_s):
-        """
-        Versione PULITA: Solo Titolo e Artista.
-        Rimosso il controllo durata che causava falsi positivi.
-        """
+        # Versione ROBUSTA (quella che abbiamo corretto prima)
         tit_new = self._normalize_string(new_s['title'])
         tit_ex = self._normalize_string(existing_s['title'])
         
-        # 1. Check Titolo (Dominante)
-        similarity = SequenceMatcher(None, tit_new, tit_ex).ratio()
-        if similarity > 0.90:
-            return True
+        if tit_new == tit_ex: return True
 
-        # 2. Check Standard (Titolo Simile + Artista Simile)
-        if similarity > 0.60:
+        similarity = SequenceMatcher(None, tit_new, tit_ex).ratio()
+        
+        if similarity > 0.90: return True
+
+        if similarity > 0.80:
             art_new = self._normalize_string(new_s['artist'])
             art_ex = self._normalize_string(existing_s['artist'])
+            
             if art_new == art_ex or art_new in art_ex or art_ex in art_new:
+                len_diff = abs(len(tit_new) - len(tit_ex))
+                if len_diff > 4: return False
                 return True
-
-        # RIMOSSO BLOCCO 3 (Durata)
-        
         return False
 
     def _is_better_match(self, new_artist, old_artist, target_artist):
-        """Verifica se il nuovo artista è 'migliore' (matcha il target bias) rispetto al vecchio"""
         if not target_artist: return False
-        
         target_norm = self._normalize_string(target_artist)
         new_norm = self._normalize_string(new_artist)
         old_norm = self._normalize_string(old_artist)
-        
         new_matches = (target_norm in new_norm) or (new_norm in target_norm)
         old_matches = (target_norm in old_norm) or (old_norm in target_norm)
-        
-        # Se il nuovo è il target e il vecchio NO -> Upgrade!
-        if new_matches and not old_matches:
-            return True
+        if new_matches and not old_matches: return True
         return False
 
-    # --- ADD SONG ---
+    # --- ADD SONG (Logica Core) ---
     def add_song(self, song_data, target_artist=None):
         with self.lock:
             if song_data.get('status') != 'success':
@@ -195,56 +129,43 @@ class SessionManager:
             artist = song_data['artist']
             
             candidate_song = {
-                'title': title,
-                'artist': artist,
+                'title': title, 'artist': artist,
                 'duration_ms': song_data.get('duration_ms', 0)
             }
 
-            # Check duplicati negli ultimi 15 brani
+            # Check duplicati (su cache locale per velocità)
             for existing_song in self.playlist[-15:]:
                 if self._are_songs_equivalent(candidate_song, existing_song):
-                    
-                    # === SMART UPGRADE ===
-                    # Se il titolo è lo stesso, ma il nuovo artista è quello giusto (Target)
-                    # mentre quello vecchio era sbagliato (es. Cover Band), AGGIORNIAMO l'esistente!
+                    # Smart Upgrade
                     if self._is_better_match(artist, existing_song['artist'], target_artist):
                         print(f"🔄 Smart Upgrade: '{existing_song['artist']}' -> '{artist}'")
+                        existing_song.update({
+                            'artist': artist,
+                            'album': song_data.get('album', existing_song['album']),
+                            'score': song_data.get('score', existing_song['score']),
+                            'type': song_data.get('type', existing_song['type']),
+                            'isrc': song_data.get('isrc'),
+                            'upc': song_data.get('upc')
+                        })
+                        if song_data.get('cover'): existing_song['cover'] = song_data.get('cover')
                         
-                        # Aggiorniamo i dati in RAM
-                        existing_song['artist'] = artist
-                        existing_song['album'] = song_data.get('album', existing_song['album'])
-                        existing_song['score'] = song_data.get('score', existing_song['score'])
-                        existing_song['type'] = song_data.get('type', existing_song['type'])
-                        existing_song['isrc'] = song_data.get('isrc')
-                        existing_song['upc'] = song_data.get('upc')
-                        
-                        # Se il nuovo ha una cover, usala
-                        new_cover = song_data.get('cover')
-                        if new_cover: existing_song['cover'] = new_cover
-
-                        # Aggiorniamo i dati nel DB
+                        # Aggiorniamo Cloud e Cache
                         self._update_full_song_in_db(existing_song)
                         
-                        # Rilanciamo l'arricchimento (magari ora troviamo i compositori giusti!)
                         existing_song['composer'] = "⏳ Aggiornamento..."
-                        threading.Thread(
-                            target=self._background_enrichment,
-                            args=(existing_song, target_artist),
-                            daemon=True
-                        ).start()
-                        
+                        threading.Thread(target=self._background_enrichment, args=(existing_song, target_artist), daemon=True).start()
                         return {"added": True, "updated": True, "song": existing_song}
                     
-                    # Se non è un upgrade, scartiamo come duplicato normale
-                    print(f"♻️ Duplicato Scartato: {title} (Artist: {artist})")
                     return {"added": False, "reason": "Duplicate", "song": existing_song}
 
-            # --- NUOVO INSERIMENTO (Se non è duplicato) ---
+            # Nuovo Inserimento
             track_key = f"{title} - {artist}".lower()
             cached_entry = self.known_songs_cache.get(track_key)
             
+            # Calcolo ID progressivo (basato su lunghezza playlist locale attuale)
+            next_id = len(self.playlist) + 1
+            
             if cached_entry:
-                print(f"⚡ Cache Hit! {title}")
                 composer_name = cached_entry['composer']
                 isrc = cached_entry.get('isrc')
                 upc = cached_entry.get('upc')
@@ -263,7 +184,7 @@ class SessionManager:
             }
 
             new_entry = {
-                "id": self._next_id, 
+                "id": next_id, 
                 "title": title,
                 "artist": artist, 
                 "composer": composer_name,     
@@ -272,24 +193,16 @@ class SessionManager:
                 "duration_ms": song_data.get('duration_ms', 0),
                 "score": song_data.get('score', 0),
                 "type": song_data.get('type', 'Original'),
-                "isrc": isrc, 
-                "upc": upc,
-                "cover": cover_url,
-                "_raw_isrc": isrc,
-                "_raw_upc": upc,
-                "_raw_meta": raw_meta_package
+                "isrc": isrc, "upc": upc, "cover": cover_url,
+                "_raw_isrc": isrc, "_raw_upc": upc, "_raw_meta": raw_meta_package,
+                "confirmed": True # Default true per visualizzazione
             }
 
-            self.playlist.append(new_entry) 
+            self.playlist.append(new_entry)
             self._save_song_to_db(new_entry)
-            self._next_id += 1
 
             if status_enrichment == "Pending":
-                threading.Thread(
-                    target=self._background_enrichment,
-                    args=(new_entry, target_artist),
-                    daemon=True
-                ).start()
+                threading.Thread(target=self._background_enrichment, args=(new_entry, target_artist), daemon=True).start()
 
             print(f"✅ Aggiunto: {title}")
             return {"added": True, "song": new_entry}
@@ -301,8 +214,6 @@ class SessionManager:
         found_composer = "Sconosciuto"
         final_cover = entry.get('cover') 
         success = False
-
-        print(f"🧵 [Thread] Inizio arricchimento per: {entry['title']}")
 
         # 1. SPOTIFY HD
         if self.spotify_bot:
@@ -323,39 +234,31 @@ class SessionManager:
                     raw_acr_meta=entry.get('_raw_meta')
                 )
                 found_composer = comp_result
-                
-                if not final_cover and cover_fallback:
-                    final_cover = cover_fallback
-                
+                if not final_cover and cover_fallback: final_cover = cover_fallback
                 success = True
                 break 
-
-            except Exception as e:
-                print(f"⚠️ Errore Enrichment (Tentativo {attempts+1}): {e}")
+            except:
                 attempts += 1
                 time.sleep(1)
 
-        # 3. SALVATAGGIO FINALE
+        # 3. SALVATAGGIO FINALE SU CLOUD
         with self.lock:
-            # Ricarichiamo l'oggetto dalla playlist per essere sicuri di aggiornare quello vivo
+            # Aggiorniamo la copia locale
             target_song = next((s for s in self.playlist if s['id'] == entry['id']), None)
             
             if target_song:
                 target_song['composer'] = found_composer
-                self._update_composer_in_db(target_song['id'], found_composer)
+                self._update_single_field(target_song['id'], 'composer', found_composer)
                 
                 if final_cover and final_cover != target_song.get('cover'):
                     target_song['cover'] = final_cover
-                    self._update_cover_in_db(target_song['id'], final_cover)
-                    print(f"🖼️ [Thread] Cover aggiornata!")
+                    self._update_single_field(target_song['id'], 'cover', final_cover)
 
-                print(f"📝 [Thread] Compositore: {found_composer}")
-                
-                # Salviamo in cache solo se abbiamo trovato dati validi
                 if success and found_composer not in ["Sconosciuto", "Errore Conn."]:
                     track_key = f"{target_song['title']} - {target_song['artist']}".lower()
                     self.known_songs_cache[track_key] = target_song.copy()
 
+    # --- METODI UTILITY ---
     def get_playlist(self):
         return self.playlist
 
@@ -363,17 +266,9 @@ class SessionManager:
         with self.lock:
             self.playlist = []
             self.known_songs_cache = {}
-            self._next_id = 1
-            try:
-                with sqlite3.connect(self.db_path, check_same_thread=False) as conn:
-                    cursor = conn.cursor()
-                    cursor.execute('DELETE FROM songs')
-                    conn.commit()
-                print("🧹 Sessione resettata.")
-                return True
-            except Exception as e:
-                print(f"❌ Errore reset DB: {e}")
-                return False
+            # Nota: Su Firestore cancellare intere collezioni non è banale.
+            # Per ora resettiamo solo la lista locale e cambiamo Session ID al prossimo riavvio.
+            return True
 
     def delete_song(self, song_id):
         with self.lock:
@@ -382,5 +277,4 @@ class SessionManager:
                 self.playlist = [s for s in self.playlist if s['id'] != song_id]
                 self._delete_from_db(song_id)
                 return True
-            except ValueError:
-                return False
+            except ValueError: return False

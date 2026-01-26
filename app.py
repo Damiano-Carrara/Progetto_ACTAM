@@ -8,6 +8,8 @@ import io
 import qrcode
 import time
 from pyngrok import ngrok, conf
+import firebase_admin
+from firebase_admin import credentials, firestore
 
 app = Flask(__name__)
 
@@ -16,9 +18,15 @@ conf.get_default().auth_token = "36h1RSKg2jFomjrnvz9iLqTmvXx_dR6mu6AVwxAzjquwYyZ
 
 public_url = None
 
+# Inizializziamo Firebase
+cred = credentials.Certificate("firebase_credentials.json")
+firebase_admin.initialize_app(cred)
+db = firestore.client()
+
 # Inizializziamo i nostri "robot"
 audio_bot = AudioManager()
-session_bot = SessionManager()
+# Passiamo il db al session manager
+session_bot = SessionManager(db_instance=db)
 report_bot = ReportGenerator()
 # RIMOSSO: lyrics_bot (Non serve più)
 
