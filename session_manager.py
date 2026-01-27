@@ -82,10 +82,19 @@ class SessionManager:
     # --- LOGICA MATCHING (Invariata, usa la cache locale) ---
     def _normalize_string(self, text):
         if not text: return ""
+        
+        # 1. Rimuovi Branding Piattaforme
+        platform_patterns = r"(?i)\b(amazon\s+music|apple\s+music|spotify|deezer|youtube|vevo)\b.*"
+        text = re.sub(platform_patterns, "", text)
+
+        # 2. Pulizia standard
         text = re.sub(r"[\(\[].*?[\)\]]", "", text)
         text = re.sub(r"(?i)\b(feat\.|ft\.|remix|edit|version|karaoke|live)\b.*", "", text)
         text = unicodedata.normalize('NFD', text).encode('ascii', 'ignore').decode("utf-8")
-        clean = re.sub(r"[^a-zA-Z0-9\s]", "", text)
+        
+        # CORREZIONE QUI SOTTO: L'input deve essere 'text', non 'clean'
+        clean = re.sub(r"[^a-zA-Z0-9\s]", "", text) 
+        
         return clean.strip().lower()
 
     def _are_songs_equivalent(self, new_s, existing_s):

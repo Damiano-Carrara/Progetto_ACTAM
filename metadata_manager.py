@@ -30,10 +30,30 @@ class MetadataManager:
         return re.sub(r"[^a-zA-Z0-9\s]", "", text).lower().strip()
 
     def _clean_title(self, title):
-        clean = re.sub(r"[\(\[].*?[\)\]]", "", title)
-        patterns = [r"-\s*live", r"live\s*at", r"remaster", r"version", r"edit"]
-        for p in patterns:
-            clean = re.sub(p, "", clean, flags=re.IGNORECASE)
+        """
+        Pulisce il titolo per la ricerca, rimuovendo solo le versioni tecniche.
+        """
+        if not title: return ""
+        
+        # Parole chiave da eliminare (simile a audio_manager ma più aggressivo per la ricerca)
+        junk_keywords = [
+            "live", "remix", "edit", "version", "remaster", 
+            "feat", "ft.", "karaoke", "official"
+        ]
+
+        def clean_parens(match):
+            content = match.group(1).lower()
+            if any(k in content for k in junk_keywords):
+                return ""
+            return match.group(0)
+
+        # Pulizia condizionale delle parentesi
+        clean = re.sub(r"\s*[\(\[](.*?)[\)\]]", clean_parens, title)
+        
+        # Pulizia extra specifica per pattern comuni senza parentesi
+        # es. "Titolo Remastered 2009" (senza parentesi)
+        clean = re.sub(r"(?i)\b(remaster|remastered|live at|live in)\b.*", "", clean)
+
         return clean.strip()
 
     def _add_to_set(self, source_set, names_str):

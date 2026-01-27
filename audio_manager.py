@@ -148,10 +148,18 @@ class AudioManager:
     # --- HELPER FUNCTIONS ---
     def _normalize_text(self, text):
         if not text: return ""
+        
+        # 1. Rimuovi Branding Piattaforme (anche fuori dalle parentesi)
+        # Usiamo una regex case-insensitive per intercettare i brand ovunque
+        platform_patterns = r"(?i)\b(amazon\s+music|apple\s+music|spotify|deezer|youtube|vevo)\b.*"
+        text = re.sub(platform_patterns, "", text)
+
+        # 2. Pulizia Standard (Parentesi, Feat, etc.)
         clean = re.sub(r"[\(\[].*?[\)\]]", "", text)
         clean = re.sub(r"(?i)\b(feat\.|ft\.|remix|edit|version|karaoke|live|mixed|spanish|italian)\b.*", "", clean)
         clean = unicodedata.normalize("NFD", clean).encode("ascii", "ignore").decode("utf-8")
         clean = re.sub(r"[^a-zA-Z0-9\s]", "", clean)
+        
         return clean.strip().lower()
 
     def _normalize_for_match(self, text):
@@ -161,12 +169,46 @@ class AudioManager:
         return clean.strip().lower()
 
     def _clean_title_for_display(self, text):
+        """
+        Pulisce il titolo rimuovendo SOLO le diciture tecniche (Live, Remix, ecc.),
+        ma preservando i sottotitoli reali (es. '(Perdere il volo)').
+        """
         if not text: return ""
-        while True:
-            cleaned = re.sub(r"\s*[\(\[].*?[\)\]]", "", text)
-            if cleaned == text: break
-            text = cleaned
-        return text.strip("()[] ")
+
+        # Lista di parole che indicano una versione "tecnica" da rimuovere
+        # Nota: usiamo spazi attorno per evitare falsi positivi (es. "liverpool")
+        junk_keywords = [
+            # Versioni tecniche
+            "live", "remix", "edit", "club", "mix", "extended", "version", 
+            "remaster", "re-master", "feat", "ft.", "karaoke", "instrumental", 
+            "acoustic", "demo", "session", "registrazione", "mono", "stereo",
+            # Piattaforme Streaming & Branding
+            "amazon music", "amazon original", "apple music", "spotify singles", 
+            "spotify", "deezer", "youtube", "vevo", "presents", "exclusive"
+        ]
+
+        # 1. Gestione Parentesi (tonde e quadre)
+        def clean_parens(match):
+            content = match.group(1).lower()
+            # Se contiene una parola 'junk', rimuoviamo tutto il blocco
+            if any(k in content for k in junk_keywords):
+                return "" 
+            # Altrimenti manteniamo le parentesi e il contenuto originale
+            return match.group(0)
+
+        # Cerca (testo) o [testo] e applica la logica condizionale
+        text = re.sub(r"\s*[\(\[](.*?)[\)\]]", clean_parens, text)
+
+        # 2. Gestione trattini finali (es. "Titolo - Live 2022")
+        # Se dopo il trattino c'è una parola junk, rimuoviamo la coda.
+        # Altrimenti (es. "Titolo - Sottotitolo") lo teniamo.
+        parts = text.split(" - ")
+        if len(parts) > 1:
+            last_part = parts[-1].lower()
+            if any(k in last_part for k in junk_keywords):
+                text = " - ".join(parts[:-1]) # Rimuove l'ultimo pezzo
+        
+        return text.strip()
 
     def _is_mostly_latin(self, text):
         if not text: return False
