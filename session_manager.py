@@ -224,19 +224,53 @@ class SessionManager:
         final_cover = entry.get('cover') 
         success = False
 
-        # 1. SPOTIFY HD
-        if self.spotify_bot:
+        # === [NUOVO] STEP 0: CANONICALIZZAZIONE (Solo in Generic Mode) ===
+        # Se NON c'è un target_artist (modalità generica) e abbiamo Spotify attivo
+        if not target_artist and self.spotify_bot:
+            print(f"✨ [Smart Fix] Controllo se esiste una versione originale più famosa per '{entry['title']}'...")
+            try:
+                better_version = self.spotify_bot.get_most_popular_version(entry['title'], entry['artist'])
+                
+                if better_version:
+                    new_artist, new_cover, popularity = better_version
+                    print(f"🚀 [Smart Fix] Sostituisco '{entry['artist']}' -> '{new_artist}' (Popolarità: {popularity})")
+                    
+                    # Aggiorniamo l'oggetto entry in memoria
+                    entry['artist'] = new_artist
+                    entry['original_artist'] = new_artist # Aggiorniamo anche per il report
+                    
+                    # Se abbiamo trovato una cover migliore, usiamola
+                    if new_cover: 
+                        entry['cover'] = new_cover
+                        final_cover = new_cover
+
+                    # Aggiorniamo subito il DB/UI affinché l'utente veda l'artista corretto
+                    self._update_single_field(entry['id'], 'artist', new_artist)
+                    self._update_single_field(entry['id'], 'cover', final_cover)
+                    
+                    # Aggiorniamo anche la cache locale per evitare che venga ri-aggiunto quello sbagliato
+                    # Nota: richiede cautela con i thread, ma per ora aggiorniamo il record puntato
+                    target_song_ptr = next((s for s in self.playlist if s['id'] == entry['id']), None)
+                    if target_song_ptr:
+                        target_song_ptr['artist'] = new_artist
+                        target_song_ptr['cover'] = final_cover
+            except Exception as e:
+                print(f"⚠️ Errore Smart Fix: {e}")
+        # ================================================================
+
+        # 1. SPOTIFY HD (Se non l'abbiamo già trovata sopra)
+        if self.spotify_bot and not final_cover:
             try:
                 hd_cover = self.spotify_bot.get_hd_cover(entry['title'], entry['artist'])
                 if hd_cover: final_cover = hd_cover
             except: pass
 
-        # 2. RICERCA COMPOSITORE
+        # 2. RICERCA COMPOSITORE (Ora userà l'artista "famoso" se è stato sostituito!)
         while attempts < max_attempts:
             try:
                 comp_result, cover_fallback = self.meta_bot.find_composer(
                     title=entry['title'], 
-                    detected_artist=entry['artist'],
+                    detected_artist=entry['artist'], # Qui ora passa l'artista corretto!
                     isrc=entry.get('_raw_isrc'),
                     upc=entry.get('_raw_upc'),
                     setlist_artist=target_artist,
@@ -252,7 +286,6 @@ class SessionManager:
 
         # 3. SALVATAGGIO FINALE SU CLOUD
         with self.lock:
-            # Aggiorniamo la copia locale
             target_song = next((s for s in self.playlist if s['id'] == entry['id']), None)
             
             if target_song:

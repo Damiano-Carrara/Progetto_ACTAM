@@ -79,3 +79,68 @@ class SpotifyManager:
                 return items[0]['album']['images'][0]['url']
         except: pass
         return None
+    
+    def get_most_popular_version(self, title, current_artist):
+        """
+        Cerca su Spotify se esiste una versione molto più famosa del brano rilevato.
+        Restituisce una tupla (nuovo_artista, nuova_cover, popolarità) o None.
+        """
+        if not self.sp: return None
+        
+        import re
+        from difflib import SequenceMatcher
+
+        # Funzione helper interna per pulire i titoli
+        def clean_spotify_title(t):
+            # Rimuove parentesi tonde/quadre e contenuto
+            t = re.sub(r"[\(\[].*?[\)\]]", "", t)
+            # Rimuove trattini seguiti da parole chiave comuni nei titoli Spotify
+            t = re.sub(r"(?i)\s-\s.*(remaster|mix|edit|version|live|single).*", "", t)
+            return t.strip().lower()
+
+        clean_search_title = clean_spotify_title(title)
+        if len(clean_search_title) < 2: return None
+
+        try:
+            # Cerchiamo per traccia
+            results = self.sp.search(q=f"track:{clean_search_title}", type='track', limit=5)
+            tracks = results['tracks']['items']
+            
+            if not tracks: return None
+
+            best_match = tracks[0]
+            best_artist = best_match['artists'][0]['name']
+            best_popularity = best_match['popularity'] # 0-100
+            
+            # Recuperiamo la popolarità dell'artista corrente
+            current_popularity = 0
+            try:
+                curr_search = self.sp.search(q=f"artist:{current_artist}", type='artist', limit=1)
+                if curr_search['artists']['items']:
+                    current_popularity = curr_search['artists']['items'][0]['popularity']
+            except: pass
+
+            print(f"     📊 [Pop Check] Rilevato: '{current_artist}' (Pop: {current_popularity}) vs Best: '{best_artist}' (Pop: {best_popularity})")
+
+            # --- CORREZIONE QUI SOTTO ---
+            # Puliamo ANCHE il titolo trovato su Spotify prima del confronto
+            best_match_clean_title = clean_spotify_title(best_match['name'])
+            
+            ratio = SequenceMatcher(None, clean_search_title, best_match_clean_title).ratio()
+            # ----------------------------
+
+            # Log di debug (opzionale, utile per capire i fallimenti)
+            # print(f"        DEBUG RATIO: '{clean_search_title}' vs '{best_match_clean_title}' = {ratio:.2f}")
+            pop_diff = best_popularity - current_popularity
+
+            if ratio > 0.6 and best_artist.lower() != current_artist.lower():
+                if (pop_diff >= 20) or (best_popularity > 80):
+                    hd_cover = None
+                    if best_match['album']['images']:
+                        hd_cover = best_match['album']['images'][0]['url']
+                    return best_artist, hd_cover, best_popularity
+
+        except Exception as e:
+            print(f"⚠️ Errore check popolarità: {e}")
+        
+        return None
