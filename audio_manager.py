@@ -40,8 +40,8 @@ class AudioManager:
         # --- 2. CONFIGURAZIONE SESSIONE HTTP ---
         self.session = requests.Session()
         retry_strategy = Retry(
-            total=0,
-            backoff_factor=0,
+            total=2,
+            backoff_factor=0.5,
             status_forcelist=[429, 500, 502, 503, 504],
             allowed_methods=["POST"],
         )
@@ -93,9 +93,19 @@ class AudioManager:
         Scarica il contesto completo (Setlist.fm + Spotify) per l'artista target.
         Serve per aumentare la precisione di ACRCloud (Bias).
         """
+        # 1. Aggiornamento immediato Bias e Reset stato
         self.target_artist_bias = artist_name
         self.context_ready = False 
+        self.predicted_next_song = None  # Reset del "Veggente"
         
+        # === FIX: PULIZIA IMMEDIATA DELLA CACHE PRECEDENTE ===
+        # Resettiamo le liste per evitare che i brani dell'artista precedente
+        # rimangano attivi mentre scarichiamo quelli nuovi (o se non ne troviamo).
+        self.setlist_bot.cached_songs = []
+        self.setlist_bot.concert_sequences = []
+        print(f"🧹 [Context] Cache precedente svuotata.")
+        # ======================================================
+
         if artist_name:
             def fetch_full_context():
                 print(f"\n🎸 [Context] Avvio scansione completa per: {artist_name}")
@@ -113,11 +123,16 @@ class AudioManager:
                     self.setlist_bot.cached_songs = list(merged_songs)
                     print(f"✅ [Context] White List pronta: {len(merged_songs)} brani unici caricati.")
                 else:
+                    # Se non troviamo nulla, la lista rimane vuota (grazie al reset sopra)
                     print("⚠️ [Context] Nessun brano trovato su nessuna piattaforma.")
                 
                 self.context_ready = True
 
             self.executor.submit(fetch_full_context)
+        else:
+            # Se artist_name è None o vuoto (modalità generica), 
+            # abbiamo già pulito la cache all'inizio, quindi siamo a posto.
+            print("⚪ [Context] Nessun artista target. Modalità generica attiva.")
 
     def _audio_callback(self, indata, frames, time, status):
         """Callback di SoundDevice: raccoglie i chunk audio"""

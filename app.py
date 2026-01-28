@@ -84,14 +84,10 @@ def start_recognition():
 
     print(f"🚀 Richiesta avvio monitoraggio. Bias: {target_artist}")
 
-    # === [MODIFICA: SOLO CONTESTO AUDIO, NO LYRICS] ===
-    if target_artist:
-        print(f"🎸 Configuro scaletta e contesto per: {target_artist}")
-        # 1. Avvia ricerca scaletta (Setlist + Spotify)
-        # Questo serve per aumentare la precisione del riconoscimento audio
-        audio_bot.update_target_artist(target_artist)
-        
-        # RIMOSSO: Il thread che scaricava i testi (lyrics_bot.start_background_download)
+    # === [MODIFICA: CHIAMA SEMPRE UPDATE PER PULIRE] ===
+    # Chiamiamo update_target_artist SEMPRE. 
+    # Se target_artist è None, la funzione (coi fix sopra) pulirà la cache e basta.
+    audio_bot.update_target_artist(target_artist)
     # ===================================
 
     started = audio_bot.start_continuous_recognition(
@@ -102,7 +98,6 @@ def start_recognition():
     if started:
         return jsonify({"status": "started", "message": "Monitoraggio continuo avviato."})
     return jsonify({"status": "error", "message": "Già in esecuzione."})
-
 
 # --- API: FERMA IL MONITORAGGIO ---
 @app.route("/api/stop_recognition", methods=["POST"])
