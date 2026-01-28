@@ -91,20 +91,21 @@ function showView(id) {
 }
 
 // ============================================================================
-// GESTIONE RUOLI (PAGINA 0)
+// GESTIONE RUOLI (PAGINA 0 - SVG INTERACTION)
 // ============================================================================
 function initRoleSelection() {
-  const roleCards = document.querySelectorAll(".role-card");
+  // [MODIFICA PER SVG] Selezioniamo i gruppi spotlight invece che le card
+  const roleSpots = document.querySelectorAll(".spotlight-group");
   const modalRevenue = $("#revenue-modal");
   const inputRevenue = $("#revenue-input");
   const btnRevConfirm = $("#revenue-confirm");
   const btnRevCancel = $("#revenue-cancel");
   const backBtn = $("#btn-back-roles");
 
-  // Click su una card ruolo
-  roleCards.forEach(card => {
-    card.addEventListener("click", () => {
-      const role = card.dataset.role;
+  // Click su un gruppo SVG
+  roleSpots.forEach(spot => {
+    spot.addEventListener("click", () => {
+      const role = spot.dataset.role;
       state.role = role;
 
       if (role === "composer") {
