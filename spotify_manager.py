@@ -102,7 +102,7 @@ class SpotifyManager:
         if len(clean_search_title) < 2: return None
 
         try:
-            # Cerchiamo per traccia
+            # 1. Cerchiamo la versione MIGLIORE/PIÙ FAMOSA in assoluto
             results = self.sp.search(q=f"track:{clean_search_title}", type='track', limit=5)
             tracks = results['tracks']['items']
             
@@ -110,29 +110,45 @@ class SpotifyManager:
 
             best_match = tracks[0]
             best_artist = best_match['artists'][0]['name']
-            best_popularity = best_match['popularity'] # 0-100
+            best_popularity = best_match['popularity'] # Popolarità Brano (0-100)
             
-            # Recuperiamo la popolarità dell'artista corrente
+            # 2. Recuperiamo la popolarità della versione CORRENTE (Rilevata)
             current_popularity = 0
+            comparison_mode = "Artist vs Track" # Default fallback
+            
             try:
-                curr_search = self.sp.search(q=f"artist:{current_artist}", type='artist', limit=1)
-                if curr_search['artists']['items']:
-                    current_popularity = curr_search['artists']['items'][0]['popularity']
-            except: pass
+                # TENTATIVO A: Cerchiamo esattamente la traccia dell'artista rilevato (Track vs Track)
+                # Usiamo il titolo pulito per massimizzare le chance di trovarla
+                query_curr = f"track:{clean_search_title} artist:{current_artist}"
+                curr_track_res = self.sp.search(q=query_curr, type='track', limit=1)
+                
+                if curr_track_res['tracks']['items']:
+                    # Trovata! Usiamo la popolarità specifica di questa registrazione
+                    current_popularity = curr_track_res['tracks']['items'][0]['popularity']
+                    comparison_mode = "Track vs Track"
+                else:
+                    # TENTATIVO B: Fallback sulla popolarità dell'ARTISTA
+                    # Se la traccia specifica non esiste o ha titolo diverso, usiamo la fama dell'artista
+                    curr_art_res = self.sp.search(q=f"artist:{current_artist}", type='artist', limit=1)
+                    if curr_art_res['artists']['items']:
+                        current_popularity = curr_art_res['artists']['items'][0]['popularity']
+            except: 
+                pass
 
-            print(f"     📊 [Pop Check] Rilevato: '{current_artist}' (Pop: {current_popularity}) vs Best: '{best_artist}' (Pop: {best_popularity})")
+            print(f"     📊 [Pop Check] {comparison_mode}: '{current_artist}' ({current_popularity}) vs Best: '{best_artist}' ({best_popularity})")
 
-            # --- CORREZIONE QUI SOTTO ---
+            # 3. Calcolo Somiglianza Titoli
             # Puliamo ANCHE il titolo trovato su Spotify prima del confronto
             best_match_clean_title = clean_spotify_title(best_match['name'])
-            
             ratio = SequenceMatcher(None, clean_search_title, best_match_clean_title).ratio()
-            # ----------------------------
 
-            # Log di debug (opzionale, utile per capire i fallimenti)
-            # print(f"        DEBUG RATIO: '{clean_search_title}' vs '{best_match_clean_title}' = {ratio:.2f}")
+            # 4. Calcolo Differenza Popolarità
             pop_diff = best_popularity - current_popularity
 
+            # LOGICA DI SOSTITUZIONE:
+            # - Il titolo deve essere simile (> 0.6)
+            # - L'artista deve essere diverso
+            # - La differenza di popolarità deve essere >= 20 OPPURE la nuova è una super hit (> 80)
             if ratio > 0.6 and best_artist.lower() != current_artist.lower():
                 if (pop_diff >= 20) or (best_popularity > 80):
                     hd_cover = None
