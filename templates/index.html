@@ -47,13 +47,13 @@
                 </linearGradient>
 
                 <mask id="maskLeft">
-                  <path d="M250,-150 L90,540 Q250,580 410,540 Z" fill="white" filter="url(#softBlur)"/>
+                  <path id="mask-path-left" d="M250,-150 L90,540 Q250,580 410,540 Z" fill="white" filter="url(#softBlur)"/>
                 </mask>
                 <mask id="maskCenter">
-                   <path d="M600,-150 L440,580 Q600,620 760,580 Z" fill="white" filter="url(#softBlur)"/>
+                    <path id="mask-path-center" d="M600,-150 L440,580 Q600,620 760,580 Z" fill="white" filter="url(#softBlur)"/>
                 </mask>
                 <mask id="maskRight">
-                   <path d="M950,-150 L790,540 Q950,580 1110,540 Z" fill="white" filter="url(#softBlur)"/>
+                    <path id="mask-path-right" d="M950,-150 L790,540 Q950,580 1110,540 Z" fill="white" filter="url(#softBlur)"/>
                 </mask>
               </defs>
 
@@ -63,9 +63,9 @@
               </text>
 
               <g class="spotlight-group" data-role="user">
-                <path class="beam" d="M250,-150 L90,540 Q250,580 410,540 Z" 
+                <path id="beam-left" class="beam" d="M250,-150 L90,540 Q250,580 410,540 Z" 
                       fill="url(#gradBeamPurple)" style="mix-blend-mode: screen;" filter="url(#softBlur)"></path>
-                <ellipse cx="250" cy="540" rx="160" ry="20" fill="rgba(124, 58, 237, 0.4)" filter="url(#softBlur)" style="mix-blend-mode: screen;"></ellipse>
+                <ellipse id="spot-left" cx="250" cy="540" rx="160" ry="20" fill="rgba(124, 58, 237, 0.4)" filter="url(#softBlur)" style="mix-blend-mode: screen;"></ellipse>
                 
                 <text x="250" y="520" text-anchor="middle" font-size="44" font-weight="800" fill="#1f2530" letter-spacing="2">UTENTE</text>
                 <text x="250" y="550" text-anchor="middle" font-size="16" font-weight="400" fill="#1f2530">Genera borderò e report per eventi.</text>
@@ -79,9 +79,9 @@
               </g>
 
               <g class="spotlight-group" data-role="composer">
-                <path class="beam" d="M950,-150 L790,540 Q950,580 1110,540 Z" 
+                <path id="beam-right" class="beam" d="M950,-150 L790,540 Q950,580 1110,540 Z" 
                       fill="url(#gradBeamRed)" style="mix-blend-mode: screen;" filter="url(#softBlur)"></path>
-                <ellipse cx="950" cy="540" rx="160" ry="20" fill="rgba(220, 38, 38, 0.4)" filter="url(#softBlur)" style="mix-blend-mode: screen;"></ellipse>
+                <ellipse id="spot-right" cx="950" cy="540" rx="160" ry="20" fill="rgba(220, 38, 38, 0.4)" filter="url(#softBlur)" style="mix-blend-mode: screen;"></ellipse>
 
                 <text x="950" y="520" text-anchor="middle" font-size="44" font-weight="800" fill="#1f2530" letter-spacing="2">ARTISTA</text>
                 <text x="950" y="550" text-anchor="middle" font-size="16" font-weight="400" fill="#1f2530">Visualizza statistiche e royalties.</text>
@@ -95,9 +95,9 @@
               </g>
 
               <g class="spotlight-group spotlight-group--center" data-role="org">
-                <path class="beam" d="M600,-150 L440,580 Q600,620 760,580 Z" 
+                <path id="beam-center" class="beam" d="M600,-150 L440,580 Q600,620 760,580 Z" 
                       fill="url(#gradBeamGold)" style="mix-blend-mode: screen;" filter="url(#softBlur)"></path>
-                <ellipse cx="600" cy="580" rx="160" ry="20" fill="rgba(250, 204, 21, 0.3)" filter="url(#softBlur)" style="mix-blend-mode: screen;"></ellipse>
+                <ellipse id="spot-center" cx="600" cy="580" rx="160" ry="20" fill="rgba(250, 204, 21, 0.3)" filter="url(#softBlur)" style="mix-blend-mode: screen;"></ellipse>
 
                 <text x="600" y="550" text-anchor="middle" font-size="50" font-weight="900" fill="#1f2530" letter-spacing="4">ORGANIZER</text>
                 <text x="600" y="580" text-anchor="middle" font-size="16" font-weight="400" fill="#1f2530">Gestisci artisti, incassi e pagamenti.</text>

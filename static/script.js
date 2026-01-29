@@ -38,6 +38,9 @@ let visLevels = new Array(VIS_COLS).fill(0);
 
 let notesModalContext = "session";
 
+// Gestione Hover Luci
+let hoveredRole = null; // Traccia quale ruolo è sotto il mouse
+
 const $ = (sel) => document.querySelector(sel);
 
 // --- UTILS ---
@@ -51,6 +54,9 @@ function fmt(ms) {
 // Nuova utility per valuta
 function formatMoney(amount, currency = "EUR") {
   return new Intl.NumberFormat('it-IT', { style: 'currency', currency: currency }).format(amount);
+}
+function lerp(start, end, amt) {
+    return (1 - amt) * start + amt * end;
 }
 
 // --- SALVATAGGIO STATO LOCALE (Originale) ---
@@ -104,6 +110,14 @@ function initRoleSelection() {
 
   // Click su un gruppo SVG
   roleSpots.forEach(spot => {
+    // Aggiungo listeners per il movimento del mouse
+    spot.addEventListener("mouseenter", () => {
+        hoveredRole = spot.dataset.role;
+    });
+    spot.addEventListener("mouseleave", () => {
+        hoveredRole = null;
+    });
+
     spot.addEventListener("click", () => {
       const role = spot.dataset.role;
       state.role = role;
@@ -1188,6 +1202,123 @@ function showConfirm(msg) {
   });
 }
 
+// ============================================================================
+// ANIMAZIONE PALCO (JS PHYSICS - CONSTANT ANGLE + HOVER)
+// ============================================================================
+
+// Configurazione luci (State persistente per interpolazione)
+// Aggiungo 'currentAmp' (ampiezza corrente) e 'currentOp' (opacità corrente)
+const lightsState = [
+    { 
+        id: 'left', // User
+        role: 'user',
+        vertex: { x: 250, y: -150 },
+        baseY: 540,
+        originalBaseX: 250,
+        originalAmplitude: 150,
+        currentAmp: 150, // Partenza
+        currentOp: 0.7,  // Partenza (Opacità default)
+        phase: 0,
+        speed: 0.8,
+        rx: 160
+    },
+    { 
+        id: 'center', // Org
+        role: 'org',
+        vertex: { x: 600, y: -150 },
+        baseY: 580,
+        originalBaseX: 600,
+        originalAmplitude: 180,
+        currentAmp: 180,
+        currentOp: 1.0, // Il centrale è un po' più luminoso di base? Mettiamolo a 1.0 o 0.7? Il CSS diceva opacity 1.
+                        // CSS originale: .spotlight-group:not(.spotlight-group--center) { opacity: 0.7; }
+                        // Quindi il centrale parte da 1.0, gli altri da 0.7.
+        phase: 2,
+        speed: 0.6,
+        rx: 160
+    },
+    { 
+        id: 'right', // Composer
+        role: 'composer',
+        vertex: { x: 950, y: -150 },
+        baseY: 540,
+        originalBaseX: 950,
+        originalAmplitude: 150,
+        currentAmp: 150,
+        currentOp: 0.7,
+        phase: 4,
+        speed: 0.75,
+        rx: 160
+    }
+];
+
+function animateStageLights() {
+    const time = Date.now() * 0.00195; // Velocità +30%
+
+    lightsState.forEach(light => {
+        const beam = document.getElementById(`beam-${light.id}`);
+        const spot = document.getElementById(`spot-${light.id}`);
+        const group = document.querySelector(`.spotlight-group[data-role="${light.role}"]`);
+        const maskPath = document.getElementById(`mask-path-${light.id}`);
+
+        if (!beam || !spot || !group) return;
+
+        // 1. Calcolo Target Ampiezza & Target Opacità basato su Hover
+        let targetAmp = light.originalAmplitude;
+        let targetOp = (light.id === 'center') ? 1.0 : 0.7; // Default base
+
+        if (hoveredRole) {
+            // Se c'è un hover attivo, TUTTI si fermano (targetAmp = 0)
+            targetAmp = 0;
+
+            if (hoveredRole === light.role) {
+                // Questo è quello selezionato: mantiene la sua visibilità (o 1.0 per sicurezza)
+                // L'utente chiede: "aspetto resti lo stesso di quando sono senza selezione"
+                // Quindi torniamo al default base per questo specifico
+                targetOp = (light.id === 'center') ? 1.0 : 0.7;
+            } else {
+                // Gli altri si spengono
+                targetOp = 0.0;
+            }
+        }
+
+        // 2. Interpolazione (Lerp) per movimento fluido
+        // 0.05 è il fattore di smoothing (più basso = più lento/fluido)
+        light.currentAmp = lerp(light.currentAmp, targetAmp, 0.05);
+        light.currentOp = lerp(light.currentOp, targetOp, 0.05);
+
+        // Applica Opacità al gruppo
+        // Nota: group.style.opacity sovrascrive il CSS, perfetto per la logica JS
+        group.style.opacity = light.currentOp.toFixed(3);
+
+        // 3. Calcolo Posizione Fisica
+        // Sway oscilla tra -1 e 1
+        const sway = Math.sin(time * light.speed + light.phase);
+        
+        // OffsetX ora dipende da currentAmp che tende a 0 durante l'hover
+        const offsetX = sway * light.currentAmp;
+        
+        const currentX = light.originalBaseX + offsetX;
+        const currentRx = light.rx;
+
+        // Aggiorna cerchio a terra
+        spot.setAttribute('cx', currentX);
+        spot.setAttribute('rx', currentRx);
+
+        // 4. Costruisco il path del fascio
+        const xLeft = currentX - currentRx;
+        const xRight = currentX + currentRx;
+        const curveDepth = 40; 
+        
+        const d = `M${light.vertex.x},${light.vertex.y} L${xLeft},${light.baseY} Q${currentX},${light.baseY + curveDepth} ${xRight},${light.baseY} Z`;
+
+        beam.setAttribute('d', d);
+        if(maskPath) maskPath.setAttribute('d', d);
+    });
+
+    requestAnimationFrame(animateStageLights);
+}
+
 // --- BOOTSTRAP ---
 document.addEventListener("DOMContentLoaded", () => {
   const app = document.getElementById("app");
@@ -1195,6 +1326,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
   wireSessionButtons();
   buildVisualizer();
+
+  // AVVIO ANIMAZIONE LUCI
+  animateStageLights();
 
   if (isViewer) {
     state.route = "session";
