@@ -7,15 +7,51 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   </head>
-  <body>
+  <body id="body-container">
     <div id="app-background" class="app-background {{ 'viewer-bg' if viewer_mode }}"></div>
+    
+    <div id="global-stage-lights">
+      <svg viewBox="0 0 1920 1080" preserveAspectRatio="none">
+        <defs>
+          <filter id="beamBlur">
+            <feGaussianBlur stdDeviation="25" />
+          </filter>
+          
+          <linearGradient id="cornerBeamGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="rgba(255, 255, 255, 0.65)" />
+            <stop offset="40%" stop-color="rgba(255, 255, 255, 0.25)" />
+            <stop offset="100%" stop-color="rgba(255, 255, 255, 0)" />
+          </linearGradient>
+        </defs>
+        
+        <g class="corner-light corner-tl">
+           <path d="M0,0 L80,0 L1200,1200 L200,1200 Z" fill="url(#cornerBeamGradient)" filter="url(#beamBlur)" style="mix-blend-mode: screen;" />
+           <circle cx="0" cy="0" r="100" fill="white" opacity="0.7" filter="url(#beamBlur)" />
+        </g>
+
+        <g class="corner-light corner-tr">
+           <path d="M1920,0 L1840,0 L720,1200 L1720,1200 Z" fill="url(#cornerBeamGradient)" filter="url(#beamBlur)" style="mix-blend-mode: screen;" />
+           <circle cx="1920" cy="0" r="100" fill="white" opacity="0.7" filter="url(#beamBlur)" />
+        </g>
+
+        <g class="corner-light corner-bl">
+           <path d="M0,1080 L80,1080 L1200,-200 L200,-200 Z" fill="url(#cornerBeamGradient)" filter="url(#beamBlur)" style="mix-blend-mode: screen;" />
+           <circle cx="0" cy="1080" r="100" fill="white" opacity="0.7" filter="url(#beamBlur)" />
+        </g>
+
+        <g class="corner-light corner-br">
+           <path d="M1920,1080 L1840,1080 L720,-200 L1720,-200 Z" fill="url(#cornerBeamGradient)" filter="url(#beamBlur)" style="mix-blend-mode: screen;" />
+           <circle cx="1920" cy="1080" r="100" fill="white" opacity="0.7" filter="url(#beamBlur)" />
+        </g>
+      </svg>
+    </div>
+
     <div class="app-background-overlay"></div>
 
     <main id="app" data-viewer="{{ 'true' if viewer_mode else 'false' }}">
       
       <section id="view-roles" class="view view--active">
         <div class="stage-wrapper">
-          
           <div class="stage-ui-header">
             <h1>BORDERÒ ASSIST</h1>
             <p>Seleziona il tuo ruolo sul palco</p>
@@ -27,25 +63,21 @@
                 <filter id="softBlur" x="-50%" y="-50%" width="200%" height="200%">
                   <feGaussianBlur stdDeviation="12" />
                 </filter>
-                
-                <linearGradient id="gradBeamPurple" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stop-color="rgba(124, 58, 237, 0.05)"/>
-                  <stop offset="40%" stop-color="rgba(124, 58, 237, 0.2)"/>
-                  <stop offset="100%" stop-color="rgba(139, 92, 246, 0.65)"/>
+                <linearGradient id="gradBeamUser" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="rgba(81, 229, 255, 0.05)"/>
+                  <stop offset="40%" stop-color="rgba(81, 229, 255, 0.2)"/>
+                  <stop offset="100%" stop-color="rgba(81, 229, 255, 0.65)"/>
                 </linearGradient>
-
-                <linearGradient id="gradBeamGold" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stop-color="rgba(250, 204, 21, 0.05)"/>
-                  <stop offset="40%" stop-color="rgba(250, 204, 21, 0.2)"/>
-                  <stop offset="100%" stop-color="rgba(253, 224, 71, 0.65)"/>
+                <linearGradient id="gradBeamOrg" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="rgba(112, 238, 156, 0.05)"/>
+                  <stop offset="40%" stop-color="rgba(112, 238, 156, 0.2)"/>
+                  <stop offset="100%" stop-color="rgba(112, 238, 156, 0.65)"/>
                 </linearGradient>
-
-                <linearGradient id="gradBeamRed" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stop-color="rgba(220, 38, 38, 0.05)"/>
-                  <stop offset="40%" stop-color="rgba(220, 38, 38, 0.2)"/>
-                  <stop offset="100%" stop-color="rgba(248, 113, 113, 0.65)"/>
+                <linearGradient id="gradBeamArtist" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="rgba(236, 54, 141, 0.05)"/>
+                  <stop offset="40%" stop-color="rgba(236, 54, 141, 0.2)"/>
+                  <stop offset="100%" stop-color="rgba(236, 54, 141, 0.65)"/>
                 </linearGradient>
-
                 <mask id="maskLeft">
                   <path id="mask-path-left" d="M250,-150 L90,540 Q250,580 410,540 Z" fill="white" filter="url(#softBlur)"/>
                 </mask>
@@ -64,49 +96,46 @@
 
               <g class="spotlight-group" data-role="user">
                 <path id="beam-left" class="beam" d="M250,-150 L90,540 Q250,580 410,540 Z" 
-                      fill="url(#gradBeamPurple)" style="mix-blend-mode: screen;" filter="url(#softBlur)"></path>
-                <ellipse id="spot-left" cx="250" cy="540" rx="160" ry="20" fill="rgba(124, 58, 237, 0.4)" filter="url(#softBlur)" style="mix-blend-mode: screen;"></ellipse>
+                      fill="url(#gradBeamUser)" style="mix-blend-mode: screen;" filter="url(#softBlur)"></path>
+                <ellipse id="spot-left" cx="250" cy="540" rx="160" ry="20" fill="rgba(81, 229, 255, 0.4)" filter="url(#softBlur)" style="mix-blend-mode: screen;"></ellipse>
                 
                 <text x="250" y="520" text-anchor="middle" font-size="44" font-weight="800" fill="#1f2530" letter-spacing="2">UTENTE</text>
                 <text x="250" y="550" text-anchor="middle" font-size="16" font-weight="400" fill="#1f2530">Genera borderò e report per eventi.</text>
 
                 <g mask="url(#maskLeft)">
-                    <text x="250" y="520" text-anchor="middle" font-size="44" font-weight="800" fill="#a78bfa" letter-spacing="2" style="filter: drop-shadow(0 0 10px rgba(124,58,237,1));">UTENTE</text>
-                    <text x="250" y="550" text-anchor="middle" font-size="16" font-weight="500" fill="#ddd6fe">Genera borderò e report per eventi.</text>
+                    <text x="250" y="520" text-anchor="middle" font-size="44" font-weight="800" fill="#51E5FF" letter-spacing="2" style="filter: drop-shadow(0 0 10px rgba(81, 229, 255,1));">UTENTE</text>
+                    <text x="250" y="550" text-anchor="middle" font-size="16" font-weight="500" fill="#cffafe">Genera borderò e report per eventi.</text>
                 </g>
-                
                 <rect x="90" y="0" width="320" height="600" fill="transparent" style="cursor: pointer;" />
               </g>
 
               <g class="spotlight-group" data-role="composer">
                 <path id="beam-right" class="beam" d="M950,-150 L790,540 Q950,580 1110,540 Z" 
-                      fill="url(#gradBeamRed)" style="mix-blend-mode: screen;" filter="url(#softBlur)"></path>
-                <ellipse id="spot-right" cx="950" cy="540" rx="160" ry="20" fill="rgba(220, 38, 38, 0.4)" filter="url(#softBlur)" style="mix-blend-mode: screen;"></ellipse>
+                      fill="url(#gradBeamArtist)" style="mix-blend-mode: screen;" filter="url(#softBlur)"></path>
+                <ellipse id="spot-right" cx="950" cy="540" rx="160" ry="20" fill="rgba(236, 54, 141, 0.4)" filter="url(#softBlur)" style="mix-blend-mode: screen;"></ellipse>
 
                 <text x="950" y="520" text-anchor="middle" font-size="44" font-weight="800" fill="#1f2530" letter-spacing="2">ARTISTA</text>
                 <text x="950" y="550" text-anchor="middle" font-size="16" font-weight="400" fill="#1f2530">Visualizza statistiche e royalties.</text>
 
                 <g mask="url(#maskRight)">
-                    <text x="950" y="520" text-anchor="middle" font-size="44" font-weight="800" fill="#f87171" letter-spacing="2" style="filter: drop-shadow(0 0 10px rgba(220,38,38,1));">ARTISTA</text>
-                    <text x="950" y="550" text-anchor="middle" font-size="16" font-weight="500" fill="#fecaca">Visualizza statistiche e royalties.</text>
+                    <text x="950" y="520" text-anchor="middle" font-size="44" font-weight="800" fill="#EC368D" letter-spacing="2" style="filter: drop-shadow(0 0 10px rgba(236, 54, 141,1));">ARTISTA</text>
+                    <text x="950" y="550" text-anchor="middle" font-size="16" font-weight="500" fill="#fce7f3">Visualizza statistiche e royalties.</text>
                 </g>
-                
                 <rect x="790" y="0" width="320" height="600" fill="transparent" style="cursor: pointer;" />
               </g>
 
               <g class="spotlight-group spotlight-group--center" data-role="org">
                 <path id="beam-center" class="beam" d="M600,-150 L440,580 Q600,620 760,580 Z" 
-                      fill="url(#gradBeamGold)" style="mix-blend-mode: screen;" filter="url(#softBlur)"></path>
-                <ellipse id="spot-center" cx="600" cy="580" rx="160" ry="20" fill="rgba(250, 204, 21, 0.3)" filter="url(#softBlur)" style="mix-blend-mode: screen;"></ellipse>
+                      fill="url(#gradBeamOrg)" style="mix-blend-mode: screen;" filter="url(#softBlur)"></path>
+                <ellipse id="spot-center" cx="600" cy="580" rx="160" ry="20" fill="rgba(112, 238, 156, 0.3)" filter="url(#softBlur)" style="mix-blend-mode: screen;"></ellipse>
 
                 <text x="600" y="550" text-anchor="middle" font-size="50" font-weight="900" fill="#1f2530" letter-spacing="4">ORGANIZER</text>
                 <text x="600" y="580" text-anchor="middle" font-size="16" font-weight="400" fill="#1f2530">Gestisci artisti, incassi e pagamenti.</text>
 
                 <g mask="url(#maskCenter)">
-                    <text x="600" y="550" text-anchor="middle" font-size="50" font-weight="900" fill="#facc15" letter-spacing="4" style="filter: drop-shadow(0 0 15px rgba(250,204,21,1));">ORGANIZER</text>
-                    <text x="600" y="580" text-anchor="middle" font-size="16" font-weight="500" fill="#fef08a">Gestisci artisti, incassi e pagamenti.</text>
+                    <text x="600" y="550" text-anchor="middle" font-size="50" font-weight="900" fill="#70EE9C" letter-spacing="4" style="filter: drop-shadow(0 0 15px rgba(112, 238, 156,1));">ORGANIZER</text>
+                    <text x="600" y="580" text-anchor="middle" font-size="16" font-weight="500" fill="#dcfce7">Gestisci artisti, incassi e pagamenti.</text>
                 </g>
-
                 <rect x="440" y="0" width="320" height="600" fill="transparent" style="cursor: pointer;" />
               </g>
 
@@ -163,8 +192,8 @@
 
             <div class="mode-grid">
               <div class="mode-card" data-mode="dj" tabindex="0" role="button" aria-label="DJ set">
+                <div class="light-strip light-strip--dj"></div>
                 <div class="mode-bg bg-dj"></div>
-                <div class="mode-overlay"></div>
                 <div class="mode-content">
                   <div class="mode-text-group">
                     <h2>DJ set</h2>
@@ -180,8 +209,8 @@
               </div>
 
               <div class="mode-card" data-mode="band" tabindex="0" role="button" aria-label="Live band">
+                 <div class="light-strip light-strip--band"></div>
                 <div class="mode-bg bg-live"></div>
-                <div class="mode-overlay"></div>
                 <div class="mode-content">
                   <div class="mode-text-group">
                     <h2>Live band</h2>
@@ -197,8 +226,8 @@
               </div>
 
               <div class="mode-card mode-card-concerto" data-mode="concert" tabindex="0" role="button" aria-label="Concerto">
+                 <div class="light-strip light-strip--concert"></div>
                 <div class="mode-bg bg-concerto"></div>
-                <div class="mode-overlay"></div>
                 <div class="mode-content">
                   <div class="mode-text-group">
                     <h2>Concerto (o Tribute Band)</h2>
@@ -264,11 +293,7 @@
             <div id="live-log" class="log-body"></div>
           </section>
         </div>
-
-        <section class="visualizer-strip">
-          <div id="visualizer" class="visualizer-grid" aria-hidden="true"></div>
         </section>
-      </section>
 
       <section id="view-review" class="view">
         <header class="hero hero--small">
@@ -475,7 +500,6 @@
       </div>
 
     </main>
-
     <script src="{{ url_for('static', filename='script.js') }}" defer></script>
   </body>
 </html>
