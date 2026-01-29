@@ -10,43 +10,28 @@
   <body id="body-container">
     <div id="app-background" class="app-background {{ 'viewer-bg' if viewer_mode }}"></div>
     
+    <div class="app-background-overlay"></div>
+
     <div id="global-stage-lights">
       <svg viewBox="0 0 1920 1080" preserveAspectRatio="none">
         <defs>
-          <filter id="beamBlur">
-            <feGaussianBlur stdDeviation="25" />
+          <filter id="gBeamBlur">
+            <feGaussianBlur stdDeviation="30" />
           </filter>
           
-          <linearGradient id="cornerBeamGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+          <linearGradient id="globalBeamGradient" x1="0%" y1="0%" x2="0%" y2="100%">
             <stop offset="0%" stop-color="rgba(255, 255, 255, 0.65)" />
-            <stop offset="40%" stop-color="rgba(255, 255, 255, 0.25)" />
+            <stop offset="50%" stop-color="rgba(255, 255, 255, 0.22)" />
             <stop offset="100%" stop-color="rgba(255, 255, 255, 0)" />
           </linearGradient>
         </defs>
         
-        <g class="corner-light corner-tl">
-           <path d="M0,0 L80,0 L1200,1200 L200,1200 Z" fill="url(#cornerBeamGradient)" filter="url(#beamBlur)" style="mix-blend-mode: screen;" />
-           <circle cx="0" cy="0" r="100" fill="white" opacity="0.7" filter="url(#beamBlur)" />
-        </g>
-
-        <g class="corner-light corner-tr">
-           <path d="M1920,0 L1840,0 L720,1200 L1720,1200 Z" fill="url(#cornerBeamGradient)" filter="url(#beamBlur)" style="mix-blend-mode: screen;" />
-           <circle cx="1920" cy="0" r="100" fill="white" opacity="0.7" filter="url(#beamBlur)" />
-        </g>
-
-        <g class="corner-light corner-bl">
-           <path d="M0,1080 L80,1080 L1200,-200 L200,-200 Z" fill="url(#cornerBeamGradient)" filter="url(#beamBlur)" style="mix-blend-mode: screen;" />
-           <circle cx="0" cy="1080" r="100" fill="white" opacity="0.7" filter="url(#beamBlur)" />
-        </g>
-
-        <g class="corner-light corner-br">
-           <path d="M1920,1080 L1840,1080 L720,-200 L1720,-200 Z" fill="url(#cornerBeamGradient)" filter="url(#beamBlur)" style="mix-blend-mode: screen;" />
-           <circle cx="1920" cy="1080" r="100" fill="white" opacity="0.7" filter="url(#beamBlur)" />
-        </g>
+        <path id="gl-beam-tl" fill="url(#globalBeamGradient)" filter="url(#gBeamBlur)" style="mix-blend-mode: overlay;" />
+        <path id="gl-beam-tr" fill="url(#globalBeamGradient)" filter="url(#gBeamBlur)" style="mix-blend-mode: overlay;" />
+        <path id="gl-beam-bl" fill="url(#globalBeamGradient)" filter="url(#gBeamBlur)" style="mix-blend-mode: overlay;" />
+        <path id="gl-beam-br" fill="url(#globalBeamGradient)" filter="url(#gBeamBlur)" style="mix-blend-mode: overlay;" />
       </svg>
     </div>
-
-    <div class="app-background-overlay"></div>
 
     <main id="app" data-viewer="{{ 'true' if viewer_mode else 'false' }}">
       
@@ -98,10 +83,8 @@
                 <path id="beam-left" class="beam" d="M250,-150 L90,540 Q250,580 410,540 Z" 
                       fill="url(#gradBeamUser)" style="mix-blend-mode: screen;" filter="url(#softBlur)"></path>
                 <ellipse id="spot-left" cx="250" cy="540" rx="160" ry="20" fill="rgba(81, 229, 255, 0.4)" filter="url(#softBlur)" style="mix-blend-mode: screen;"></ellipse>
-                
                 <text x="250" y="520" text-anchor="middle" font-size="44" font-weight="800" fill="#1f2530" letter-spacing="2">UTENTE</text>
                 <text x="250" y="550" text-anchor="middle" font-size="16" font-weight="400" fill="#1f2530">Genera borderò e report per eventi.</text>
-
                 <g mask="url(#maskLeft)">
                     <text x="250" y="520" text-anchor="middle" font-size="44" font-weight="800" fill="#51E5FF" letter-spacing="2" style="filter: drop-shadow(0 0 10px rgba(81, 229, 255,1));">UTENTE</text>
                     <text x="250" y="550" text-anchor="middle" font-size="16" font-weight="500" fill="#cffafe">Genera borderò e report per eventi.</text>
@@ -113,10 +96,8 @@
                 <path id="beam-right" class="beam" d="M950,-150 L790,540 Q950,580 1110,540 Z" 
                       fill="url(#gradBeamArtist)" style="mix-blend-mode: screen;" filter="url(#softBlur)"></path>
                 <ellipse id="spot-right" cx="950" cy="540" rx="160" ry="20" fill="rgba(236, 54, 141, 0.4)" filter="url(#softBlur)" style="mix-blend-mode: screen;"></ellipse>
-
                 <text x="950" y="520" text-anchor="middle" font-size="44" font-weight="800" fill="#1f2530" letter-spacing="2">ARTISTA</text>
                 <text x="950" y="550" text-anchor="middle" font-size="16" font-weight="400" fill="#1f2530">Visualizza statistiche e royalties.</text>
-
                 <g mask="url(#maskRight)">
                     <text x="950" y="520" text-anchor="middle" font-size="44" font-weight="800" fill="#EC368D" letter-spacing="2" style="filter: drop-shadow(0 0 10px rgba(236, 54, 141,1));">ARTISTA</text>
                     <text x="950" y="550" text-anchor="middle" font-size="16" font-weight="500" fill="#fce7f3">Visualizza statistiche e royalties.</text>
@@ -128,17 +109,14 @@
                 <path id="beam-center" class="beam" d="M600,-150 L440,580 Q600,620 760,580 Z" 
                       fill="url(#gradBeamOrg)" style="mix-blend-mode: screen;" filter="url(#softBlur)"></path>
                 <ellipse id="spot-center" cx="600" cy="580" rx="160" ry="20" fill="rgba(112, 238, 156, 0.3)" filter="url(#softBlur)" style="mix-blend-mode: screen;"></ellipse>
-
                 <text x="600" y="550" text-anchor="middle" font-size="50" font-weight="900" fill="#1f2530" letter-spacing="4">ORGANIZER</text>
                 <text x="600" y="580" text-anchor="middle" font-size="16" font-weight="400" fill="#1f2530">Gestisci artisti, incassi e pagamenti.</text>
-
                 <g mask="url(#maskCenter)">
                     <text x="600" y="550" text-anchor="middle" font-size="50" font-weight="900" fill="#70EE9C" letter-spacing="4" style="filter: drop-shadow(0 0 15px rgba(112, 238, 156,1));">ORGANIZER</text>
                     <text x="600" y="580" text-anchor="middle" font-size="16" font-weight="500" fill="#dcfce7">Gestisci artisti, incassi e pagamenti.</text>
                 </g>
                 <rect x="440" y="0" width="320" height="600" fill="transparent" style="cursor: pointer;" />
               </g>
-
             </svg>
           </div>
         </div>
@@ -150,7 +128,6 @@
           <h2>Dashboard Artista</h2>
           <p class="subtitle">Benvenuto. Ecco le proiezioni annuali basate sui live rilevati.</p>
         </header>
-
         <div class="composer-grid">
           <div class="card stat-card">
             <h3>Esecuzioni Totali</h3>
@@ -170,7 +147,6 @@
               <li>📍 Atlantico (RO) - 15 play</li>
             </ul>
           </div>
-
           <div class="card chart-card">
             <h3>Andamento Esecuzioni (Ultimi 6 mesi)</h3>
             <div style="position: relative; height: 300px;">
@@ -184,12 +160,8 @@
         <div class="mode-page">
           <div class="mode-container">
             <button id="btn-back-roles" class="btn btn--small btn-back-top">← Indietro</button>
-            
             <h1 class="app-title">Seleziona la modalità</h1>
-            <p class="app-subtitle">
-              Scegli se stai compilando un DJ set, una live band o il concerto di un artista.
-            </p>
-
+            <p class="app-subtitle">Scegli se stai compilando un DJ set, una live band o il concerto di un artista.</p>
             <div class="mode-grid">
               <div class="mode-card" data-mode="dj" tabindex="0" role="button" aria-label="DJ set">
                 <div class="light-strip light-strip--dj"></div>
@@ -207,7 +179,6 @@
                   </div>
                 </div>
               </div>
-
               <div class="mode-card" data-mode="band" tabindex="0" role="button" aria-label="Live band">
                  <div class="light-strip light-strip--band"></div>
                 <div class="mode-bg bg-live"></div>
@@ -224,7 +195,6 @@
                   </div>
                 </div>
               </div>
-
               <div class="mode-card mode-card-concerto" data-mode="concert" tabindex="0" role="button" aria-label="Concerto">
                  <div class="light-strip light-strip--concert"></div>
                 <div class="mode-bg bg-concerto"></div>
@@ -259,7 +229,6 @@
                 <span id="org-revenue-badge" class="badge badge--revenue hidden">Incasso: € 0</span>
               </div>
             </div>
-            
             <div class="controls">
               {% if not viewer_mode %}
                 <button id="btn-session-start" class="btn btn--ctl">Start</button>
@@ -270,7 +239,6 @@
                 <span class="badge" style="background: #7c3aed; color: white;">Modalità Spettatore</span>
               {% endif %}
             </div>
-
             {% if not viewer_mode %}
             <div class="qr-corner">
               <button id="btn-show-qr" class="btn btn--qr" type="button" aria-label="Share QR" title="Share QR">QR</button>
@@ -279,11 +247,15 @@
           </section>
 
           <section class="card log-card">
+            <div class="led-container">
+                <svg class="led-svg" width="100%" height="100%">
+                    <rect class="led-rect" x="0" y="0" width="100%" height="100%" rx="16" ry="16" pathLength="100" />
+                </svg>
+            </div>
             <div class="log-header-row">
               <h3>Log live</h3>
               <button id="btn-session-notes" class="btn btn--small" data-tooltip="Scrivi note da consultare durante la revisione">Note</button>
             </div>
-
             <div class="log-head">
               <span>#</span>
               <span>Cover</span> <span>Brano</span>
@@ -300,18 +272,15 @@
           <h2>Review borderò</h2>
           <p class="subtitle">Controlla i brani rilevati live prima di generare il file SIAE.</p>
         </header>
-
         <div class="card review-card">
           <div class="review-header-row">
             <h3>Playlist della serata</h3>
             <button id="btn-review-notes" class="btn btn--small">Note</button>
           </div>
-
           <div class="review-notes">
             <h4>Note dalla sessione</h4>
             <p id="review-notes-view" class="review-notes-text">—</p>
           </div>
-
           <div class="table review-table">
             <div class="row row--head">
               <span>#</span>
@@ -319,9 +288,7 @@
               <span>Titolo</span>
               <span>Azioni</span>
             </div>
-
             <div id="review-rows" class="review-rows-body"></div>
-
             <template id="review-row-template">
               <div class="row">
                 <span class="review-index"></span>
@@ -336,7 +303,6 @@
               </div>
             </template>
           </div>
-
           <div class="actions">
             {% if not viewer_mode %}
               <button id="btn-undo" class="btn btn--small" disabled>Undo</button>
@@ -352,7 +318,8 @@
           <header class="royalties-header">
             <button id="btn-back-review" class="btn btn--small">Indietro</button>
             <h2 style="flex:1; text-align:center;">Ripartizione Royalties (Singolo Brano)</h2>
-            <div style="width: 80px;"></div> </header>
+            <div style="width: 80px;"></div> 
+          </header>
 
           <div class="royalties-details">
             <div class="detail-box detail-box--title">

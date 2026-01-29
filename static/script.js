@@ -1,13 +1,13 @@
 // --- STATO APP ---
 const state = {
   // Nuovi stati per i ruoli
-  role: null,           // "user" | "org" | "composer"
-  orgRevenue: 0,        // Incasso totale (solo per Org)
+  role: null,            // "user" | "org" | "composer"
+  orgRevenue: 0,         // Incasso totale (solo per Org)
   currentRoyaltySong: null, // Brano in visione per 24esimi
 
   // Stati originali
-  mode: null,           // "dj" | "band" | "concert"
-  route: "roles",       // Default ora è "roles" (Page 0)
+  mode: null,            // "dj" | "band" | "concert"
+  route: "roles",        // Default ora è "roles" (Page 0)
   concertArtist: "",
   bandArtist: "",
   notes: ""
@@ -355,9 +355,22 @@ async function pollPlaylistOnce() {
             pushLog({ id: track.id, index: track.order, title: track.title, composer: track.composer, artist: track.artist, cover: track.cover });
         }
       } else {
+        // AGGIORNAMENTO DINAMICO DEI DATI (ES: COMPOSITORE TROVATO)
+        if (song.composer && song.composer !== existing.composer) {
+            existing.composer = song.composer;
+            
+            // Aggiorno subito il DOM della riga corrispondente in Page 3
+            const rowEl = document.querySelector(`.log-row[data-id="${id}"] .col-composer`);
+            if (rowEl) rowEl.textContent = existing.composer;
+            
+            // Se è il brano corrente, aggiorno anche l'header
+            if (currentSongId === id) {
+                 setNow(existing.title, existing.composer);
+            }
+        }
+
         if (!existing.confirmed) {
             existing.title = song.title || existing.title;
-            existing.composer = song.composer || existing.composer;
             existing.artist = song.artist || existing.artist;
         }
         if (song.cover && song.cover !== existing.cover) existing.cover = song.cover;
@@ -403,6 +416,13 @@ async function sessionStart() {
   if (btnPause) btnPause.disabled = false;
   if (btnStop) btnStop.disabled = false;
 
+  // LED Animation Start
+  const led = $(".led-rect");
+  if(led) {
+      led.classList.remove("led-paused");
+      led.classList.add("led-active");
+  }
+
   if (!sessionTick) startSessionTimer();
   await startBackendRecognition();
   startPlaylistPolling();
@@ -416,6 +436,12 @@ async function sessionPause() {
   if (btnStart) btnStart.disabled = false;
   if (btnPause) btnPause.disabled = true;
   if (btnStop) btnStop.disabled = false;
+
+  // LED Animation Pause
+  const led = $(".led-rect");
+  if(led) {
+      led.classList.add("led-paused");
+  }
   
   pauseSessionTimer();
   await stopBackendRecognition();
@@ -430,6 +456,12 @@ async function sessionStop() {
   if (btnStart) btnStart.disabled = false;
   if (btnPause) btnPause.disabled = true;
   if (btnStop) btnStop.disabled = true;
+
+  // LED Animation Pause (Freeze on stop)
+  const led = $(".led-rect");
+  if(led) {
+      led.classList.add("led-paused");
+  }
 
   pauseSessionTimer();
   await stopBackendRecognition();
@@ -475,6 +507,12 @@ async function sessionReset() {
   if (btnStart) btnStart.disabled = false;
   if (btnPause) btnPause.disabled = true;
   if (btnStop) btnStop.disabled = true;
+
+  // LED Animation Reset (Fade Out)
+  const led = $(".led-rect");
+  if(led) {
+      led.classList.remove("led-active", "led-paused");
+  }
 }
 
 function renderReview() {
@@ -520,10 +558,10 @@ function renderReview() {
     inputTitle.onclick = unlockHandler;
 
     const btn24 = node.querySelector(".btn-24ths");
-    if (state.role === "org") {
-        btn24.classList.remove("hidden");
-        btn24.onclick = () => { openRoyaltiesView(song); };
-    }
+    
+    // FIX: Rimosso il check restrittivo (if state.role === 'org') per garantire che il pulsante sia sempre visibile in fase di test
+    btn24.classList.remove("hidden");
+    btn24.onclick = () => { openRoyaltiesView(song); };
 
     node.querySelector(".btn-confirm").addEventListener("click", (e) => {
         e.preventDefault();
@@ -800,6 +838,12 @@ function wireSessionButtons() {
   
   $("#btn-undo").onclick = (e) => { e.preventDefault(); undoLast(); };
   
+  // FIX: Aggiunto listener per il tasto INDIETRO nella scheda Royalties
+  const btnBackReview = $("#btn-back-review");
+  if(btnBackReview) {
+      btnBackReview.onclick = () => showView("#view-review");
+  }
+
   $("#btn-session-notes").onclick = () => openNotesModal("session");
   $("#btn-review-notes").onclick = () => openNotesModal("review");
   
@@ -905,8 +949,9 @@ function showConfirm(msg) {
 }
 
 // ============================================================================
-// ANIMAZIONE PALCO (JS PHYSICS - Page 1) - SVG Interaction
+// ANIMAZIONE PALCO (JS PHYSICS - Page 1 & Global)
 // ============================================================================
+// 1. LUCI PAGE 1 (Ruoli)
 const lightsState = [
     { 
         id: 'left', // User
@@ -949,9 +994,18 @@ const lightsState = [
     }
 ];
 
+// 2. GLOBAL LIGHTS (4 Angoli) - Modificati: +30% velocità
+const globalLightsState = [
+    { id: 'gl-beam-tl', vertex: { x: 0, y: 0 },       baseY: 800, baseX: 500,  amp: 120, phase: 0, speed: 0.52 },
+    { id: 'gl-beam-tr', vertex: { x: 1920, y: 0 },    baseY: 800, baseX: 1420, amp: 120, phase: 2, speed: 0.46 },
+    { id: 'gl-beam-bl', vertex: { x: 0, y: 1080 },    baseY: 280, baseX: 500,  amp: 100, phase: 1, speed: 0.40 },
+    { id: 'gl-beam-br', vertex: { x: 1920, y: 1080 }, baseY: 280, baseX: 1420, amp: 100, phase: 3, speed: 0.52 }
+];
+
 function animateStageLights() {
     const time = Date.now() * 0.00195;
 
+    // A. LUCI PAGE 1 (Role Selection)
     lightsState.forEach(light => {
         const beam = document.getElementById(`beam-${light.id}`);
         const spot = document.getElementById(`spot-${light.id}`);
@@ -960,14 +1014,11 @@ function animateStageLights() {
 
         if (!beam || !spot || !group) return;
 
-        // 1. Calcolo Target Ampiezza & Target Opacità basato su Hover
         let targetAmp = light.originalAmplitude;
-        let targetOp = (light.id === 'center') ? 1.0 : 0.7; // Default base
+        let targetOp = (light.id === 'center') ? 1.0 : 0.7; 
 
         if (hoveredRole) {
-            // Se c'è un hover attivo, TUTTI si fermano (targetAmp = 0)
             targetAmp = 0;
-
             if (hoveredRole === light.role) {
                 targetOp = (light.id === 'center') ? 1.0 : 0.7;
             } else {
@@ -975,25 +1026,20 @@ function animateStageLights() {
             }
         }
 
-        // 2. Interpolazione (Lerp) per movimento fluido
         light.currentAmp = lerp(light.currentAmp, targetAmp, 0.05);
         light.currentOp = lerp(light.currentOp, targetOp, 0.05);
 
-        // Applica Opacità al gruppo
         group.style.opacity = light.currentOp.toFixed(3);
 
-        // 3. Calcolo Posizione Fisica
         const sway = Math.sin(time * light.speed + light.phase);
         const offsetX = sway * light.currentAmp;
         
         const currentX = light.originalBaseX + offsetX;
         const currentRx = light.rx;
 
-        // Aggiorna cerchio a terra
         spot.setAttribute('cx', currentX);
         spot.setAttribute('rx', currentRx);
 
-        // 4. Costruisco il path del fascio
         const xLeft = currentX - currentRx;
         const xRight = currentX + currentRx;
         const curveDepth = 40; 
@@ -1002,6 +1048,25 @@ function animateStageLights() {
 
         beam.setAttribute('d', d);
         if(maskPath) maskPath.setAttribute('d', d);
+    });
+
+    // B. GLOBAL LIGHTS (4 Angoli) - Modificati: +25% larghezza (base width 190)
+    globalLightsState.forEach(gl => {
+        const beam = document.getElementById(gl.id);
+        if(!beam) return;
+
+        // Oscillazione
+        const sway = Math.sin(time * gl.speed + gl.phase);
+        const currentX = gl.baseX + (sway * gl.amp);
+        
+        // Costruzione Triangolo/Cono
+        // Vertex è all'angolo. La base si muove.
+        const width = 190; // Larghezza fascio aumentata (+25%)
+        const xLeft = currentX - width;
+        const xRight = currentX + width;
+        
+        const d = `M${gl.vertex.x},${gl.vertex.y} L${xLeft},${gl.baseY} L${xRight},${gl.baseY} Z`;
+        beam.setAttribute('d', d);
     });
 
     requestAnimationFrame(animateStageLights);
@@ -1014,7 +1079,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   wireSessionButtons();
 
-  // AVVIO ANIMAZIONE LUCI PAGE 1
+  // AVVIO ANIMAZIONE LUCI (Tutte)
   animateStageLights();
 
   if (isViewer) {

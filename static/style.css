@@ -69,19 +69,19 @@ body.no-scroll {
   left: 0;
   width: 100%;
   height: 100%;
-  z-index: 2; /* Sopra le luci globali */
+  z-index: 2; /* Sopra BG, Sotto Luci */
   background: rgba(11, 12, 16, 0.85);
   pointer-events: none;
 }
 
-/* === FARETTI GLOBALI 4 ANGOLI (Visibilità controllata da JS) === */
+/* === FARETTI GLOBALI 4 ANGOLI (Visibilità controllata da JS/CSS) === */
 #global-stage-lights {
   position: fixed;
   top: 0;
   left: 0;
   width: 100%;
   height: 100%;
-  z-index: 1; /* Sotto l'overlay */
+  z-index: 5; /* IMPORANTE: Sopra Overlay (2), Sotto App (10) */
   pointer-events: none;
   transition: opacity 0.6s ease;
 }
@@ -99,45 +99,6 @@ body[data-active-view="welcome"] #global-stage-lights {
 /* Visibili dalla terza pagina in poi */
 body:not([data-active-view="roles"]):not([data-active-view="welcome"]) #global-stage-lights {
   opacity: 1;
-}
-
-/* Animazioni Lente per i 4 faretti */
-.corner-light {
-  will-change: transform;
-}
-
-.corner-tl {
-  transform-origin: top left;
-  animation: cornerSwayTL 16s ease-in-out infinite alternate;
-}
-.corner-tr {
-  transform-origin: top right;
-  animation: cornerSwayTR 20s ease-in-out infinite alternate;
-}
-.corner-bl {
-  transform-origin: bottom left;
-  animation: cornerSwayBL 18s ease-in-out infinite alternate;
-}
-.corner-br {
-  transform-origin: bottom right;
-  animation: cornerSwayBR 22s ease-in-out infinite alternate;
-}
-
-@keyframes cornerSwayTL {
-  from { transform: rotate(-5deg); opacity: 0.6; }
-  to { transform: rotate(15deg); opacity: 0.8; }
-}
-@keyframes cornerSwayTR {
-  from { transform: rotate(5deg); opacity: 0.6; }
-  to { transform: rotate(-15deg); opacity: 0.8; }
-}
-@keyframes cornerSwayBL {
-  from { transform: rotate(-5deg); opacity: 0.6; }
-  to { transform: rotate(10deg); opacity: 0.8; }
-}
-@keyframes cornerSwayBR {
-  from { transform: rotate(5deg); opacity: 0.6; }
-  to { transform: rotate(-10deg); opacity: 0.8; }
 }
 
 .hidden { display: none !important; }
@@ -427,7 +388,52 @@ body:not([data-active-view="roles"]):not([data-active-view="welcome"]) #global-s
   border: 1px solid rgba(255, 255, 255, 0.15);
   border-radius: 16px;
   z-index: 20; /* Elevato per stare sopra le luci */
+  position: relative; /* Necessario per il LED assoluto */
 }
+
+/* === NUOVO EFFETTO LED BORDER === */
+.led-container {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 50;
+    overflow: hidden;
+    border-radius: 16px;
+}
+.led-svg {
+    width: 100%;
+    height: 100%;
+}
+.led-rect {
+    fill: none;
+    stroke: var(--primary); /* PRENDE IL COLORE DAL TEMA */
+    stroke-width: 4px;
+    /* 10 unità led, 90 unità vuoto (su 100 totali di pathLength) */
+    stroke-dasharray: 10 90; 
+    stroke-dashoffset: 0;
+    stroke-linecap: round;
+    filter: drop-shadow(0 0 5px var(--primary)); /* OMBRA COORDINATA */
+    opacity: 0; /* Invisibile di default */
+    transition: opacity 1s ease; /* Fade out di 1 secondo su reset */
+    transform-origin: center;
+}
+/* Animazione rotazione LED */
+.led-rect.led-active {
+    opacity: 1;
+    /* Durata aumentata a 6s per rallentare il movimento */
+    animation: led-spin 6s linear infinite;
+}
+.led-rect.led-paused {
+    animation-play-state: paused;
+}
+
+@keyframes led-spin {
+    to {
+        stroke-dashoffset: 100;
+    }
+}
+/* ================================= */
+
 
 .log-header-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px; padding-top: 4px; }
 .log-header-row h3 { margin: 0; }
@@ -472,6 +478,7 @@ input.inline { width: 100%; background: #0d1117; color: var(--text); border: 1px
 
 /* THEMES */
 /* === THEME DJ (Electric Aqua) === */
+#app.theme-dj { --primary: var(--c-cyan); } /* Ridefinisce la variabile globale per SVG */
 #app.theme-dj .btn--primary { background: var(--c-cyan); color: #000; }
 #app.theme-dj .row.row--confirmed input.inline { border-color: var(--c-cyan); }
 #app.theme-dj #btn-session-notes, #app.theme-dj #btn-review-notes { background: var(--c-cyan); color: #000; border: none; font-weight: 600; }
@@ -489,6 +496,7 @@ input.inline { width: 100%; background: #0d1117; color: var(--text); border: 1px
 }
 
 /* === THEME BAND (Light Green) === */
+#app.theme-band { --primary: var(--c-green); } /* Ridefinisce la variabile globale per SVG */
 #app.theme-band .btn--primary { background: var(--c-green); color: #021315; }
 #app.theme-band .row.row--confirmed input.inline { border-color: var(--c-green); }
 #app.theme-band #btn-session-notes, #app.theme-band #btn-review-notes { background: var(--c-green); color: #021315; border: none; font-weight: 600; }
@@ -506,6 +514,7 @@ input.inline { width: 100%; background: #0d1117; color: var(--text); border: 1px
 }
 
 /* === THEME CONCERT (Deep Pink) === */
+#app.theme-concert { --primary: var(--c-pink); } /* Ridefinisce la variabile globale per SVG */
 #app.theme-concert .btn--primary { background: var(--c-pink); color: #21021e; }
 #app.theme-concert .row.row--confirmed input.inline { border-color: var(--c-pink); }
 #app.theme-concert #btn-session-notes, #app.theme-concert #btn-review-notes { background: var(--c-pink); color: #21021e; border: none; font-weight: 600; }
