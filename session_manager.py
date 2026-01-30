@@ -87,35 +87,63 @@ class SessionManager:
         platform_patterns = r"(?i)\b(amazon\s+music|apple\s+music|spotify|deezer|youtube|vevo)\b.*"
         text = re.sub(platform_patterns, "", text)
 
-        # 2. Pulizia standard
-        text = re.sub(r"[\(\[].*?[\)\]]", "", text)
-        text = re.sub(r"(?i)\b(feat\.|ft\.|remix|edit|version|karaoke|live)\b.*", "", text)
+        # 2. Pulizia Parentesi (Tonde, Quadre, Graffe)
+        # Questo rimuove già cose come "(Live)" o "[Live 2024]"
+        text = re.sub(r"[\(\[\{].*?[\)\]\}]", "", text)
+
+        # 3. GESTIONE INTELLIGENTE "LIVE" (Il Fix per i Queen)
+        # Invece di tagliare ogni "live", tagliamo solo "Live at/in/from" o " - Live"
+        text = re.sub(r"(?i)\b(live\s+(at|in|from|on))\b.*", "", text) # Es. "Live at Wembley"
+        text = re.sub(r"(?i)\s-\s.*live.*", "", text)                 # Es. "Titolo - Live Version"
+
+        # 4. Pulizia "Sporcizia" generica (RIMOSSO "live" da qui)
+        # Nota: ho tolto 'live' dalla lista qui sotto per proteggere "Who Wants to Live Forever"
+        junk_patterns = r"(?i)\b(feat\.|ft\.|remix|edit|version|karaoke|performed by|originally by|aus|from|theme)\b.*"
+        text = re.sub(junk_patterns, "", text)
+
+        # 5. Normalizzazione Unicode
         text = unicodedata.normalize('NFD', text).encode('ascii', 'ignore').decode("utf-8")
         
-        # CORREZIONE QUI SOTTO: L'input deve essere 'text', non 'clean'
+        # 6. Rimozione caratteri non alfanumerici
         clean = re.sub(r"[^a-zA-Z0-9\s]", "", text) 
         
         return clean.strip().lower()
 
     def _are_songs_equivalent(self, new_s, existing_s):
-        # Versione ROBUSTA (quella che abbiamo corretto prima)
+        # 1. Normalizzazione stringhe
         tit_new = self._normalize_string(new_s['title'])
         tit_ex = self._normalize_string(existing_s['title'])
+        art_new = self._normalize_string(new_s['artist'])
+        art_ex = self._normalize_string(existing_s['artist'])
         
-        if tit_new == tit_ex: return True
-
-        similarity = SequenceMatcher(None, tit_new, tit_ex).ratio()
+        # Calcoliamo la somiglianza del titolo
+        title_similarity = SequenceMatcher(None, tit_new, tit_ex).ratio()
         
-        if similarity > 0.90: return True
-
-        if similarity > 0.80:
-            art_new = self._normalize_string(new_s['artist'])
-            art_ex = self._normalize_string(existing_s['artist'])
-            
+        # --- FIX: IL TITOLO DA SOLO NON BASTA ---
+        # Se i titoli sono identici (o molto simili), dobbiamo PER FORZA controllare l'artista
+        if title_similarity > 0.90:
+            # Caso 1: Artisti identici o uno contenuto nell'altro (es. "Queen" vs "Queen & Bowie")
             if art_new == art_ex or art_new in art_ex or art_ex in art_new:
+                return True
+            
+            # Caso 2: Artisti simili (es. "Guns N Roses" vs "Guns N' Roses")
+            art_similarity = SequenceMatcher(None, art_new, art_ex).ratio()
+            if art_similarity > 0.60: # Soglia tollerante per l'artista
+                return True
+            
+            # Se siamo qui, i titoli sono uguali ma gli artisti sono DIVERSI.
+            # Esempio: "Photograph" (Sheeran) vs "Photograph" (Def Leppard) -> RETURN FALSE
+            return False
+
+        # --- LOGICA FUZZY PER TITOLI LEGGERMENTE DIVERSI ---
+        # Se il titolo è simile (es. > 80% ma < 90%), richiediamo una corrispondenza artista più forte
+        if title_similarity > 0.80:
+            if art_new == art_ex or art_new in art_ex or art_ex in art_new:
+                # Controllo extra: evitiamo falsi positivi se i titoli differiscono molto in lunghezza
                 len_diff = abs(len(tit_new) - len(tit_ex))
                 if len_diff > 4: return False
                 return True
+                
         return False
 
     def _is_better_match(self, new_artist, old_artist, target_artist):
@@ -138,40 +166,100 @@ class SessionManager:
             artist = song_data['artist']
             
             candidate_song = {
-                'title': title, 'artist': artist,
-                'duration_ms': song_data.get('duration_ms', 0)
+                'title': title, 
+                'artist': artist,
+                'duration_ms': song_data.get('duration_ms', 0),
+                'cover': song_data.get('cover')
             }
 
-            # Check duplicati (su cache locale per velocità)
+            # === [LOGICA A CASCATA: BIAS -> POPOLARITÀ] ===
+            if self.spotify_bot:
+                try:
+                    # Pulizia preliminare del titolo
+                    clean_title_base = re.sub(r"[\(\[].*?[\)\]]", "", title).strip()
+                    clean_title_base = re.sub(r"(?i)\b(live\s+(at|in|from|on))\b.*", "", clean_title_base)
+                    clean_title_base = re.sub(r"(?i)\s-\s.*live.*", "", clean_title_base)
+                    clean_title_base = re.sub(r"(?i)\b(feat\.|ft\.|remix|edit|version)\b.*", "", clean_title_base).strip()
+
+                    # Flag per capire se abbiamo risolto con il Bias
+                    bias_resolved = False
+
+                    # --- STEP 1: TENTATIVO BIAS ARTIST (Es. Beatles) ---
+                    if target_artist:
+                        t_norm = self._normalize_string(target_artist)
+                        a_norm = self._normalize_string(artist)
+                        
+                        # Se l'artista rilevato NON è già il target
+                        if t_norm not in a_norm and a_norm not in t_norm:
+                            print(f"🕵️ Bias Attivo: Controllo se '{clean_title_base}' è di {target_artist}...")
+                            match_info = self.spotify_bot.search_specific_version(clean_title_base, target_artist)
+                            
+                            if match_info:
+                                new_art, new_cov = match_info
+                                
+                                # === FIX CRUCIALE: VALIDAZIONE NOME ARTISTA ===
+                                # Se Spotify ci restituisce "David Arnold" cercando "The Beatles",
+                                # dobbiamo RIFIUTARE lo swap e passare allo Step 2.
+                                new_art_norm = self._normalize_string(new_art)
+                                
+                                # Controllo permissivo: 'thebeatles' è contenuto in 'new_art'?
+                                # Oppure 'new_art' è contenuto in 'thebeatles'?
+                                if t_norm in new_art_norm or new_art_norm in t_norm:
+                                    print(f"🔄 [Bias Swap] Sostituisco {artist} -> {new_art}")
+                                    artist = new_art
+                                    title = clean_title_base 
+                                    candidate_song['artist'] = new_art
+                                    candidate_song['title'] = clean_title_base
+                                    if new_cov:
+                                        candidate_song['cover'] = new_cov
+                                        song_data['cover'] = new_cov
+                                    
+                                    bias_resolved = True 
+                                else:
+                                    # Qui intercettiamo il "Falso Positivo" (es. Tribute Band, David Arnold, ecc.)
+                                    print(f"⚠️ [Bias Reject] Spotify ha proposto '{new_art}' ma cercavo '{target_artist}'. Passo al Fallback.")
+                                    bias_resolved = False 
+                        else:
+                            # L'artista rilevato era già quello giusto
+                            bias_resolved = True
+
+                    # --- STEP 2: FALLBACK POPOLARITÀ (Es. John Lennon) ---
+                    # Eseguiamo questo solo se il Bias NON ha risolto nulla
+                    if not bias_resolved:
+                        # Cerchiamo se esiste una versione "originale" molto più famosa
+                        # (Utile per Imagine suonata da una tribute band dei Beatles)
+                        better_version = self.spotify_bot.get_most_popular_version(title, artist)
+                        
+                        if better_version:
+                            new_artist, new_cover, popularity = better_version
+                            print(f"🚀 [Pop Swap] Fallback: {artist} -> {new_artist} (Pop: {popularity})")
+                            
+                            artist = new_artist
+                            candidate_song['artist'] = new_artist
+                            candidate_song['original_artist'] = new_artist # Traccia per debug
+                            candidate_song['title'] = clean_title_base 
+                            title = clean_title_base
+
+                            if new_cover:
+                                candidate_song['cover'] = new_cover
+                                song_data['cover'] = new_cover 
+                            
+                except Exception as e:
+                    print(f"⚠️ Errore Smart Fix Cascata: {e}")
+            # ====================================================
+
+            # Check duplicati (Invariato)
             for existing_song in self.playlist[-15:]:
                 if self._are_songs_equivalent(candidate_song, existing_song):
-                    # Smart Upgrade
-                    if self._is_better_match(artist, existing_song['artist'], target_artist):
-                        print(f"🔄 Smart Upgrade: '{existing_song['artist']}' -> '{artist}'")
-                        existing_song.update({
-                            'artist': artist,
-                            'album': song_data.get('album', existing_song['album']),
-                            'score': song_data.get('score', existing_song['score']),
-                            'type': song_data.get('type', existing_song['type']),
-                            'isrc': song_data.get('isrc'),
-                            'upc': song_data.get('upc')
-                        })
-                        if song_data.get('cover'): existing_song['cover'] = song_data.get('cover')
-                        
-                        # Aggiorniamo Cloud e Cache
-                        self._update_full_song_in_db(existing_song)
-                        
-                        existing_song['composer'] = "⏳ Aggiornamento..."
-                        threading.Thread(target=self._background_enrichment, args=(existing_song, target_artist), daemon=True).start()
-                        return {"added": True, "updated": True, "song": existing_song}
-                    
+                    print(f"🔄 Duplicato rilevato (Smart): {candidate_song['title']} - {candidate_song['artist']}")
                     return {"added": False, "reason": "Duplicate", "song": existing_song}
 
+            # ... (Resto del codice invariato fino alla fine) ...
+            
             # Nuovo Inserimento
             track_key = f"{title} - {artist}".lower()
             cached_entry = self.known_songs_cache.get(track_key)
             
-            # Calcolo ID progressivo (basato su lunghezza playlist locale attuale)
             next_id = len(self.playlist) + 1
             
             if cached_entry:
@@ -204,7 +292,7 @@ class SessionManager:
                 "type": song_data.get('type', 'Original'),
                 "isrc": isrc, "upc": upc, "cover": cover_url,
                 "_raw_isrc": isrc, "_raw_upc": upc, "_raw_meta": raw_meta_package,
-                "confirmed": True # Default true per visualizzazione
+                "confirmed": True 
             }
 
             self.playlist.append(new_entry)
@@ -213,7 +301,7 @@ class SessionManager:
             if status_enrichment == "Pending":
                 threading.Thread(target=self._background_enrichment, args=(new_entry, target_artist), daemon=True).start()
 
-            print(f"✅ Aggiunto: {title}")
+            print(f"✅ Aggiunto: {title} - {artist}")
             return {"added": True, "song": new_entry}
 
     # --- THREAD DI ARRICCHIMENTO ---
@@ -224,39 +312,7 @@ class SessionManager:
         final_cover = entry.get('cover') 
         success = False
 
-        # === [NUOVO] STEP 0: CANONICALIZZAZIONE (Solo in Generic Mode) ===
-        # Se NON c'è un target_artist (modalità generica) e abbiamo Spotify attivo
-        if not target_artist and self.spotify_bot:
-            print(f"✨ [Smart Fix] Controllo se esiste una versione originale più famosa per '{entry['title']}'...")
-            try:
-                better_version = self.spotify_bot.get_most_popular_version(entry['title'], entry['artist'])
-                
-                if better_version:
-                    new_artist, new_cover, popularity = better_version
-                    print(f"🚀 [Smart Fix] Sostituisco '{entry['artist']}' -> '{new_artist}' (Popolarità: {popularity})")
-                    
-                    # Aggiorniamo l'oggetto entry in memoria
-                    entry['artist'] = new_artist
-                    entry['original_artist'] = new_artist # Aggiorniamo anche per il report
-                    
-                    # Se abbiamo trovato una cover migliore, usiamola
-                    if new_cover: 
-                        entry['cover'] = new_cover
-                        final_cover = new_cover
-
-                    # Aggiorniamo subito il DB/UI affinché l'utente veda l'artista corretto
-                    self._update_single_field(entry['id'], 'artist', new_artist)
-                    self._update_single_field(entry['id'], 'cover', final_cover)
-                    
-                    # Aggiorniamo anche la cache locale per evitare che venga ri-aggiunto quello sbagliato
-                    # Nota: richiede cautela con i thread, ma per ora aggiorniamo il record puntato
-                    target_song_ptr = next((s for s in self.playlist if s['id'] == entry['id']), None)
-                    if target_song_ptr:
-                        target_song_ptr['artist'] = new_artist
-                        target_song_ptr['cover'] = final_cover
-            except Exception as e:
-                print(f"⚠️ Errore Smart Fix: {e}")
-        # ================================================================
+        # (RIMOSSO STEP 0: SMART FIX - ORA È IN ADD_SONG)
 
         # 1. SPOTIFY HD (Se non l'abbiamo già trovata sopra)
         if self.spotify_bot and not final_cover:

@@ -90,12 +90,12 @@ class SpotifyManager:
         import re
         from difflib import SequenceMatcher
 
-        # Funzione helper interna per pulire i titoli
+        # Funzione helper interna per pulire i titoli per il confronto
         def clean_spotify_title(t):
-            # Rimuove parentesi tonde/quadre e contenuto
+            # Rimuove parentesi e contenuto
             t = re.sub(r"[\(\[].*?[\)\]]", "", t)
-            # Rimuove trattini seguiti da parole chiave comuni nei titoli Spotify
-            t = re.sub(r"(?i)\s-\s.*(remaster|mix|edit|version|live|single).*", "", t)
+            # Rimuove trattini seguiti da qualsiasi cosa (es. " - Remaster 2012")
+            t = re.sub(r"\s-\s.*", "", t)
             return t.strip().lower()
 
         clean_search_title = clean_spotify_title(title)
@@ -103,14 +103,32 @@ class SpotifyManager:
 
         try:
             # 1. Cerchiamo la versione MIGLIORE/PIÙ FAMOSA in assoluto
-            results = self.sp.search(q=f"track:{clean_search_title}", type='track', limit=5)
+            # Aumentiamo il limit a 10 per essere sicuri di pescare l'originale se è un po' giù
+            results = self.sp.search(q=f"track:{clean_search_title}", type='track', limit=10)
             tracks = results['tracks']['items']
             
             if not tracks: return None
 
-            best_match = tracks[0]
+            # === [MODIFICA: FILTRO RIGOROSO SUL TITOLO] ===
+            # Prima di guardare la popolarità, scartiamo i titoli che non c'entrano niente.
+            # Es. Cerco "Rock and Roll" -> Scarto "Rock and Roll All Nite" (KISS)
+            
+            valid_tracks = []
+            for t in tracks:
+                found_clean = clean_spotify_title(t['name'])
+                # Ratio > 0.85 significa che i titoli devono essere quasi identici
+                if SequenceMatcher(None, clean_search_title, found_clean).ratio() > 0.85:
+                    valid_tracks.append(t)
+            
+            if not valid_tracks:
+                return None
+
+            # Ora prendiamo il più popolare solo tra quelli VALIDI
+            best_match = max(valid_tracks, key=lambda x: x['popularity'])
+            # ===============================================
+            
             best_artist = best_match['artists'][0]['name']
-            best_popularity = best_match['popularity'] # Popolarità Brano (0-100)
+            best_popularity = best_match['popularity']
             
             # 2. Recuperiamo la popolarità della versione CORRENTE (Rilevata)
             current_popularity = 0
@@ -134,6 +152,10 @@ class SpotifyManager:
                         current_popularity = curr_art_res['artists']['items'][0]['popularity']
             except: 
                 pass
+
+            if current_popularity >= 70:
+                print(f"     🛡️ [Smart Fix] Il brano è già una Hit ({current_popularity}). Nessuna sostituzione.")
+                return None
 
             print(f"     📊 [Pop Check] {comparison_mode}: '{current_artist}' ({current_popularity}) vs Best: '{best_artist}' ({best_popularity})")
 
@@ -159,4 +181,67 @@ class SpotifyManager:
         except Exception as e:
             print(f"⚠️ Errore check popolarità: {e}")
         
+        return None
+    
+    def search_specific_version(self, title, target_artist):
+        """
+        Cerca se esiste una versione specifica del brano fatta dall'artista target.
+        Gestisce i suffissi 'Remastered', 'Live', ecc.
+        """
+        if not self.sp: return None
+        
+        import re
+        from difflib import SequenceMatcher
+
+        # 1. Pulizia titolo cercato (quello che arriva da ACRCloud)
+        # Rimuove parentesi e diciture comuni
+        clean_search = re.sub(r"[\(\[].*?[\)\]]", "", title)
+        clean_search = re.sub(r"(?i)\b(feat\.|ft\.|remix|edit|version|live)\b.*", "", clean_search).strip().lower()
+        
+        # Query: cerchiamo titolo e artista
+        query = f"track:{clean_search} artist:{target_artist}"
+        
+        try:
+            # Alziamo il limit a 5 per evitare che il primo risultato sia una "Karaoke Version"
+            results = self.sp.search(q=query, type='track', limit=5)
+            items = results['tracks']['items']
+            
+            if not items: return None
+
+            for track in items:
+                # 2. Pulizia titolo TROVATO su Spotify (Cruciale per i Beatles!)
+                found_name = track['name']
+                
+                # Rimuove tutto ciò che è tra parentesi
+                found_clean = re.sub(r"[\(\[].*?[\)\]]", "", found_name)
+                # Rimuove trattini seguiti da 'Remaster', 'Live', '2009', ecc.
+                # Es: "Twist and Shout - Remastered 2009" -> "Twist and Shout"
+                found_clean = re.sub(r"\s-\s.*", "", found_clean) 
+                found_clean = found_clean.strip().lower()
+
+                # 3. Confronto di Somiglianza
+                similarity = SequenceMatcher(None, clean_search, found_clean).ratio()
+                
+                # Soglia: Se il titolo pulito è identico o molto simile (>0.85)
+                # Oppure se uno è contenuto interamente nell'altro
+                is_match = False
+                if similarity > 0.85:
+                    is_match = True
+                elif (clean_search in found_clean) or (found_clean in clean_search):
+                    # Controllo lunghezza per evitare match parziali stupidi (es "One" in "One Vision")
+                    if abs(len(clean_search) - len(found_clean)) < 5:
+                        is_match = True
+                
+                if is_match:
+                    # Abbiamo trovato la versione del Target Artist!
+                    canonical_artist = track['artists'][0]['name']
+                    cover = None
+                    if track['album']['images']:
+                        cover = track['album']['images'][0]['url']
+                    
+                    return canonical_artist, cover
+                    
+        except Exception as e:
+            print(f"⚠️ Errore ricerca specifica Spotify: {e}")
+            
         return None
