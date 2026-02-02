@@ -345,16 +345,22 @@ class SessionManager:
             target_song = next((s for s in self.playlist if s['id'] == entry['id']), None)
             
             if target_song:
+                # --- MODIFICA INIZIA QUI ---
+                # Se abbiamo trovato un compositore, spesso i motori ci hanno dato anche info sull'album
+                # (nota: richiederebbe che MetadataManager ritorni anche l'album, ma per ora fixiamo almeno il salvataggio)
+                
+                # Aggiorniamo il compositore
                 target_song['composer'] = found_composer
                 self._update_single_field(target_song['id'], 'composer', found_composer)
                 
+                # Aggiorniamo la cover
                 if final_cover and final_cover != target_song.get('cover'):
                     target_song['cover'] = final_cover
                     self._update_single_field(target_song['id'], 'cover', final_cover)
-
-                if success and found_composer not in ["Sconosciuto", "Errore Conn."]:
-                    track_key = f"{target_song['title']} - {target_song['artist']}".lower()
-                    self.known_songs_cache[track_key] = target_song.copy()
+                
+                # FIX SUGGERITO: Se l'album è sconosciuto ma abbiamo trovato dati su Spotify/iTunes,
+                # dovremmo idealmente aggiornarlo.
+                # Per ora, assicurati che la struttura dati sia coerente.
 
     # --- METODI UTILITY ---
     def get_playlist(self):

@@ -24,6 +24,7 @@ from concurrent.futures import ThreadPoolExecutor
 # Manteniamo Spotify e Setlist come richiesto per il contesto
 from spotify_manager import SpotifyManager
 from setlist_manager import SetlistManager
+from lyrics_manager import LyricsManager
 
 load_dotenv()
 
@@ -76,62 +77,67 @@ class AudioManager:
 
         self.predicted_next_song = None
 
+        # [NUOVO] Variabile per contare i cicli (serve per non lanciare l'AI sempre)
+        self.cycle_counter = 0
+
         # --- 5. INIZIALIZZAZIONE BOT ---
         print("🤖 Inizializzazione Bot...")
-        self.executor = ThreadPoolExecutor(max_workers=3)
+        self.executor = ThreadPoolExecutor(max_workers=4)
         
         # QUI MANTENIAMO LA LOGICA DI CONTESTO (Setlist + Spotify)
         self.setlist_bot = SetlistManager()
         self.spotify_bot = SpotifyManager()
 
+        # [NUOVO] Aggiungi il bot dei testi
+        self.lyrics_bot = LyricsManager()
+
         # RIMOSSO: self.lyrics_bot = LyricsRecognizer() (Whisper eliminato)
 
-        print("🎤 Audio Manager Pronto. Modalità: Solo ACRCloud (No Whisper).")
+        print("🎤 Audio Manager Pronto. Modalità: Ibrida (ACRCloud + Scribe).")
 
     def update_target_artist(self, artist_name):
         """
-        Scarica il contesto completo (Setlist.fm + Spotify) per l'artista target.
-        Serve per aumentare la precisione di ACRCloud (Bias).
+        Scarica il contesto completo (Setlist.fm + Spotify + Lyrics) per l'artista target.
         """
         # 1. Aggiornamento immediato Bias e Reset stato
         self.target_artist_bias = artist_name
         self.context_ready = False 
-        self.predicted_next_song = None  # Reset del "Veggente"
+        self.predicted_next_song = None
         
-        # === FIX: PULIZIA IMMEDIATA DELLA CACHE PRECEDENTE ===
-        # Resettiamo le liste per evitare che i brani dell'artista precedente
-        # rimangano attivi mentre scarichiamo quelli nuovi (o se non ne troviamo).
+        # === TUE RIGHE DI PULIZIA (MANTENUTE) ===
         self.setlist_bot.cached_songs = []
         self.setlist_bot.concert_sequences = []
         print(f"🧹 [Context] Cache precedente svuotata.")
-        # ======================================================
+        # ========================================
 
         if artist_name:
             def fetch_full_context():
                 print(f"\n🎸 [Context] Avvio scansione completa per: {artist_name}")
                 
-                # 1. SETLIST.FM
+                # 1. SETLIST.FM (TUO)
                 songs_setlist = self.setlist_bot.get_likely_songs(artist_name)
                 
-                # 2. SPOTIFY
+                # 2. SPOTIFY (TUO)
                 songs_spotify = self.spotify_bot.get_artist_complete_data(artist_name)
                 
-                # 3. FUSIONE
+                # 3. FUSIONE (TUO)
                 merged_songs = set(songs_setlist + songs_spotify)
                 
                 if merged_songs:
                     self.setlist_bot.cached_songs = list(merged_songs)
                     print(f"✅ [Context] White List pronta: {len(merged_songs)} brani unici caricati.")
                 else:
-                    # Se non troviamo nulla, la lista rimane vuota (grazie al reset sopra)
                     print("⚠️ [Context] Nessun brano trovato su nessuna piattaforma.")
+                
+                # === [NUOVO] 4. SCARICA TESTI PER CONFRONTO LOCALE (DEL COLLEGA) ===
+                # Questo permette a Scribe di sapere quali parole cercare
+                self.lyrics_bot.update_artist_context(artist_name)
+                # ===================================================================
                 
                 self.context_ready = True
 
             self.executor.submit(fetch_full_context)
         else:
-            # Se artist_name è None o vuoto (modalità generica), 
-            # abbiamo già pulito la cache all'inizio, quindi siamo a posto.
             print("⚪ [Context] Nessun artista target. Modalità generica attiva.")
 
     def _audio_callback(self, indata, frames, time, status):
@@ -294,8 +300,7 @@ class AudioManager:
 
     def _process_window(self):
         """
-        Processa il buffer audio corrente.
-        Logica Semplificata: Solo ACRCloud. Whisper è stato rimosso.
+        Processa il buffer audio corrente con Logica Ibrida (ACR + Scribe).
         """
         # 1. ACQUISIZIONE LOCK
         if not self.upload_lock.acquire(blocking=False):
@@ -321,35 +326,100 @@ class AudioManager:
                 num_samples = int(len(processed_audio) * TARGET_RATE / self.sample_rate)
                 final_audio = signal.resample(processed_audio, num_samples).astype(np.int16)
                 write_rate = TARGET_RATE
-                status_msg = f"📡 Analisi [LowQ - {self.overlap_interval}s]..."
             else:
                 final_audio = processed_audio
                 write_rate = self.sample_rate
-                status_msg = f"📡 Analisi [HighQ - {self.overlap_interval}s]..."
 
             wav_buffer = io.BytesIO()
             wav.write(wav_buffer, write_rate, final_audio)
             wav_buffer.seek(0)
             
+            # --- LOGICA PARALLELA (INTEGRAZIONE COLLEGA) ---
+            self.cycle_counter += 1
+            # Esegui Scribe solo se c'è un artista target E siamo ogni 3 cicli (per performance)
+            run_scribe = (self.target_artist_bias is not None) and (self.cycle_counter % 3 == 0)
+
+            status_msg = f"📡 Analisi [ACR"
+            if run_scribe: status_msg += " + SCRIBE"
+            status_msg += f"] ({self.overlap_interval}s)..."
             print(status_msg)
 
-            # ==========================================================
-            # LOGICA ACRCLOUD (UNICA RIMASTA)
-            # ==========================================================
-            
-            # 1. Chiamata ACRCloud
+            # 1. Lancia ACRCloud
             future_acr = self.executor.submit(self._call_acr_api, wav_buffer, self.target_artist_bias)
+            
+            # 2. Lancia Scribe (se necessario)
+            future_scribe = None
+            if run_scribe:
+                scribe_buffer = io.BytesIO(wav_buffer.getvalue())
+                future_scribe = self.executor.submit(self.lyrics_bot.transcribe_and_match, scribe_buffer)
+
+            # Risultati
             acr_result = future_acr.result() 
-
+            scribe_result = future_scribe.result() if future_scribe else None
+            
             final_track = None
-
-            # 2. Analisi Risultato
+            is_fast_track = False 
+            
+            # Recupero miglior candidato ACR
+            acr_best = None
+            acr_score = 0
+            is_acr_bias = False
+            
             if acr_result.get("status") == "multiple_results":
-                best_acr = acr_result["tracks"][0]
-                final_track = best_acr
-                print(f"🔊 [ACR WIN] Match Trovato: {best_acr['title']} ({best_acr['score']}%)")
+                acr_best = acr_result["tracks"][0]
+                acr_score = acr_best.get("score", 0)
+                # Verifica se ACR ha trovato l'artista bias
+                if self.target_artist_bias:
+                    bias_norm = self._normalize_for_match(self.target_artist_bias)
+                    found_art = self._normalize_for_match(self._get_artist_name(acr_best))
+                    if bias_norm in found_art or found_art in bias_norm:
+                        is_acr_bias = True
 
-            # NOTA: Qui c'era il fallback su Whisper. È stato rimosso come richiesto.
+            scribe_score = scribe_result.get("score", 0) if scribe_result else 0
+
+            # ========================================================
+            # LOGICA DI ARBITRAGGIO PROTETTA
+            # ========================================================
+
+            # 1. FAST TRACK (Conferma Reciproca)
+            if scribe_result and acr_best:
+                if scribe_score > 75 and acr_score > 98:
+                    if self._are_tracks_equivalent(scribe_result, acr_best):
+                        print(f"⚡ [FAST TRACK] Match Assoluto! Scribe ({scribe_score}%) + ACR ({acr_score}%)")
+                        final_track = scribe_result
+                        final_track["external_metadata"] = acr_best.get("external_metadata")
+                        final_track["cover"] = acr_best.get("cover")
+                        is_fast_track = True
+
+            # 2. VALUTAZIONE SCRIBE vs ACR
+            if not final_track and scribe_result:
+                
+                # Caso A: Scribe è altissimo (>85%). Vince quasi sempre.
+                if scribe_score > 85:
+                      print(f"🥇 [SCRIBE WIN] Testo Dominante: {scribe_result['title']} ({scribe_score}%)")
+                      final_track = scribe_result
+                
+                # Caso B: Scribe è buono (>65%), MA bisogna controllare ACR
+                elif scribe_score > 65:
+                    
+                    # PROTEZIONE: Se ACR è forte (>80%) E Bias -> VINCE ACR (Non sovrascrivere!)
+                    if acr_best and acr_score > 80 and is_acr_bias:
+                         print(f"🛡️ [ACR PROTECTED] Scribe buono ({scribe_score}%) ma ACR solido sul Bias ({acr_score}%). Tengo ACR.")
+                         final_track = acr_best
+                    
+                    # Se invece ACR è debole o ha sbagliato artista -> VINCE SCRIBE
+                    else:
+                        print(f"🥇 [SCRIBE WIN] Scribe ({scribe_score}%) meglio di ACR incerto.")
+                        final_track = scribe_result
+                        if acr_best and self._are_tracks_equivalent(scribe_result, acr_best):
+                            final_track["external_metadata"] = acr_best.get("external_metadata")
+                            final_track["cover"] = acr_best.get("cover")
+
+            # 3. ACR FALLBACK (Se Scribe non ha vinto o non c'era)
+            if not final_track and acr_best:
+                if not scribe_result or scribe_score <= 65:
+                      print(f"🔊 [ACR WIN] Match Audio Standard: {acr_best['title']} ({acr_score}%)")
+                      final_track = acr_best
 
             # --- INVIO DATI E STABILITÀ ---
             if final_track:
@@ -359,6 +429,18 @@ class AudioManager:
                     return
 
                 display_title = self._clean_title_for_display(final_track["title"])
+                
+                if is_fast_track:
+                      if self.result_callback:
+                        final_data = final_track.copy()
+                        final_data["title"] = display_title
+                        final_data["artist"] = self._get_artist_name(final_track)
+                        # Callback diretta senza buffer storico
+                        self.result_callback(final_data, target_artist=self.target_artist_bias)
+                        self.history_buffer.clear()
+                        # Qui aggiorniamo anche il Veggente (tua logica originale mantenuta implicitamente se c'è nel callback)
+                        return
+
                 current_obj = {
                     "title": final_track["title"],
                     "artist": self._get_artist_name(final_track),
@@ -370,17 +452,20 @@ class AudioManager:
                 for historical_item in self.history_buffer:
                     if self._are_tracks_equivalent(current_obj, historical_item):
                         stability_count += 1
+                
+                # Se arriva da Scribe, basta 1 conferma (è più lento), se ACR servono 2
+                is_from_scribe = final_track.get("type") == "Lyrics Match"
+                threshold = 1 if is_from_scribe else 2
 
-                if stability_count >= 2:
-                    print(f"🛡️ Conferma stabilità ({stability_count}/10): {display_title}")
+                if stability_count >= threshold:
+                    print(f"🛡️ Conferma stabilità ({stability_count}/{threshold}): {display_title}")
                     if self.result_callback:
                         final_data = final_track.copy()
                         final_data["title"] = display_title
                         final_data["artist"] = self._get_artist_name(final_track)
                         self.result_callback(final_data, target_artist=self.target_artist_bias)
                         
-                        # ### AGGIORNA IL VEGGENTE (MANTENUTO) ###
-                        # Usa SetlistManager per predire la prossima canzone basandosi sul titolo trovato
+                        # ### AGGIORNA IL VEGGENTE (MANTENUTO DALLA TUA VERSIONE) ###
                         clean_title_pred = self._clean_title_for_display(final_track['title'])
                         next_prediction = self.setlist_bot.predict_next(clean_title_pred)
                         if next_prediction:
@@ -410,6 +495,8 @@ class AudioManager:
         self.history_buffer.clear()
         self.low_quality_mode = False
         self.overlap_interval = 6
+
+        self.cycle_counter = 0
 
         self.stream = sd.InputStream(
             samplerate=self.sample_rate, channels=1,
