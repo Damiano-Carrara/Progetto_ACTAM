@@ -195,8 +195,7 @@ class MetadataManager:
                     self.genius_token, 
                     verbose=False,
                     sleep_time=0.5,
-                    retries=1,
-                    timeout=5
+                    retries=3
                 ) 
             
             clean_t = title.split("(")[0].strip()
