@@ -190,8 +190,13 @@ class MetadataManager:
         try:
             if not self.genius_token: return None
             if self.genius is None:
-                self.genius = lyricsgenius.Genius(self.genius_token)
-                self.genius.verbose = False 
+                # Aggiungi anche qui sleep_time e retries
+                self.genius = lyricsgenius.Genius(
+                    self.genius_token, 
+                    verbose=False,
+                    sleep_time=1.0,
+                    retries=3
+                ) 
             
             clean_t = title.split("(")[0].strip()
             song = self.genius.search_song(clean_t, artist)
