@@ -4,12 +4,12 @@ import re
 import lyricsgenius
 import io
 import unicodedata
-import threading
-from difflib import SequenceMatcher
+import time
+import random
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dotenv import load_dotenv
 from collections import Counter
 from langdetect import detect, LangDetectException
-
 from spotify_manager import SpotifyManager
 
 load_dotenv()
@@ -20,13 +20,13 @@ class LyricsManager:
         self.elevenlabs_key = os.getenv("ELEVENLABS_API_KEY")
         
         if self.genius_token:
-            # --- MODIFICA 1: OTTIMIZZAZIONE VELOCITÀ ---
+            # CONFIGURAZIONE TURBO
             self.genius = lyricsgenius.Genius(
                 self.genius_token, 
                 verbose=False,
-                sleep_time=0.5,  # Scendiamo a 0.5s (molto più veloce, ma ancora sicuro)
-                retries=2,       # Riprova 2 volte (bastano)
-                timeout=10       # Timeout ridotto a 10s per non bloccarsi troppo sui fallimenti
+                sleep_time=0.0,  # ZERO attesa tra le chiamate (l'hotspot è già lento)
+                retries=1,       
+                timeout=5        
             )
             self.genius.remove_section_headers = True 
         else:
@@ -34,16 +34,15 @@ class LyricsManager:
             print("⚠️ [Lyrics] GENIUS_ACCESS_TOKEN mancante nel .env")
 
         self.spotify_bot = SpotifyManager()
-        
         self.lyrics_cache = {}
         self.titles_map = {} 
         self.current_artist = None
         self.detected_language_code = None
         
+        # 4 WORKERS: Osiamo di più. Se ti bloccano, usa modalità aereo ON/OFF.
+        self.executor = ThreadPoolExecutor(max_workers=4)
+
     def update_artist_context(self, artist_name):
-        """
-        Scarica titoli e testi in background.
-        """
         if not artist_name or artist_name == self.current_artist:
             return
         
@@ -53,60 +52,82 @@ class LyricsManager:
         self.detected_language_code = None 
         
         print(f"📖 [Lyrics] Analisi artista: {artist_name}...")
-        
-        t = threading.Thread(target=self._sync_lyrics_task, args=(artist_name,))
-        t.daemon = True 
-        t.start()
+        self.executor.submit(self._async_lyrics_flow, artist_name)
 
-    def _sync_lyrics_task(self, artist_name):
+    def _async_lyrics_flow(self, artist_name):
+        start_time = time.time() # CRONOMETRO INIZIO
         try:
             # 1. Recupero titoli da Spotify
+            print(f"    ⏳ [00s] Contatto Spotify...")
             all_songs = self.spotify_bot.get_artist_complete_data(artist_name)
             
+            spotify_time = time.time() - start_time
+            print(f"    ✅ [{spotify_time:.1f}s] Spotify: Trovati {len(all_songs)} brani.")
+
             if not all_songs:
                 print(f"⚠️ [Lyrics] Nessun brano su Spotify. Provo fallback Genius.")
                 self._fallback_genius_search(artist_name)
                 return
 
-            # --- MODIFICA 2: LIMITIAMO IL NUMERO DI BRANI ---
-            # Per un concerto live, scaricare >100 brani è inutile e rischioso.
-            # Prendiamo solo i primi 40 (solitamente i più popolari/recenti).
+            # Limite 40 brani
             limit = 40
             if len(all_songs) > limit:
-                print(f"✂️ [Lyrics] Limito analisi ai primi {limit} brani più rilevanti (su {len(all_songs)} totali).")
                 target_songs = all_songs[:limit]
             else:
                 target_songs = all_songs
 
-            # RILEVAMENTO LINGUA
+            # Rilevamento Lingua
             self.detected_language_code = self._detect_dominant_language(target_songs)
-            print(f"🌍 [Lingua] Impostata lingua dominante: {self.detected_language_code or 'AUTO'}")
-
+            
             total = len(target_songs)
-            print(f"    ↳ Scarico testi per {total} brani (Sequenziale Veloce)...")
+            print(f"    🚀 [Genius] Avvio download TURBO (4 thread) per {total} brani...")
 
+            # Avvio Thread
+            future_to_song = {
+                self.executor.submit(self._fetch_single_lyric_safe, song, artist_name): song 
+                for song in target_songs
+            }
+            
             count = 0
             
-            for i, song_title in enumerate(target_songs, 1):
-                # Stampa di debug
-                print(f"       [{i}/{total}] ⏳ Cerco: {song_title}...", end="\r") 
-                
+            # Raccolta risultati
+            for i, future in enumerate(as_completed(future_to_song), 1):
+                song_title = future_to_song[future]
                 try:
-                    success = self._fetch_single_lyric(song_title, artist_name)
-                    
+                    success = future.result()
+                    # Calcolo tempo trascorso attuale
+                    elapsed = time.time() - start_time - spotify_time
                     if success:
                         count += 1
-                        print(f"       [{i}/{total}] ✅ {song_title}           ") 
+                        print(f"       [{i}/{total}] ✅ {song_title} ({elapsed:.1f}s)")
                     else:
                         print(f"       [{i}/{total}] ⏩ {song_title} (No testo)")
-                
-                except Exception as e:
-                    print(f"       [{i}/{total}] ❌ Errore critico su '{song_title}': {e}")
+                except Exception:
+                    print(f"       [{i}/{total}] ❌ {song_title}")
             
-            print(f"✅ [Lyrics] Cache pronta: {count} testi caricati.")
+            total_time = time.time() - start_time
+            print(f"🏁 [Lyrics] FINITO in {total_time:.1f}s. (Spotify: {spotify_time:.1f}s | Genius: {total_time-spotify_time:.1f}s)")
+            print(f"✅ [Lyrics] Cache: {count}/{total} testi.")
 
         except Exception as e:
-            print(f"❌ [Lyrics] Errore Sync Generale: {e}")
+            print(f"❌ [Lyrics] Errore Flow: {e}")
+
+    def _fetch_single_lyric_safe(self, title, artist):
+        if not self.genius: return False
+        
+        # NESSUN SLEEP QUI - Andiamo al massimo
+        
+        try:
+            clean_search_title = re.sub(r"\(.*?\)", "", title).strip()
+            song = self.genius.search_song(clean_search_title, artist)
+            if song:
+                norm_key = self._normalize_text(song.title)
+                self.lyrics_cache[norm_key] = song.lyrics.lower()
+                self.titles_map[norm_key] = song.title
+                return True
+        except Exception:
+            pass
+        return False
 
     def _detect_dominant_language(self, titles):
         if not titles: return None
@@ -127,21 +148,6 @@ class LyricsManager:
             return iso_map.get(most_common[0][0])
         return None
 
-    def _fetch_single_lyric(self, title, artist):
-        if not self.genius: return False
-        try:
-            clean_search_title = re.sub(r"\(.*?\)", "", title).strip()
-            song = self.genius.search_song(clean_search_title, artist)
-            if song:
-                norm_key = self._normalize_text(song.title)
-                self.lyrics_cache[norm_key] = song.lyrics.lower()
-                self.titles_map[norm_key] = song.title
-                return True
-        except Exception as e:
-            # Ignoriamo errori di timeout minori per non sporcare il log
-            pass
-        return False
-
     def _fallback_genius_search(self, artist_name):
         try:
             artist = self.genius.search_artist(artist_name, max_songs=10, sort="popularity")
@@ -152,9 +158,7 @@ class LyricsManager:
                     norm_key = self._normalize_text(song.title)
                     self.lyrics_cache[norm_key] = song.lyrics.lower()
                     self.titles_map[norm_key] = song.title
-                
                 self.detected_language_code = self._detect_dominant_language(titles)
-                print(f"🌍 [Lingua Fallback] Dominante: {self.detected_language_code or 'AUTO'}")
         except: pass
 
     # --- ELEVENLABS SCRIBE ---
@@ -185,17 +189,13 @@ class LyricsManager:
         if not self.lyrics_cache: return None
         transcript_clean = transcript.lower().strip()
         if len(transcript_clean) < 15: return None
-
         for title_key, lyrics in self.lyrics_cache.items():
             if transcript_clean in lyrics:
                 return self._package_result(title_key, 100)
-
         transcript_words = [w for w in transcript_clean.split() if len(w) > 3]
         if len(transcript_words) < 3: return None
-
         best_ratio = 0.0
         best_title_key = None
-
         for title_key, lyrics in self.lyrics_cache.items():
             hits = 0
             for word in transcript_words:
@@ -204,7 +204,6 @@ class LyricsManager:
             if ratio > best_ratio:
                 best_ratio = ratio
                 best_title_key = title_key
-
         if best_title_key and best_ratio > 0.65:
             return self._package_result(best_title_key, int(best_ratio * 100))
         return None
