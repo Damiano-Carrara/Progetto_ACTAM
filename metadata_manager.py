@@ -194,8 +194,9 @@ class MetadataManager:
                 self.genius = lyricsgenius.Genius(
                     self.genius_token, 
                     verbose=False,
-                    sleep_time=1.0,
-                    retries=3
+                    sleep_time=0.5,
+                    retries=1,
+                    timeout=5
                 ) 
             
             clean_t = title.split("(")[0].strip()
