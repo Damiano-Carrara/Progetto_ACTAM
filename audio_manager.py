@@ -99,6 +99,15 @@ class AudioManager:
         """
         Scarica il contesto completo (Setlist.fm + Spotify + Lyrics) per l'artista target.
         """
+        # === [OTTIMIZZAZIONE PREFETCH] ===
+        # Se l'artista è lo stesso dell'ultima volta, non resettare tutto.
+        # Questo permette a /api/start_recognition di non interrompere il download
+        # iniziato da /api/prepare_session.
+        if artist_name == self.target_artist_bias:
+            print(f"⚡ [Context] Artista '{artist_name}' già in memoria/download. Salto refresh.")
+            return
+        # =================================
+
         # 1. Aggiornamento immediato Bias e Reset stato
         self.target_artist_bias = artist_name
         self.context_ready = False 
@@ -381,7 +390,7 @@ class AudioManager:
             # LOGICA DI ARBITRAGGIO PROTETTA
             # ========================================================
 
-            # 1. FAST TRACK (Conferma Reciproca)
+            # 1. FAST TRACK (Conferma Reciproca Assoluta -> SOGLIA 1/IMMEDIATA)
             if scribe_result and acr_best:
                 if scribe_score > 75 and acr_score > 98:
                     if self._are_tracks_equivalent(scribe_result, acr_best):
@@ -391,35 +400,22 @@ class AudioManager:
                         final_track["cover"] = acr_best.get("cover")
                         is_fast_track = True
 
-            # 2. VALUTAZIONE SCRIBE vs ACR
-            if not final_track and scribe_result:
-                
-                # Caso A: Scribe è altissimo (>85%). Vince quasi sempre.
-                if scribe_score > 85:
-                      print(f"🥇 [SCRIBE WIN] Testo Dominante: {scribe_result['title']} ({scribe_score}%)")
-                      final_track = scribe_result
-                
-                # Caso B: Scribe è buono (>65%), MA bisogna controllare ACR
-                elif scribe_score > 65:
-                    
-                    # PROTEZIONE: Se ACR è forte (>80%) E Bias -> VINCE ACR (Non sovrascrivere!)
-                    if acr_best and acr_score > 80 and is_acr_bias:
-                         print(f"🛡️ [ACR PROTECTED] Scribe buono ({scribe_score}%) ma ACR solido sul Bias ({acr_score}%). Tengo ACR.")
-                         final_track = acr_best
-                    
-                    # Se invece ACR è debole o ha sbagliato artista -> VINCE SCRIBE
-                    else:
-                        print(f"🥇 [SCRIBE WIN] Scribe ({scribe_score}%) meglio di ACR incerto.")
-                        final_track = scribe_result
-                        if acr_best and self._are_tracks_equivalent(scribe_result, acr_best):
-                            final_track["external_metadata"] = acr_best.get("external_metadata")
-                            final_track["cover"] = acr_best.get("cover")
+            # 2. VALUTAZIONE SCRIBE vs ACR (Se non è Fast Track)
+            if not final_track:
+                # Caso A: Scribe è valido (>65%). VINCE LUI.
+                # (Indipendentemente da cosa dice ACR, salviamo Scribe nel buffer in attesa di conferme)
+                if scribe_result and scribe_score > 65:
+                    print(f"🥇 [SCRIBE WIN] Scribe ({scribe_score}%) ha priorità. Attendo conferme...")
+                    final_track = scribe_result
+                    # Se ACR aveva trovato lo stesso brano, rubiamo i metadati utili
+                    if acr_best and self._are_tracks_equivalent(scribe_result, acr_best):
+                        final_track["external_metadata"] = acr_best.get("external_metadata")
+                        final_track["cover"] = acr_best.get("cover")
 
-            # 3. ACR FALLBACK (Se Scribe non ha vinto o non c'era)
-            if not final_track and acr_best:
-                if not scribe_result or scribe_score <= 65:
-                      print(f"🔊 [ACR WIN] Match Audio Standard: {acr_best['title']} ({acr_score}%)")
-                      final_track = acr_best
+                # Caso B: Scribe non c'è o è basso -> Usiamo ACR se valido
+                elif acr_best:
+                    print(f"🔊 [ACR WIN] Scribe assente/basso. Uso ACR: {acr_best['title']} ({acr_score}%)")
+                    final_track = acr_best
 
             # --- INVIO DATI E STABILITÀ ---
             if final_track:
@@ -430,6 +426,7 @@ class AudioManager:
 
                 display_title = self._clean_title_for_display(final_track["title"])
                 
+                # CASO SPECIALE: FAST TRACK (Esce subito, bypassa buffer)
                 if is_fast_track:
                       if self.result_callback:
                         final_data = final_track.copy()
@@ -438,9 +435,16 @@ class AudioManager:
                         # Callback diretta senza buffer storico
                         self.result_callback(final_data, target_artist=self.target_artist_bias)
                         self.history_buffer.clear()
-                        # Qui aggiorniamo anche il Veggente (tua logica originale mantenuta implicitamente se c'è nel callback)
+                        # Qui aggiorniamo anche il Veggente (tua logica originale)
+                        clean_title_pred = self._clean_title_for_display(final_track['title'])
+                        next_prediction = self.setlist_bot.predict_next(clean_title_pred)
+                        if next_prediction:
+                            self.predicted_next_song = next_prediction
+                        else:
+                            self.predicted_next_song = None
                         return
 
+                # CASO NORMALE: BUFFERING (Soglia SEMPRE 2)
                 current_obj = {
                     "title": final_track["title"],
                     "artist": self._get_artist_name(final_track),
@@ -448,14 +452,15 @@ class AudioManager:
                 }
                 
                 self.history_buffer.append(current_obj)
+                
                 stability_count = 0
                 for historical_item in self.history_buffer:
                     if self._are_tracks_equivalent(current_obj, historical_item):
                         stability_count += 1
                 
-                # Se arriva da Scribe, basta 1 conferma (è più lento), se ACR servono 2
-                is_from_scribe = final_track.get("type") == "Lyrics Match"
-                threshold = 1 if is_from_scribe else 2
+                # === MODIFICA RICHIESTA: SOGLIA FISSA A 2 ===
+                # Rimosso il controllo "is_from_scribe" che abbassava a 1.
+                threshold = 2
 
                 if stability_count >= threshold:
                     print(f"🛡️ Conferma stabilità ({stability_count}/{threshold}): {display_title}")
@@ -463,6 +468,11 @@ class AudioManager:
                         final_data = final_track.copy()
                         final_data["title"] = display_title
                         final_data["artist"] = self._get_artist_name(final_track)
+                        
+                        # Fix cover mancante
+                        if not final_data.get("cover"):
+                            final_data["cover"] = self._extract_best_cover(final_data)
+
                         self.result_callback(final_data, target_artist=self.target_artist_bias)
                         
                         # ### AGGIORNA IL VEGGENTE (MANTENUTO DALLA TUA VERSIONE) ###

@@ -195,22 +195,38 @@ class LyricsManager:
     def _find_best_match(self, transcript):
         if not self.lyrics_cache: return None
 
-        transcript_clean = transcript.lower()
+        transcript_clean = transcript.lower().strip()
+        
+        # === FIX 1: Ignora frasi troppo brevi ===
+        # Se Scribe sente solo "Yeah", "Music", "Oh baby", ignoriamo.
+        # Richiediamo almeno 15 caratteri o 4 parole.
+        if len(transcript_clean) < 15:
+            # print(f"⚠️ [Lyrics] Trascrizione ignorata (troppo breve): '{transcript_clean}'")
+            return None
+        # ========================================
+
         best_ratio = 0.0
         best_title_key = None
 
-        # 1. Ricerca esatta
+        # 1. Ricerca esatta (Solo se la frase è lunga e significativa)
         for title_key, lyrics in self.lyrics_cache.items():
             if transcript_clean in lyrics:
                 return self._package_result(title_key, 100)
 
-        # 2. Ricerca per parole chiave
+        # 2. Ricerca per parole chiave (Fuzzy)
+        # Filtriamo parole comuni o troppo corte per evitare falsi match su "the", "and", "you"
         transcript_words = [w for w in transcript_clean.split() if len(w) > 3]
-        if not transcript_words: return None
+        
+        # === FIX 2: Numero minimo di parole significative ===
+        if len(transcript_words) < 3: 
+            return None
+        # ====================================================
 
         for title_key, lyrics in self.lyrics_cache.items():
             hits = 0
             for word in transcript_words:
+                # Cerca la parola esatta (con bordi) per evitare che "cat" matchi "cation"
+                # O semplicemente controlla l'inclusione se vuoi essere più permissivo
                 if word in lyrics:
                     hits += 1
             
@@ -219,7 +235,8 @@ class LyricsManager:
                 best_ratio = ratio
                 best_title_key = title_key
 
-        if best_title_key and best_ratio > 0.60:
+        # Alziamo la soglia minima al 65% per sicurezza
+        if best_title_key and best_ratio > 0.65:
             return self._package_result(best_title_key, int(best_ratio * 100))
             
         return None

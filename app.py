@@ -60,7 +60,7 @@ def get_qr_image():
         return jsonify({"error": "Tunnel non attivo"}), 404
 
     # Creiamo l'URL per lo spettatore (aggiungiamo ?mode=viewer)
-    viewer_link = f"{public_url}?mode=viewer"
+    viewer_link = f"{public_url}/?mode=viewer"
 
     # Generiamo il QR
     qr = qrcode.QRCode(box_size=10, border=4)
@@ -75,6 +75,24 @@ def get_qr_image():
 
     return send_file(img_io, mimetype="image/png")
 
+# --- API: PRE-CARICAMENTO CONTESTO (PREFETCH) ---
+@app.route("/api/prepare_session", methods=["POST"])
+def prepare_session():
+    """
+    Scarica testi e metadati PRIMA che inizi l'audio.
+    Viene chiamata quando l'utente clicca "Invia" nella schermata di benvenuto.
+    """
+    data = request.get_json() or {}
+    target_artist = data.get("targetArtist")
+    
+    print(f"📡 Prefetch richiesto per: {target_artist}")
+    
+    # Avvia il download in background
+    # Grazie alla modifica in audio_manager, se poi chiamiamo start_recognition
+    # con lo stesso artista, il download non verrà interrotto.
+    audio_bot.update_target_artist(target_artist)
+    
+    return jsonify({"status": "prefetching", "message": "Download contesto avviato."})
 
 # --- API: AVVIA IL MONITORAGGIO CONTINUO ---
 @app.route("/api/start_recognition", methods=["POST"])
