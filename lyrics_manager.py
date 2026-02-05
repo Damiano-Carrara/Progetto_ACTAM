@@ -4,7 +4,7 @@ import re
 import lyricsgenius
 import io
 import unicodedata
-import threading  # <--- IMPORTANTE: Usiamo il threading nativo
+import threading
 from difflib import SequenceMatcher
 from dotenv import load_dotenv
 from collections import Counter
@@ -20,13 +20,13 @@ class LyricsManager:
         self.elevenlabs_key = os.getenv("ELEVENLABS_API_KEY")
         
         if self.genius_token:
-            # CONFIGURAZIONE ANTI-BLOCCO
+            # --- MODIFICA 1: OTTIMIZZAZIONE VELOCITÀ ---
             self.genius = lyricsgenius.Genius(
                 self.genius_token, 
                 verbose=False,
-                sleep_time=2.0,  # 2 secondi di pausa tra richieste
-                retries=1,       
-                timeout=15       # Timeout di 15s per evitare blocchi infiniti
+                sleep_time=0.5,  # Scendiamo a 0.5s (molto più veloce, ma ancora sicuro)
+                retries=2,       # Riprova 2 volte (bastano)
+                timeout=10       # Timeout ridotto a 10s per non bloccarsi troppo sui fallimenti
             )
             self.genius.remove_section_headers = True 
         else:
@@ -40,8 +40,6 @@ class LyricsManager:
         self.current_artist = None
         self.detected_language_code = None
         
-        # NOTA: Abbiamo rimosso self.executor perché usiamo threading diretto
-
     def update_artist_context(self, artist_name):
         """
         Scarica titoli e testi in background.
@@ -56,32 +54,39 @@ class LyricsManager:
         
         print(f"📖 [Lyrics] Analisi artista: {artist_name}...")
         
-        # MODIFICA: Usiamo un Thread standard invece di Executor
-        # Questo evita problemi di inizializzazione e blocchi
         t = threading.Thread(target=self._sync_lyrics_task, args=(artist_name,))
-        t.daemon = True # Il thread si chiude se chiudi il programma
+        t.daemon = True 
         t.start()
 
     def _sync_lyrics_task(self, artist_name):
         try:
             # 1. Recupero titoli da Spotify
-            target_songs = self.spotify_bot.get_artist_complete_data(artist_name)
+            all_songs = self.spotify_bot.get_artist_complete_data(artist_name)
             
-            if not target_songs:
+            if not all_songs:
                 print(f"⚠️ [Lyrics] Nessun brano su Spotify. Provo fallback Genius.")
                 self._fallback_genius_search(artist_name)
                 return
+
+            # --- MODIFICA 2: LIMITIAMO IL NUMERO DI BRANI ---
+            # Per un concerto live, scaricare >100 brani è inutile e rischioso.
+            # Prendiamo solo i primi 40 (solitamente i più popolari/recenti).
+            limit = 40
+            if len(all_songs) > limit:
+                print(f"✂️ [Lyrics] Limito analisi ai primi {limit} brani più rilevanti (su {len(all_songs)} totali).")
+                target_songs = all_songs[:limit]
+            else:
+                target_songs = all_songs
 
             # RILEVAMENTO LINGUA
             self.detected_language_code = self._detect_dominant_language(target_songs)
             print(f"🌍 [Lingua] Impostata lingua dominante: {self.detected_language_code or 'AUTO'}")
 
             total = len(target_songs)
-            print(f"    ↳ Scarico testi per {total} brani (Sequenziale)...")
+            print(f"    ↳ Scarico testi per {total} brani (Sequenziale Veloce)...")
 
             count = 0
             
-            # --- CICLO FOR DIRETTO ---
             for i, song_title in enumerate(target_songs, 1):
                 # Stampa di debug
                 print(f"       [{i}/{total}] ⏳ Cerco: {song_title}...", end="\r") 
@@ -133,7 +138,7 @@ class LyricsManager:
                 self.titles_map[norm_key] = song.title
                 return True
         except Exception as e:
-            print(f"⚠️ Err lyric '{title}': {e}")
+            # Ignoriamo errori di timeout minori per non sporcare il log
             pass
         return False
 
