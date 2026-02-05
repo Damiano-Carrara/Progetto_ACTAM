@@ -1,6 +1,7 @@
 import spotipy
 from spotipy.oauth2 import SpotifyClientCredentials
 import os
+import re
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -69,15 +70,31 @@ class SpotifyManager:
             return []
 
     def get_hd_cover(self, title, artist):
-        """Cerca cover HD"""
+        """
+        Cerca cover HD pulendo il titolo da sporcizia (Live, Remaster, ecc.)
+        """
         if not self.sp: return None
-        query = f"track:{title} artist:{artist}"
+        
+        # === FIX: PULIZIA TITOLO ===
+        # Rimuove tutto ciò che è tra parentesi e le diciture tecniche
+        clean_title = re.sub(r"[\(\[].*?[\)\]]", "", title)
+        clean_title = re.sub(r"(?i)\b(feat\.|ft\.|remix|edit|version|live|remastered|remaster)\b.*", "", clean_title)
+        clean_title = re.sub(r"\s-\s.*", "", clean_title) # Toglie code tipo " - 2011 Mix"
+        clean_title = clean_title.strip()
+        # ===========================
+
+        # Se la pulizia ha svuotato troppo la stringa, usa l'originale per sicurezza
+        search_title = clean_title if len(clean_title) > 1 else title
+
+        query = f"track:{search_title} artist:{artist}"
         try:
             results = self.sp.search(q=query, type='track', limit=1)
             items = results['tracks']['items']
             if items and items[0]['album']['images']:
                 return items[0]['album']['images'][0]['url']
-        except: pass
+        except Exception as e: 
+            print(f"⚠️ Errore Cover HD: {e}")
+        
         return None
     
     def get_most_popular_version(self, title, current_artist):

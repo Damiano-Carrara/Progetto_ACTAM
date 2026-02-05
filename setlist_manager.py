@@ -1,6 +1,7 @@
 import requests
 import os
 import json
+import re  # <--- IMPORTANTE: Aggiunto questo import
 from difflib import SequenceMatcher
 from collections import Counter
 
@@ -121,7 +122,6 @@ class SetlistManager:
         return set(), []
 
     def _search_artist_candidates(self, name):
-        # (Questo metodo rimane invariato rispetto a prima)
         url = f"{self.base_url}/search/artists"
         params = {"artistName": name, "sort": "relevance"}
         try:
@@ -131,11 +131,45 @@ class SetlistManager:
         except: pass
         return []
 
+    # === QUESTA È LA FUNZIONE AGGIORNATA DAL TUO COLLEGA ===
     def check_is_likely(self, title):
-        # (Anche questo rimane uguale, serve per i boost semplici)
+        """
+        Controlla se il titolo è nella whitelist con regole severe basate sulla lunghezza.
+        Evita che titoli corti (es. "Tu", "I") vengano trovati dentro parole lunghe non correlate.
+        """
         if not self.cached_songs: return False
-        title_clean = title.lower().strip()
+        
+        # Pulizia input (quello che arriva da ACR)
+        # Rimuoviamo caratteri speciali per confronto pulito
+        clean_input = re.sub(r"[^a-zA-Z0-9\s]", "", title).strip().lower()
+        
+        if not clean_input: return False
+
         for likely in self.cached_songs:
-            if title_clean in likely or likely in title_clean: return True
-            if SequenceMatcher(None, title_clean, likely).ratio() > 0.85: return True
+            # Pulizia titolo scaletta
+            clean_likely = re.sub(r"[^a-zA-Z0-9\s]", "", likely).strip().lower()
+            
+            # --- REGOLA 1: TITOLI CORTI (< 5 caratteri) ---
+            # Richiede PRECISIONE ASSOLUTA.
+            if len(clean_likely) < 5:
+                # 1. Match Esatto (es. "tu" == "tu")
+                if clean_input == clean_likely:
+                    return True
+                
+                # 2. Parola intera isolata (es. trova "tu" in "tu e io", ma NON in "tutto")
+                pattern = r"\b" + re.escape(clean_likely) + r"\b"
+                if re.search(pattern, clean_input):
+                    return True
+
+            # --- REGOLA 2: TITOLI LUNGHI (>= 5 caratteri) ---
+            # Qui possiamo tollerare inclusioni o piccole differenze
+            else:
+                # 1. Contenimento semplice (es. "albachiara" in "albachiara live")
+                if clean_likely in clean_input: 
+                    return True
+                
+                # 2. Fuzzy Match ma STRETTO (> 90%)
+                if SequenceMatcher(None, clean_input, clean_likely).ratio() > 0.90:
+                    return True
+                    
         return False

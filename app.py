@@ -28,7 +28,6 @@ audio_bot = AudioManager()
 # Passiamo il db al session manager
 session_bot = SessionManager(db_instance=db)
 report_bot = ReportGenerator()
-# RIMOSSO: lyrics_bot (Non serve più)
 
 def start_ngrok():
     """Avvia il tunnel Ngrok sulla porta 5000"""
@@ -60,7 +59,7 @@ def get_qr_image():
         return jsonify({"error": "Tunnel non attivo"}), 404
 
     # Creiamo l'URL per lo spettatore (aggiungiamo ?mode=viewer)
-    viewer_link = f"{public_url}?mode=viewer"
+    viewer_link = f"{public_url}/?mode=viewer"
 
     # Generiamo il QR
     qr = qrcode.QRCode(box_size=10, border=4)
@@ -75,6 +74,20 @@ def get_qr_image():
 
     return send_file(img_io, mimetype="image/png")
 
+# --- API: PRE-CARICAMENTO CONTESTO (PREFETCH) ---
+# Questa è la novità: scarica i dati mentre l'utente prepara la sessione
+@app.route("/api/prepare_session", methods=["POST"])
+def prepare_session():
+    data = request.get_json() or {}
+    target_artist = data.get("targetArtist")
+    
+    print(f"📡 Prefetch richiesto per: {target_artist}")
+    
+    # Avvia il download in background
+    audio_bot.update_target_artist(target_artist)
+    
+    return jsonify({"status": "prefetching", "message": "Download contesto avviato."})
+
 
 # --- API: AVVIA IL MONITORAGGIO CONTINUO ---
 @app.route("/api/start_recognition", methods=["POST"])
@@ -84,11 +97,8 @@ def start_recognition():
 
     print(f"🚀 Richiesta avvio monitoraggio. Bias: {target_artist}")
 
-    # === [MODIFICA: CHIAMA SEMPRE UPDATE PER PULIRE] ===
-    # Chiamiamo update_target_artist SEMPRE. 
-    # Se target_artist è None, la funzione (coi fix sopra) pulirà la cache e basta.
+    # Aggiorniamo il target (se era già stato fatto da prepare_session, non farà nulla di pesante)
     audio_bot.update_target_artist(target_artist)
-    # ===================================
 
     started = audio_bot.start_continuous_recognition(
         callback_function=session_bot.add_song,
@@ -177,7 +187,6 @@ def cleanup_on_exit():
     """Pulizia alla chiusura dell'app"""
     print("🛑 Chiusura Applicazione...")
     audio_bot.stop_continuous_recognition()
-    # Rimosso lyrics_bot.clear_cache()
     ngrok.kill()
 
 
