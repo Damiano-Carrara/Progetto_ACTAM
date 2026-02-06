@@ -22,25 +22,48 @@ class SessionManager:
         self.meta_bot = MetadataManager()
         self.spotify_bot = SpotifyManager()
         self.lock = Lock()
-        self.user_id = "demo_user_01" 
         
+        # Default user ID (modalità ospite/iniziale)
+        self.user_id = "demo_user_01"
+        self.session_ref = None
+        self.user_ref = None
+
         if self.db:
+            # Creiamo una sessione iniziale di default
+            self._start_new_firestore_session()
+        else:
+            print("⚠️ Session Manager in modalità OFFLINE.")
+
+    def _start_new_firestore_session(self):
+        """Crea un nuovo documento sessione su Firestore per l'utente CORRENTE."""
+        if not self.db: return
+
+        try:
+            # 1. Aggiorniamo il riferimento Utente
+            self.user_ref = self.db.collection('users').document(str(self.user_id))
+            
+            # 2. Creiamo un nuovo ID Sessione basato sul tempo
             session_id = f"session_{int(time.time())}"
-            self.user_ref = self.db.collection('users').document(self.user_id)
+            
+            # 3. Aggiorniamo il riferimento Sessione (Qui stava il problema!)
             self.session_ref = self.user_ref.collection('sessions').document(session_id)
+            
+            # 4. Scriviamo i metadati iniziali
             self.session_ref.set({
                 'created_at': firestore.SERVER_TIMESTAMP,
                 'status': 'live',
-                'device': 'python_backend'
+                'device': 'python_backend',
+                'user_id': self.user_id # Utile per debug
             }, merge=True)
-            print(f"🔥 Session Manager Connesso a Firestore. Session ID: {session_id}")
-        else:
-            self.session_ref = None
-            print("⚠️ Session Manager in modalità OFFLINE.")
+            
+            print(f"🔥 Nuova Sessione Firestore creata: users/{self.user_id}/sessions/{session_id}")
+            
+        except Exception as e:
+            print(f"❌ Errore creazione sessione Firestore: {e}")
 
-    # --- METODI AUTH (Dal Collega) ---
+    # --- METODI AUTH ---
     def register_user(self, user_data):
-        """Registra utente con controllo doppio (Username o Email) e campo Nome d'Arte."""
+        """Registra utente con controllo doppio (Username o Email)."""
         if not self.db: return {"success": False, "error": "Database offline"}
 
         username = user_data.get("username", "").strip()
@@ -52,14 +75,11 @@ class SessionManager:
 
         users_ref = self.db.collection('users')
         
-        # 1. Controllo Username (ID Documento)
-        doc_user = users_ref.document(username).get()
-        if doc_user.exists:
+        # Controllo esistenza
+        if users_ref.document(username).get().exists:
             return {"success": False, "error": "Username già utilizzato"}
-
-        # 2. Controllo Email (Query)
-        email_query = users_ref.where("email", "==", email).stream()
-        if any(email_query):
+        
+        if any(users_ref.where("email", "==", email).stream()):
             return {"success": False, "error": "Email già utilizzata"}
 
         hashed_pw = generate_password_hash(user_data.get("password"))
@@ -74,22 +94,18 @@ class SessionManager:
             "birthdate": user_data.get("birthdate"),
             "created_at": firestore.SERVER_TIMESTAMP
         }
-
-        # 3. Se Compositore, aggiungi Nome d'Arte
         if role == "composer":
-            stage_name = user_data.get("stage_name", "").strip()
-            if stage_name:
-                new_user["stage_name"] = stage_name
+            new_user["stage_name"] = user_data.get("stage_name", "").strip()
 
         try:
             users_ref.document(username).set(new_user)
-            print(f"👤 Nuovo utente registrato: {username} ({role})")
+            print(f"👤 Nuovo utente registrato: {username}")
             return {"success": True}
         except Exception as e:
             return {"success": False, "error": str(e)}
 
     def login_user(self, identifier, password, required_role):
-        """Login che accetta Username O Email."""
+        """Login che aggiorna l'utente corrente e crea una nuova sessione."""
         if not self.db: 
             if identifier == "admin" and password == "admin": return {"success": True}
             return {"success": False, "error": "Database offline"}
@@ -97,16 +113,15 @@ class SessionManager:
         users_ref = self.db.collection('users')
         user_data = None
         
-        # 1. Prova come Username (Ricerca diretta ID)
+        # Ricerca utente (Username o Email)
         doc = users_ref.document(identifier).get()
         if doc.exists:
             user_data = doc.to_dict()
         else:
-            # 2. Prova come Email (Query)
             query = users_ref.where("email", "==", identifier).limit(1).stream()
             for q_doc in query:
                 user_data = q_doc.to_dict()
-                identifier = user_data.get('username', identifier)
+                identifier = user_data.get('username', identifier) # Normalizziamo identifier allo username
                 break
         
         if not user_data:
@@ -115,15 +130,16 @@ class SessionManager:
         if not check_password_hash(user_data['password'], password):
             return {"success": False, "error": "Password errata"}
 
-        db_role = user_data.get('role')
-        if db_role != required_role:
-            return {
-                "success": False, 
-                "error": f"Accesso negato! Sei registrato come '{db_role}', non puoi accedere all'area '{required_role}'."
-            }
+        if user_data.get('role') != required_role:
+            return {"success": False, "error": f"Ruolo errato. Richiesto: {required_role}"}
 
+        # === PUNTO CRUCIALE: AGGIORNIAMO L'UTENTE E LA SESSIONE ===
         self.user_id = identifier
-        self.user_ref = self.db.collection('users').document(self.user_id)
+        print(f"✅ Login effettuato come: {self.user_id}")
+        
+        # Resettiamo la memoria locale
+        self.clear_session() 
+        # (clear_session ora chiamerà anche _start_new_firestore_session grazie alla modifica sotto)
         
         return {"success": True, "user": user_data}
 
@@ -133,7 +149,7 @@ class SessionManager:
         try:
             doc_ref = self.session_ref.collection('songs').document(str(song['id']))
             doc_ref.set(song)
-            print(f"☁️ Salvato su Cloud: {song['title']}")
+            print(f"☁️ Salvato su Cloud ({self.user_id}): {song['title']}")
         except Exception as e:
             print(f"❌ Errore scrittura Firestore: {e}")
 
@@ -145,6 +161,7 @@ class SessionManager:
         except Exception as e:
             print(f"❌ Errore update campo '{field}': {e}")
 
+    # ... [I metodi _normalize_string e _are_songs_equivalent restano uguali] ...
     def _normalize_string(self, text):
         if not text: return ""
         text = re.sub(r"(?i)\b(amazon\s+music|apple\s+music|spotify|deezer|youtube|vevo)\b.*", "", text)
@@ -157,39 +174,30 @@ class SessionManager:
         return clean.strip().lower()
 
     def _are_songs_equivalent(self, new_s, existing_s):
-        # Aggiunta Collega: Ignora canzoni marcate come cancellate
         if existing_s.get('is_deleted', False): return False
-        
         tit_new = self._normalize_string(new_s['title'])
         tit_ex = self._normalize_string(existing_s['title'])
         art_new = self._normalize_string(new_s['artist'])
         art_ex = self._normalize_string(existing_s['artist'])
-        
         title_similarity = SequenceMatcher(None, tit_new, tit_ex).ratio()
-        
         if title_similarity > 0.90:
             if art_new == art_ex or art_new in art_ex or art_ex in art_new: return True
             art_similarity = SequenceMatcher(None, art_new, art_ex).ratio()
             if art_similarity > 0.60: return True
             return False
-            
         if title_similarity > 0.80:
             if art_new == art_ex or art_new in art_ex or art_ex in art_new:
                 if abs(len(tit_new) - len(tit_ex)) > 4: return False
                 return True
         return False
 
-    # --- ADD SONG (Versione MERGED: Struttura Collega + Logica Tua) ---
     def add_song(self, song_data, target_artist=None):
         with self.lock:
             if song_data.get('status') != 'success':
                 return {"added": False, "reason": "No match"}
             
-            # 1. Dati RAW per il Report (Dal Collega)
             raw_title_for_report = song_data['title']
             raw_artist_for_report = song_data['artist']
-            
-            # Variabili modificabili dalla logica Smart
             title = song_data['title']
             artist = song_data['artist']
             
@@ -199,7 +207,6 @@ class SessionManager:
                 'cover': song_data.get('cover')
             }
 
-            # 2. Logica "SMART FIX" (RIPRISTINATA DALLA TUA VERSIONE)
             if self.spotify_bot:
                 try:
                     clean_title_base = re.sub(r"[\(\[].*?[\)\]]", "", title).strip()
@@ -208,23 +215,15 @@ class SessionManager:
                     clean_title_base = re.sub(r"(?i)\b(feat\.|ft\.|remix|edit|version)\b.*", "", clean_title_base).strip()
 
                     bias_resolved = False
-
-                    # STEP A: Tentativo Bias Artist
                     if target_artist:
                         t_norm = self._normalize_string(target_artist)
                         a_norm = self._normalize_string(artist)
-                        
                         if t_norm not in a_norm and a_norm not in t_norm:
-                            print(f"🕵️ Bias Attivo: Controllo se '{clean_title_base}' è di {target_artist}...")
                             match_info = self.spotify_bot.search_specific_version(clean_title_base, target_artist)
-                            
                             if match_info:
                                 new_art, new_cov = match_info
                                 new_art_norm = self._normalize_string(new_art)
-                                
-                                # Validazione
                                 if t_norm in new_art_norm or new_art_norm in t_norm:
-                                    print(f"🔄 [Bias Swap] Sostituisco {artist} -> {new_art}")
                                     artist = new_art
                                     title = clean_title_base 
                                     candidate_song['artist'] = new_art
@@ -233,17 +232,11 @@ class SessionManager:
                                         candidate_song['cover'] = new_cov
                                         song_data['cover'] = new_cov
                                     bias_resolved = True 
-                                else:
-                                    print(f"⚠️ [Bias Reject] Spotify ha proposto '{new_art}' ma cercavo '{target_artist}'.")
-                        else:
-                            bias_resolved = True
-
-                    # STEP B: Fallback Popolarità
+                    
                     if not bias_resolved:
                         better_version = self.spotify_bot.get_most_popular_version(title, artist)
                         if better_version:
                             new_artist, new_cover, popularity = better_version
-                            print(f"🚀 [Pop Swap] Fallback: {artist} -> {new_artist} (Pop: {popularity})")
                             artist = new_artist
                             candidate_song['artist'] = new_artist
                             candidate_song['title'] = clean_title_base 
@@ -251,15 +244,11 @@ class SessionManager:
                             if new_cover:
                                 candidate_song['cover'] = new_cover
                                 song_data['cover'] = new_cover 
-                            
                 except Exception as e:
                     print(f"⚠️ Errore Smart Fix Cascata: {e}")
 
-            # 3. Controllo Duplicati
             for existing_song in self.playlist[-15:]:
                 if self._are_songs_equivalent(candidate_song, existing_song):
-                    # Se è duplicato ma era "cancellato" (soft delete), potremmo volerlo riattivare?
-                    # Per ora lo trattiamo come duplicato e basta.
                     return {"added": False, "reason": "Duplicate", "song": existing_song}
             
             track_key = f"{title} - {artist}".lower()
@@ -275,11 +264,10 @@ class SessionManager:
                 cover_url = song_data.get('cover')
                 status_enrichment = "Pending"
 
-            # 4. Creazione Dizionario Finale (Campi Collega + Dati Corretti)
             new_entry = {
                 "id": next_id, 
-                "title": title,   # Titolo "Smart"
-                "artist": artist, # Artista "Smart"
+                "title": title,
+                "artist": artist,
                 "composer": composer_name,      
                 "album": song_data.get('album', 'Sconosciuto'),
                 "timestamp": datetime.now().strftime("%H:%M:%S"),
@@ -287,13 +275,11 @@ class SessionManager:
                 "isrc": song_data.get('isrc'), "upc": song_data.get('upc'), 
                 "cover": cover_url,
                 "_raw_meta": song_data.get('external_metadata', {}),
-                
-                # CAMPI CHIAVE REPORT / LOG TECNICO
-                "original_title": raw_title_for_report,   # Titolo Originale ACR
-                "original_artist": raw_artist_for_report, # Artista Originale ACR
+                "original_title": raw_title_for_report,
+                "original_artist": raw_artist_for_report,
                 "original_composer": composer_name,
                 "confirmed": True,
-                "is_deleted": False, # Flag Soft Delete
+                "is_deleted": False,
                 "manual": False
             }
 
@@ -306,6 +292,7 @@ class SessionManager:
             print(f"✅ Aggiunto: {title} - {artist}")
             return {"added": True, "song": new_entry}
 
+    # ... [Il metodo _background_enrichment resta uguale] ...
     def _background_enrichment(self, entry, target_artist):
         attempts = 0
         found_composer = "Sconosciuto"
@@ -347,13 +334,16 @@ class SessionManager:
         return self.playlist
 
     def clear_session(self):
+        """Resetta la playlist E crea un nuovo documento su Firestore per la nuova sessione."""
         with self.lock:
             self.playlist = []
             self.known_songs_cache = {}
+            # CRUCIALE: Ogni volta che si resetta (Start Session), 
+            # creiamo un nuovo documento per l'utente attualmente loggato.
+            self._start_new_firestore_session()
             return True
 
     def delete_song(self, song_id):
-        # Soft Delete (Dal Collega) - Ottima scelta
         with self.lock:
             try:
                 song_id = int(song_id)
