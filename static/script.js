@@ -176,6 +176,8 @@ function initRoleSelection() {
             const data = await res.json();
 
             if(data.success) {
+                state.user = data.user;
+                state.stage_name = data.user.stage_name || data.user.username;
                 completeAuth(); 
             } else {
                 showCustomAlert(data.error); 
@@ -278,35 +280,151 @@ function completeAuth() {
     initWelcome();
 }
 
-function initComposerDashboard() {
-  $("#comp-total-plays").textContent = Math.floor(Math.random() * 500) + 1000;
-  $("#comp-est-revenue").textContent = formatMoney(Math.random() * 5000 + 12000);
-
-  const ctx = document.getElementById('composerChart');
-  if(ctx && window.Chart) {
-    if(window.compChartInstance) window.compChartInstance.destroy();
-    window.compChartInstance = new Chart(ctx, {
-      type: 'line',
-      data: {
-        labels: ['Lug', 'Ago', 'Set', 'Ott', 'Nov', 'Dic'],
-        datasets: [{
-          label: 'Esecuzioni',
-          data: [65, 120, 80, 85, 95, 130],
-          borderColor: "#EC368D",
-          backgroundColor: "#EC368D33",
-          tension: 0.4,
-          fill: true
-        }]
-      },
-      options: {
-        responsive: true, maintainAspectRatio: false,
-        plugins: { legend: { display: false } },
-        scales: {
-          y: { grid: { color: 'rgba(255,255,255,0.1)' }, ticks: { color: '#9fb0c2' } },
-          x: { grid: { display: false }, ticks: { color: '#9fb0c2' } }
-        }
+async function initComposerDashboard() {
+  // 1. Recupero User / Stage Name
+  let currentStageName = state.stage_name; 
+  if (!currentStageName) {
+      const storedUser = localStorage.getItem("kyma_user");
+      if(storedUser) {
+          const u = JSON.parse(storedUser);
+          currentStageName = u.stage_name || u.username;
+      } else {
+          currentStageName = "Vasco Rossi"; 
       }
-    });
+  }
+
+  // UI Loading State
+  $("#comp-total-plays").textContent = "...";
+  $("#comp-est-revenue").textContent = "...";
+  const trendEl = document.getElementById("comp-trend-plays");
+  if(trendEl) trendEl.innerHTML = `<span style="opacity:0.5">Calcolo...</span>`;
+  
+  try {
+      // 2. Chiamata API
+      const res = await fetch("/api/composer_stats", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ stage_name: currentStageName })
+      });
+      
+      const data = await res.json();
+      if(data.error) throw new Error(data.error);
+
+      // 3. Popoliamo i KPI
+      const totalPlays = data.total_plays || 0;
+      $("#comp-total-plays").textContent = totalPlays;
+      
+      // Stima Revenue
+      const estRevenue = totalPlays * 2.50; 
+      $("#comp-est-revenue").textContent = formatMoney(estRevenue);
+
+      // --- CALCOLO TREND MENSILE ---
+      const today = new Date();
+      // Chiave mese corrente (es. "2026-02")
+      const currentKey = `${today.getFullYear()}-${pad2(today.getMonth()+1)}`; 
+      // Chiave mese scorso (es. "2026-01")
+      const prevDate = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+      const prevKey = `${prevDate.getFullYear()}-${pad2(prevDate.getMonth()+1)}`;
+
+      const currentCount = data.history[currentKey] || 0;
+      const prevCount = data.history[prevKey] || 0;
+      
+      let trendHtml = `<span style="opacity:0.5">Dati insufficienti</span>`;
+      
+      if (prevCount > 0) {
+          const diff = currentCount - prevCount;
+          const pct = Math.round((diff / prevCount) * 100);
+          const symbol = pct >= 0 ? "↑" : "↓";
+          const color = pct >= 0 ? "#4ade80" : "#f87171"; // Verde o Rosso
+          trendHtml = `<span style="color:${color}">${symbol} ${Math.abs(pct)}% questo mese</span>`;
+      } else if (currentCount > 0) {
+          // Se il mese scorso era 0 e questo > 0, è un aumento del 100% virtuale
+          trendHtml = `<span style="color:#4ade80">↑ 100% questo mese</span>`;
+      } else {
+          trendHtml = `<span style="opacity:0.5">Nessuna variazione</span>`;
+      }
+      
+      if(trendEl) trendEl.innerHTML = trendHtml;
+
+      // 4. Popoliamo la lista "Brani Top" (Senza intestazione extra)
+      const statList = document.querySelector(".stat-list");
+      if(statList) {
+          statList.innerHTML = "";
+          if(data.top_tracks && data.top_tracks.length > 0) {
+              
+              // --- AGGIUNTA INTESTAZIONE COLONNE ---
+              const header = document.createElement("li");
+              // Stile per differenziarlo dai dati (più piccolo, grigio, con riga sotto)
+              header.style.fontSize = "0.8rem"; 
+              header.style.color = "var(--muted)";
+              header.style.borderBottom = "1px solid rgba(255,255,255,0.1)";
+              header.style.paddingBottom = "4px";
+              header.style.marginBottom = "8px";
+              header.innerHTML = `<span>Titolo</span> <span style="float:right">N. Riproduzioni</span>`;
+              statList.appendChild(header);
+              // -------------------------------------
+
+              data.top_tracks.forEach(t => {
+                  const li = document.createElement("li");
+                  li.innerHTML = `<span>${t.title}</span> <span style="float:right; opacity:0.9; font-weight:bold;">${t.count}</span>`;
+                  statList.appendChild(li);
+              });
+          } else {
+              statList.innerHTML = "<li style='opacity:0.5'>Nessun brano rilevato.</li>";
+          }
+      }
+
+      // 5. Generiamo il Grafico Storico
+      const ctx = document.getElementById('composerChart');
+      if(ctx && window.Chart) {
+        if(window.compChartInstance) window.compChartInstance.destroy();
+        
+        const labels = [];
+        const chartData = [];
+        
+        for(let i=5; i>=0; i--) {
+            const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
+            const key = `${d.getFullYear()}-${pad2(d.getMonth()+1)}`;
+            const monthName = d.toLocaleString('it-IT', { month: 'short' });
+            
+            labels.push(monthName);
+            chartData.push(data.history[key] || 0);
+        }
+
+        window.compChartInstance = new Chart(ctx, {
+          type: 'line',
+          data: {
+            labels: labels,
+            datasets: [{
+              label: 'Esecuzioni',
+              data: chartData,
+              borderColor: "#EC368D",
+              backgroundColor: "rgba(236, 54, 141, 0.2)",
+              tension: 0.4,
+              fill: true,
+              pointBackgroundColor: "#fff",
+              pointBorderColor: "#EC368D",
+              pointRadius: 4
+            }]
+          },
+          options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+              y: { 
+                  grid: { color: 'rgba(255,255,255,0.05)' }, 
+                  ticks: { color: '#9fb0c2', precision:0 },
+                  beginAtZero: true
+              },
+              x: { grid: { display: false }, ticks: { color: '#9fb0c2' } }
+            }
+          }
+        });
+      }
+
+  } catch(e) {
+      console.error("Errore stats dashboard:", e);
+      showCustomAlert("Impossibile caricare le statistiche: " + e.message);
   }
 }
 

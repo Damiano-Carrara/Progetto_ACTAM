@@ -147,6 +147,19 @@ def reset_session():
         return jsonify({"status": "cleared", "message": "Sessione resettata."})
     return jsonify({"status": "error", "message": "Errore nel reset DB."})
 
+# --- API: STATISTICHE COMPOSITORE ---
+@app.route("/api/composer_stats", methods=["POST"])
+def get_composer_stats():
+    data = request.get_json()
+    # Il frontend invia il nome d'arte dell'utente loggato
+    stage_name = data.get("stage_name")
+    
+    if not stage_name:
+        return jsonify({"error": "Nome d'arte mancante"}), 400
+        
+    stats = session_bot.get_composer_stats(stage_name)
+    return jsonify(stats)
+
 # --- API: RECUPERA ULTIMA SESSIONE ---
 @app.route("/api/recover_session", methods=["POST"])
 def recover_session():

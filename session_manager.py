@@ -330,6 +330,45 @@ class SessionManager:
                     track_key = f"{target_song['title']} - {target_song['artist']}".lower()
                     self.known_songs_cache[track_key] = target_song.copy()
 
+                if found_composer != "Sconosciuto":
+                    self._update_global_stats(found_composer, target_song['title'])
+
+    def get_composer_stats(self, stage_name):
+        """Recupera i dati aggregati per la dashboard."""
+        if not self.db: return {"error": "DB Offline"}
+        
+        comp_id = self._normalize_string(stage_name).replace(" ", "_")
+        doc_ref = self.db.collection('stats_composers').document(comp_id)
+        
+        doc = doc_ref.get()
+        if not doc.exists:
+            return {
+                "total_plays": 0,
+                "top_tracks": [],
+                "history": {},
+                "display_name": stage_name
+            }
+
+        data = doc.to_dict()
+        
+        # Recupero Top Tracks
+        tracks_ref = doc_ref.collection('top_tracks').stream()
+        tracks = [{"title": t.get("title"), "count": t.get("play_count")} for t in [d.to_dict() for d in tracks_ref]]
+        top_5 = sorted(tracks, key=lambda x: x['count'], reverse=True)[:5]
+
+        # --- FIX QUI SOTTO ---
+        # Recupero Storico: iteriamo direttamente sui documenti per avere sia l'ID che i dati
+        hist_ref = doc_ref.collection('history').stream()
+        history = {d.id: d.to_dict().get("play_count") for d in hist_ref} 
+        # ---------------------
+
+        return {
+            "total_plays": data.get("total_plays", 0),
+            "top_tracks": top_5,
+            "history": history,
+            "display_name": data.get("display_name", stage_name)
+        }
+    
     def recover_last_session(self):
         """
         Cerca nello storico dell'utente l'ultima sessione che contenga dati (ignora quelle vuote).
@@ -398,6 +437,59 @@ class SessionManager:
             self._start_new_firestore_session()
             return True
 
+    def _update_global_stats(self, composer_raw, title):
+        """
+        Incrementa i contatori globali per il compositore.
+        Struttura DB:
+        stats_composers/{nome_normalizzato}
+           - total_plays: int
+           - tracks/{titolo_brano}: {count: int}
+           - history/{YYYY-MM}: {count: int}
+        """
+        if not self.db or not composer_raw or composer_raw in ["Sconosciuto", "Pending", "⏳ Ricerca..."]:
+            return
+
+        # Pulizia nomi (gestione multipli es. "Lennon, McCartney")
+        composers = [c.strip() for c in composer_raw.replace("/", ",").split(",") if len(c.strip()) > 2]
+        
+        month_key = datetime.now().strftime("%Y-%m") # Es: 2026-02
+
+        batch = self.db.batch()
+        
+        for comp in composers:
+            # Normalizziamo il nome per usarlo come ID documento (lowercase, no spazi strani)
+            comp_id = self._normalize_string(comp).replace(" ", "_")
+            if not comp_id: continue
+
+            comp_ref = self.db.collection('stats_composers').document(comp_id)
+            
+            # 1. Incremento Totale Plays e Info Base
+            batch.set(comp_ref, {
+                'display_name': comp,
+                'total_plays': firestore.Increment(1),
+                'last_updated': firestore.SERVER_TIMESTAMP
+            }, merge=True)
+
+            # 2. Incremento Top Tracks
+            track_ref = comp_ref.collection('top_tracks').document(self._normalize_string(title).replace(" ", "_"))
+            batch.set(track_ref, {
+                'title': title,
+                'play_count': firestore.Increment(1)
+            }, merge=True)
+
+            # 3. Incremento Storico Mensile (per il grafico)
+            hist_ref = comp_ref.collection('history').document(month_key)
+            batch.set(hist_ref, {
+                'date': month_key,
+                'play_count': firestore.Increment(1)
+            }, merge=True)
+
+        try:
+            batch.commit()
+            print(f"📈 Stats aggiornate per: {composers}")
+        except Exception as e:
+            print(f"❌ Errore aggiornamento stats: {e}")
+    
     def delete_song(self, song_id):
         with self.lock:
             try:
