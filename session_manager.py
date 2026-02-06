@@ -330,6 +330,61 @@ class SessionManager:
                     track_key = f"{target_song['title']} - {target_song['artist']}".lower()
                     self.known_songs_cache[track_key] = target_song.copy()
 
+    def recover_last_session(self):
+        """
+        Cerca nello storico dell'utente l'ultima sessione che contenga dati (ignora quelle vuote).
+        """
+        if not self.db or self.user_id == "demo_user_01":
+            return {"success": False, "message": "Funzione non disponibile per ospiti o offline."}
+
+        try:
+            # 1. Scarichiamo le ultime 5 sessioni (non solo 1)
+            sessions_ref = self.user_ref.collection('sessions')
+            query = sessions_ref.order_by('created_at', direction=firestore.Query.DESCENDING).limit(5)
+            last_sessions = list(query.stream())
+
+            if not last_sessions:
+                return {"success": False, "message": "Nessuna sessione trovata nello storico."}
+
+            found_playlist = []
+            target_session_doc = None
+
+            # 2. Scorriamo le sessioni partendo dalla più recente
+            for session_doc in last_sessions:
+                songs_ref = session_doc.reference.collection('songs')
+                songs_docs = list(songs_ref.stream())
+                
+                # Se questa sessione ha canzoni, è quella che cerchiamo!
+                if len(songs_docs) > 0:
+                    target_session_doc = session_doc
+                    for doc in songs_docs:
+                        found_playlist.append(doc.to_dict())
+                    break # Trovata, ci fermiamo qui
+            
+            if not found_playlist or not target_session_doc:
+                return {"success": False, "message": "Trovate sessioni recenti, ma sono tutte vuote."}
+
+            # 3. Ordiniamo e carichiamo in RAM
+            found_playlist.sort(key=lambda x: int(x['id']) if isinstance(x['id'], int) else 0)
+
+            with self.lock:
+                self.playlist = found_playlist
+                # Ricostruiamo la cache
+                self.known_songs_cache = {
+                    f"{s['title']} - {s['artist']}".lower(): s
+                    for s in found_playlist
+                }
+                # IMPORTANTE: Riagganciamo il puntatore sessione a quella recuperata!
+                # Altrimenti le nuove modifiche finirebbero nella sessione vuota corrente.
+                self.session_ref = target_session_doc.reference
+
+            print(f"♻️ Ripristinata sessione del {target_session_doc.id}: {len(self.playlist)} brani.")
+            return {"success": True, "count": len(self.playlist)}
+
+        except Exception as e:
+            print(f"❌ Errore recupero sessione: {e}")
+            return {"success": False, "message": str(e)}
+    
     def get_playlist(self):
         return self.playlist
 

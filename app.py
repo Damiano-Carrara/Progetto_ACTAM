@@ -147,6 +147,17 @@ def reset_session():
         return jsonify({"status": "cleared", "message": "Sessione resettata."})
     return jsonify({"status": "error", "message": "Errore nel reset DB."})
 
+# --- API: RECUPERA ULTIMA SESSIONE ---
+@app.route("/api/recover_session", methods=["POST"])
+def recover_session():
+    # Chiama il metodo del session_manager
+    result = session_bot.recover_last_session()
+    
+    if result["success"]:
+        return jsonify(result)
+    else:
+        return jsonify(result), 404
+
 
 # --- API: GENERAZIONE REPORT (EXCEL / PDF) ---
 @app.route("/api/generate_report", methods=["POST"])

@@ -1038,29 +1038,57 @@ function initWelcome() {
   if(btnRestore) {
       btnRestore.onclick = async (e) => {
           e.preventDefault();
+          const originalText = btnRestore.innerHTML;
+          btnRestore.innerHTML = "Recupero...";
+          btnRestore.disabled = true;
+
           try {
-              const res = await fetch("/api/get_playlist");
-              if (!res.ok) throw new Error("Errore API");
-              const data = await res.json();
-              
-              if (!data.playlist || data.playlist.length === 0) {
-                    showCustomAlert("Nessuna sessione interrotta trovata");
-                    return;
+              // 1. Chiediamo al backend di ripescare i dati dal DB
+              const resRecover = await fetch("/api/recover_session", { 
+                  method: "POST" 
+              });
+              const dataRecover = await resRecover.json();
+
+              if (!dataRecover.success) {
+                  throw new Error(dataRecover.message || "Nessuna sessione trovata");
               }
 
+              // 2. Se il backend ha ripristinato i dati, ora possiamo scaricarli
+              const resPlaylist = await fetch("/api/get_playlist");
+              if (!resPlaylist.ok) throw new Error("Errore nel download playlist");
+              const dataPlaylist = await resPlaylist.json();
+              
+              if (!dataPlaylist.playlist || dataPlaylist.playlist.length === 0) {
+                    throw new Error("Sessione vuota");
+              }
+
+              showCustomAlert(`Bentornato! Recuperati ${dataPlaylist.playlist.length} brani.`);
+
+              // 3. Cerchiamo di ripristinare la modalità (Local Storage)
+              // Se non c'è nel local storage, defaultiamo a "Band" per sicurezza
               const savedMode = localStorage.getItem("appMode");
               if (savedMode) {
                     state.mode = savedMode;
                     state.concertArtist = localStorage.getItem("concertArtist") || "";
                     state.bandArtist = localStorage.getItem("bandArtist") || "";
-                    explicitRestore = true;
-                    sessionStart();
               } else {
-                    showCustomAlert("Dati sessione trovati, ma impossibile determinare la modalità precedente.");
+                    // Fallback se l'utente ha cambiato browser
+                    state.mode = "band"; 
               }
+              
+              // 4. Avviamo la sessione visuale
+              explicitRestore = true;
+              // Passiamo 'true' a sessionStart se vogliamo evitare che resetti di nuovo il DB
+              // (Nota: sessionStart nel tuo codice attuale fa un reset_session se explicitRestore è false.
+              // Avendo settato explicitRestore = true qui sopra, i dati non verranno cancellati).
+              sessionStart();
+
           } catch(err) {
-              console.error(err);
-              showCustomAlert("Errore durante il controllo della sessione");
+              console.warn(err);
+              showCustomAlert(err.message);
+          } finally {
+              btnRestore.innerHTML = originalText;
+              btnRestore.disabled = false;
           }
       };
   }
