@@ -8,12 +8,25 @@ from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, 
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 
-
 class ReportGenerator:
     def __init__(self):
         print("📊 Report Generator Inizializzato")
 
-    # [generate_excel rimane invariato...]
+    def _format_composer(self, comp_text):
+        """
+        Formatta il compositore per il report.
+        """
+        if not comp_text: return "Non rilevato"
+        t = str(comp_text).strip().lower()
+        
+        invalid_terms = ["sconosciuto", "errore", "—", "-", "nessuno"]
+        
+        if any(x in t for x in invalid_terms):
+            return "Non rilevato"
+            
+        return str(comp_text).strip()
+
+    # --- 1. EXCEL (OFFICIAL - SOLO CONFERMATI E NON CANCELLATI) ---
     def generate_excel(self, playlist, metadata=None):
         wb = Workbook()
         ws = wb.active
@@ -43,13 +56,18 @@ class ReportGenerator:
 
         row_num = 2
         index_display = 1
+        
         for song in playlist:
+            if song.get('is_deleted', False):
+                continue
             if not song.get("confirmed", False):
                 continue
 
             title = song.get("title", "").strip().upper()
-            composer = song.get("composer", "").strip().upper()
             artist = song.get("artist", "").strip().title()
+            
+            raw_comp = song.get("composer", "")
+            composer = self._format_composer(raw_comp).upper()
 
             ws.cell(row=row_num, column=1, value=index_display).alignment = center_align
             ws.cell(row=row_num, column=2, value=title).alignment = left_align
@@ -80,7 +98,7 @@ class ReportGenerator:
         output.seek(0)
         return output
 
-    # [generate_pdf_official rimane invariato...]
+    # --- 2. PDF OFFICIAL (SOLO CONFERMATI E NON CANCELLATI) ---
     def generate_pdf_official(self, playlist, metadata=None):
         buffer = io.BytesIO()
         doc = SimpleDocTemplate(buffer, pagesize=A4)
@@ -115,12 +133,16 @@ class ReportGenerator:
 
         idx = 1
         for song in playlist:
+            if song.get('is_deleted', False):
+                continue
             if not song.get("confirmed", False):
                 continue
 
             title = (song.get("title") or "").strip()
-            composer = (song.get("composer") or "").strip()
             artist = (song.get("artist") or "").strip()
+            
+            raw_comp = song.get("composer")
+            composer = self._format_composer(raw_comp)
 
             data.append([
                 Paragraph(str(idx), center_style),
@@ -154,12 +176,13 @@ class ReportGenerator:
         buffer.seek(0)
         return buffer
 
-    # ---------- PDF LOG RAW (AGGIORNATO) ----------
+    # --- 3. PDF RAW (MODIFICATO PER REQUISITI SPECIFICI) ---
     def generate_pdf_raw(self, playlist, metadata=None):
         """
         PDF 'Log Tecnico':
-        - Manuale: ID="—", Titolo/Comp="(Inserimento Manuale)".
-        - Automatico: Se compositore è 'Sconosciuto'/'Ricerca...' -> 'Non rilevato'.
+        - Inserimento Manuale: Riga Verde, ID="INSERIMENTO MANUALE" (No numero).
+        - Rimossa: Riga Rossa, ID="{N}\nRIMOSSA". Dati Originali.
+        - Modificata: Riga Nera (Dati Originali), ID="{N}\nMODIFICA AVVENUTA" (Blu).
         """
         buffer = io.BytesIO()
         doc = SimpleDocTemplate(buffer, pagesize=A4)
@@ -167,105 +190,104 @@ class ReportGenerator:
         story = []
 
         story.append(Paragraph("Log di Rilevamento Automatico", styles["Title"]))
-
-        subtitle_text = (
-            "Report tecnico di legittimità. I dati riportati corrispondono a quanto rilevato "
-            "dall'algoritmo, escludendo modifiche manuali."
-        )
+        
+        subtitle_text = "Report tecnico di legittimità."
         story.append(Paragraph(subtitle_text, styles["Normal"]))
         story.append(Spacer(1, 12))
 
-        # Stile Header
-        h_style = ParagraphStyle(
-            "RawHeader",
-            parent=styles["Normal"],
-            fontName="Courier-Bold",
-            fontSize=8,
-            textColor=colors.white,
-            alignment=1,  # Center
-        )
-
-        # Stile Celle
-        c_style = ParagraphStyle(
-            "RawCell",
-            parent=styles["Normal"],
-            fontName="Helvetica",
-            fontSize=8,
-            leading=10,
-            alignment=0,  # Left
-        )
-
-        # Stile ID
-        c_center = ParagraphStyle(
-            "RawCellCenter",
-            parent=styles["Normal"],
-            fontName="Helvetica",
-            fontSize=8,
-            alignment=1,
-        )
+        # Stili
+        h_style = ParagraphStyle("RawHeader", parent=styles["Normal"], fontName="Courier-Bold", fontSize=8, textColor=colors.white, alignment=1)
+        c_style = ParagraphStyle("RawCell", parent=styles["Normal"], fontName="Helvetica", fontSize=8, leading=10, alignment=0)
+        c_center = ParagraphStyle("RawCellCenter", parent=styles["Normal"], fontName="Helvetica", fontSize=8, alignment=1, leading=10)
 
         data = [[
-            Paragraph("ID", h_style),
-            Paragraph("Titolo (Rilevato)", h_style),
-            Paragraph("Compositore (Rilevato)", h_style),
-            Paragraph("Artista (Rilevato)", h_style),
+            Paragraph("ID / STATO", h_style),
+            Paragraph("Titolo", h_style),
+            Paragraph("Compositore", h_style),
+            Paragraph("Artista", h_style),
         ]]
+
+        table_styles = [
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#2b2b2b")),
+            ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f4f4f4")]),
+        ]
 
         if not playlist:
             data.append(["—", "Nessun dato", "", ""])
         else:
             for song in playlist:
                 is_manual = song.get("manual", False)
+                is_deleted = song.get("is_deleted", False)
+                song_id_num = str(song.get("id", "?"))
 
-                # --- LOGICA INSERIMENTO MANUALE ---
+                # Variabili di display e stile
+                row_color = colors.black
+                display_id = song_id_num
+                
+                # Default: mostriamo i dati ORIGINALI per dimostrare la legittimità
+                # Se non c'è originale (es. manuale), usiamo il corrente
+                d_title = song.get("original_title") or song.get("title", "")
+                d_comp = self._format_composer(song.get("original_composer") or song.get("composer", ""))
+                d_art = song.get("original_artist") or song.get("artist", "")
+
+                # 1. CASO INSERIMENTO MANUALE (VERDE)
                 if is_manual:
-                    song_id = "—"
-                    display_title = "(Inserimento Manuale)"
-                    display_comp = "(Inserimento Manuale)"
-                    display_art = "—"
+                    row_color = colors.HexColor("#008f00") # Verde
+                    display_id = "INSERIMENTO<br/>MANUALE" # Niente numero ID
+                    # Per manuale non esistono dati "originali" diversi da quelli inseriti
+                    d_title = song.get("title", "")
+                    d_comp = song.get("composer", "")
+                    d_art = song.get("artist", "")
 
-                # --- LOGICA RILEVAMENTO AUTOMATICO ---
+                # 2. CASO RIMOSSA (ROSSO)
+                elif is_deleted:
+                    row_color = colors.red
+                    display_id = f"{song_id_num}<br/>RIMOSSA"
+                    # Qui d_title/comp sono già settati agli originali sopra
+
+                # 3. CASO MODIFICA (ID BLU, RIGA NERA CON DATI ORIGINALI)
                 else:
-                    song_id = str(song.get("id", "?"))
+                    # Controllo se c'è stata modifica rispetto all'originale
+                    curr_title = str(song.get("title", "")).strip().lower()
+                    orig_title = str(d_title).strip().lower()
+                    
+                    curr_comp = str(song.get("composer", "")).strip().lower()
+                    # formatto l'originale allo stesso modo per il confronto
+                    orig_comp_raw = song.get("original_composer") or song.get("composer", "")
+                    # nota: il confronto lo facciamo sui dati raw se possibile, o stringhe pulite
+                    
+                    # Logica semplificata: se i campi correnti sono diversi dagli originali salvati
+                    # (Session manager salva original_title alla creazione)
+                    modified = False
+                    if song.get("original_title") and song.get("original_title") != song.get("title"):
+                        modified = True
+                    if song.get("original_composer") and song.get("original_composer") != song.get("composer"):
+                        modified = True
 
-                    # Recupero dati originali
-                    orig_title = song.get("original_title")
-                    orig_comp = song.get("original_composer")
-                    orig_art = song.get("original_artist")
+                    if modified:
+                        # La riga resta NERA (mostra dati originali), ma l'ID ha la scritta BLU
+                        display_id = f"{song_id_num}<br/><font color='blue'>MODIFICA<br/>AVVENUTA</font>"
+                    
+                # Creazione Paragrafi
+                p_id = Paragraph(display_id, ParagraphStyle("pid", parent=c_center, textColor=row_color if not (modified and not is_deleted and not is_manual) else colors.black))
+                
+                # Se è modificato, l'ID label è blu (gestito nel tag font sopra), ma il testo riga deve essere nero (Originale)
+                # Se è cancellato o manuale, il colore riga sovrascrive tutto.
+                text_color = row_color
 
-                    # Titolo
-                    display_title = orig_title if orig_title else "(Dati mancanti)"
+                p_tit = Paragraph(str(d_title), ParagraphStyle("ptit", parent=c_style, textColor=text_color))
+                p_comp = Paragraph(str(d_comp), ParagraphStyle("pcomp", parent=c_style, textColor=text_color))
+                p_art = Paragraph(str(d_art), ParagraphStyle("part", parent=c_style, textColor=text_color))
 
-                    # Compositore: Normalizzazione "Non rilevato"
-                    c_check = str(orig_comp).strip() if orig_comp else ""
-                    if (not c_check) or c_check == "—" or ("Sconosciuto" in c_check) or ("Ricerca" in c_check):
-                        display_comp = "Non rilevato"
-                    else:
-                        display_comp = c_check
+                data.append([p_id, p_tit, p_comp, p_art])
 
-                    # Artista
-                    display_art = orig_art if orig_art else "—"
-
-                data.append([
-                    Paragraph(song_id, c_center),
-                    Paragraph(display_title, c_style),
-                    Paragraph(display_comp, c_style),
-                    Paragraph(display_art, c_style),
-                ])
-
-        col_widths = [30, 190, 190, 130]
+        col_widths = [70, 180, 160, 130]
         table = Table(data, colWidths=col_widths, repeatRows=1)
-
-        table.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#2b2b2b")),
-            ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
-            ("VALIGN", (0, 0), (-1, -1), "TOP"),
-            ("TOPPADDING", (0, 0), (-1, -1), 4),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-            ("LEFTPADDING", (0, 0), (-1, -1), 4),
-            ("RIGHTPADDING", (0, 0), (-1, -1), 4),
-            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f4f4f4")]),
-        ]))
+        table.setStyle(TableStyle(table_styles))
 
         story.append(table)
         story.append(Spacer(1, 12))
@@ -277,7 +299,7 @@ class ReportGenerator:
 
         story.append(Spacer(1, 4))
         story.append(Paragraph(
-            "Questo documento certifica l'output del sistema di riconoscimento automatico.",
+            "Questo documento certifica l'output originale del sistema.",
             styles["Italic"],
         ))
 

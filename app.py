@@ -18,10 +18,18 @@ conf.get_default().auth_token = "36h1RSKg2jFomjrnvz9iLqTmvXx_dR6mu6AVwxAzjquwYyZ
 
 public_url = None
 
-# Inizializziamo Firebase
-cred = credentials.Certificate("firebase_credentials.json")
-firebase_admin.initialize_app(cred)
-db = firestore.client()
+# --- Inizializzazione Firebase (Versione Safe del Collega) ---
+try:
+    cred = credentials.Certificate("firebase_credentials.json")
+    firebase_admin.initialize_app(cred)
+    db = firestore.client()
+    print("🔥 Firebase Connesso!")
+except FileNotFoundError:
+    print("⚠️ AVVISO: 'firebase_credentials.json' non trovato. Modalità OFFLINE (Solo RAM).")
+    db = None
+except ValueError:
+    print("⚠️ AVVISO: App Firebase già inizializzata.")
+    db = firestore.client()
 
 # Inizializziamo i nostri "robot"
 audio_bot = AudioManager()
@@ -59,7 +67,7 @@ def get_qr_image():
         return jsonify({"error": "Tunnel non attivo"}), 404
 
     # Creiamo l'URL per lo spettatore (aggiungiamo ?mode=viewer)
-    viewer_link = f"{public_url}/?mode=viewer"
+    viewer_link = f"{public_url}?mode=viewer"
 
     # Generiamo il QR
     qr = qrcode.QRCode(box_size=10, border=4)
@@ -75,7 +83,7 @@ def get_qr_image():
     return send_file(img_io, mimetype="image/png")
 
 # --- API: PRE-CARICAMENTO CONTESTO (PREFETCH) ---
-# Questa è la novità: scarica i dati mentre l'utente prepara la sessione
+# ✅ REINSERITA (Il collega l'aveva tolta, ma serve per le performance)
 @app.route("/api/prepare_session", methods=["POST"])
 def prepare_session():
     data = request.get_json() or {}
@@ -97,7 +105,7 @@ def start_recognition():
 
     print(f"🚀 Richiesta avvio monitoraggio. Bias: {target_artist}")
 
-    # Aggiorniamo il target (se era già stato fatto da prepare_session, non farà nulla di pesante)
+    # Aggiorniamo il target (anche se fatto dal prefetch, è safe richiamarlo)
     audio_bot.update_target_artist(target_artist)
 
     started = audio_bot.start_continuous_recognition(
@@ -182,6 +190,30 @@ def generate_report():
         print(f"Errore generazione report: {e}")
         return jsonify({"error": str(e)}), 500
 
+# --- API PER AUTH (AGGIUNTE DAL COLLEGA) ---
+@app.route("/api/register", methods=["POST"])
+def api_register():
+    data = request.get_json()
+    # NOTA: Richiede aggiornamento session_manager.py
+    if hasattr(session_bot, 'register_user'):
+        res = session_bot.register_user(data)
+        return jsonify(res)
+    return jsonify({"error": "Backend updating..."}), 503
+
+@app.route("/api/login", methods=["POST"])
+def api_login():
+    data = request.get_json()
+    username = data.get("username")
+    password = data.get("password")
+    role = data.get("role")
+    
+    # NOTA: Richiede aggiornamento session_manager.py
+    if hasattr(session_bot, 'login_user'):
+        res = session_bot.login_user(username, password, role)
+        return jsonify(res)
+    return jsonify({"error": "Backend updating..."}), 503
+
+# --------------------------------
 
 def cleanup_on_exit():
     """Pulizia alla chiusura dell'app"""

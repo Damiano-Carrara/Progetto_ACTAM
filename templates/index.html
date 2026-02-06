@@ -9,7 +9,6 @@
   </head>
   <body id="body-container">
     <div id="app-background" class="app-background {{ 'viewer-bg' if viewer_mode }}"></div>
-    
     <div class="app-background-overlay"></div>
 
     <div id="global-stage-lights">
@@ -18,14 +17,12 @@
           <filter id="gBeamBlur">
             <feGaussianBlur stdDeviation="30" />
           </filter>
-          
           <linearGradient id="globalBeamGradient" x1="0%" y1="0%" x2="0%" y2="100%">
             <stop offset="0%" stop-color="rgba(255, 255, 255, 0.65)" />
             <stop offset="50%" stop-color="rgba(255, 255, 255, 0.22)" />
             <stop offset="100%" stop-color="rgba(255, 255, 255, 0)" />
           </linearGradient>
         </defs>
-        
         <path id="gl-beam-tl" fill="url(#globalBeamGradient)" filter="url(#gBeamBlur)" style="mix-blend-mode: overlay;" />
         <path id="gl-beam-tr" fill="url(#globalBeamGradient)" filter="url(#gBeamBlur)" style="mix-blend-mode: overlay;" />
         <path id="gl-beam-bl" fill="url(#globalBeamGradient)" filter="url(#gBeamBlur)" style="mix-blend-mode: overlay;" />
@@ -41,7 +38,6 @@
             <h1 style="font-size: 10rem; line-height: 1; margin: 0; font-weight: 900; letter-spacing: 15px; opacity: 0.9;">KYMA</h1>
             <p style="font-size: 1.2rem; opacity: 0.7; letter-spacing: 1px; margin-top: 10px;">Seleziona la tua modalità di accesso</p>
           </div>
-
           <div class="stage-scene">
             <svg viewBox="0 0 1200 800" preserveAspectRatio="xMidYMid slice" role="img">
               <defs>
@@ -63,7 +59,6 @@
                   <stop offset="40%" stop-color="rgba(236, 54, 141, 0.2)"/>
                   <stop offset="100%" stop-color="rgba(236, 54, 141, 0.65)"/>
                 </linearGradient>
-                
                 <mask id="maskLeft">
                   <path id="mask-path-left" d="M250,150 L90,680 Q250,720 410,680 Z" fill="white" filter="url(#softBlur)"/>
                 </mask>
@@ -79,7 +74,6 @@
                 <path id="beam-left" class="beam" d="M250,150 L90,680 Q250,720 410,680 Z" 
                       fill="url(#gradBeamUser)" style="mix-blend-mode: screen;" filter="url(#softBlur)"></path>
                 <ellipse id="spot-left" cx="250" cy="680" rx="160" ry="20" fill="rgba(81, 229, 255, 0.4)" filter="url(#softBlur)" style="mix-blend-mode: screen;"></ellipse>
-                
                 <text x="250" y="640" text-anchor="middle" font-size="44" font-weight="800" fill="#1f2530" letter-spacing="2">UTENTE</text>
                 <text x="250" y="670" text-anchor="middle" font-size="16" font-weight="400" fill="#1f2530">Genera borderò e report per eventi</text>
                 <g mask="url(#maskLeft)">
@@ -93,7 +87,6 @@
                 <path id="beam-right" class="beam" d="M950,150 L790,680 Q950,720 1110,680 Z" 
                       fill="url(#gradBeamArtist)" style="mix-blend-mode: screen;" filter="url(#softBlur)"></path>
                 <ellipse id="spot-right" cx="950" cy="680" rx="160" ry="20" fill="rgba(236, 54, 141, 0.4)" filter="url(#softBlur)" style="mix-blend-mode: screen;"></ellipse>
-                
                 <text x="950" y="640" text-anchor="middle" font-size="36" font-weight="800" fill="#1f2530" letter-spacing="1">COMPOSITORE</text>
                 <text x="950" y="670" text-anchor="middle" font-size="16" font-weight="400" fill="#1f2530">Visualizza statistiche e royalties</text>
                 <g mask="url(#maskRight)">
@@ -107,7 +100,6 @@
                 <path id="beam-center" class="beam" d="M600,150 L440,720 Q600,760 760,720 Z" 
                       fill="url(#gradBeamOrg)" style="mix-blend-mode: screen;" filter="url(#softBlur)"></path>
                 <ellipse id="spot-center" cx="600" cy="720" rx="160" ry="20" fill="rgba(112, 238, 156, 0.3)" filter="url(#softBlur)" style="mix-blend-mode: screen;"></ellipse>
-                
                 <text x="600" y="680" text-anchor="middle" font-size="44" font-weight="900" fill="#1f2530" letter-spacing="2">ORGANIZZATORE</text>
                 <text x="600" y="710" text-anchor="middle" font-size="16" font-weight="400" fill="#1f2530">Gestisci artisti, incassi e pagamenti</text>
                 <g mask="url(#maskCenter)">
@@ -118,6 +110,43 @@
               </g>
             </svg>
           </div>
+        </div>
+      </section>
+
+      <section id="view-register" class="view">
+        <div class="card auth-card" style="max-width: 450px; margin: 40px auto; position: relative; z-index: 20;">
+            <h2 style="text-align: center;">Crea Account</h2>
+            <p class="subtitle" style="text-align: center; margin-bottom: 20px;">Registrati come nuovo utente</p>
+            
+            <div class="auth-inputs">
+                <div style="display: flex; gap: 10px;">
+                    <input type="text" id="reg-name" placeholder="Nome">
+                    <input type="text" id="reg-surname" placeholder="Cognome">
+                </div>
+                <input type="email" id="reg-email" placeholder="Email (es. m.rossi@mail.com)">
+                <input type="text" id="reg-username" placeholder="Username (univoco)">
+                <input type="password" id="reg-pass" placeholder="Password">
+                
+                <label style="font-size: 0.8rem; color: var(--muted); margin-top:5px;">Data di nascita:</label>
+                <input type="date" id="reg-birthdate" style="color-scheme: dark;">
+                
+                <label style="font-size: 0.8rem; color: var(--muted); margin-top:5px;">Tipologia Account:</label>
+                <select id="reg-role" style="padding: 12px; background: #0b0c10; color: white; border: 1px solid var(--border); border-radius: 8px;">
+                    <option value="user">Utente Base</option>
+                    <option value="composer">Compositore</option>
+                    <option value="org">Organizzatore</option>
+                </select>
+
+                <div id="reg-stage-name-wrapper" class="hidden" style="margin-top: 10px;">
+                     <label style="font-size: 0.8rem; color: var(--c-cyan); margin-bottom: 5px; display:block;">Nome d'Arte / Depositato:</label>
+                     <input type="text" id="reg-stage-name" placeholder="Es. Vasco, The Weeknd..." style="border-color: var(--c-cyan);">
+                </div>
+            </div>
+
+            <div class="auth-actions" style="margin-top: 20px;">
+                <button id="btn-do-register" class="btn btn--primary" style="width: 100%;">Registrati</button>
+                <button id="btn-cancel-register" class="btn" style="width: 100%; background: transparent; margin-top: 10px;">Annulla</button>
+            </div>
         </div>
       </section>
 
@@ -158,16 +187,15 @@
       <section id="view-welcome" class="view">
         <div class="mode-page">
           <div class="mode-container">
-            
             <div class="welcome-nav-header" style="display: flex; gap: 10px; align-items: center; margin-bottom: 10px;">
                 <button id="btn-back-roles" class="btn btn--small">← Indietro</button>
                 <button id="btn-manual-restore" class="btn btn--small btn--restore-cloud" title="Recupera sessione in caso di interruzione imprevista">
-                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:6px;">
-                       <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                       <polyline points="7 10 12 15 17 10"></polyline>
-                       <line x1="12" y1="15" x2="12" y2="3"></line>
-                   </svg>
-                   Recupera Sessione
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:6px;">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                        <polyline points="7 10 12 15 17 10"></polyline>
+                        <line x1="12" y1="15" x2="12" y2="3"></line>
+                    </svg>
+                    Recupera Sessione
                 </button>
             </div>
 
@@ -222,8 +250,8 @@
                   </div>
                   <div class="artist-input-wrapper visible" style="border:none; padding-top:0;">
                       <div class="artist-input-row">
-                         <div class="artist-placeholder"></div>
-                         <button type="button" id="statsConfirmBtn" style="background: #e5e7eb; color: #1f2937; width: 100%; border: 1px solid #d1d5db;">Apri Dashboard</button>
+                          <div class="artist-placeholder"></div>
+                          <button type="button" id="statsConfirmBtn" style="background: #e5e7eb; color: #1f2937; width: 100%; border: 1px solid #d1d5db;">Apri Dashboard</button>
                       </div>
                   </div>
                 </div>
@@ -288,7 +316,7 @@
             <div id="live-log" class="log-body"></div>
           </section>
         </div>
-        </section>
+      </section>
 
       <section id="view-review" class="view">
         <header class="hero hero--small">
@@ -464,12 +492,11 @@
         <div class="modal-backdrop"></div>
         <div class="modal-dialog card auth-card" style="position: relative;">
             <button id="btn-auth-close" class="btn-icon-close" title="Chiudi">✕</button>
-
             <h2 style="margin-top: 0;">Benvenuto</h2>
             <p class="modal-message" style="margin-bottom: 20px; opacity: 0.7;">Accedi per continuare</p>
             
             <div class="auth-inputs">
-                <input type="email" id="auth-email" placeholder="Email" autocomplete="username">
+                <input type="text" id="auth-email" placeholder="Username o Email" autocomplete="username">
                 <input type="password" id="auth-pass" placeholder="Password" autocomplete="current-password">
             </div>
 
@@ -484,11 +511,21 @@
         </div>
       </div>
 
+      <div id="alert-modal" class="modal modal--hidden">
+        <div class="modal-backdrop"></div>
+        <div class="modal-dialog card" style="max-width: 320px; text-align: center;">
+          <h3 style="margin-top:0; color:#ffc7d5">Attenzione</h3>
+          <p id="alert-message" class="modal-message" style="margin: 15px 0; color: #e6eef8;"></p>
+          <div class="modal-actions" style="justify-content: center;">
+            <button id="alert-ok" class="btn btn--small btn--primary">Capito</button>
+          </div>
+        </div>
+      </div>
     </main>
+
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
-
     <script src="{{ url_for('static', filename='script.js') }}" defer></script>
   </body>
 </html>

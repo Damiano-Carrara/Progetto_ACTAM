@@ -1,4 +1,4 @@
-// --- 1. CONFIGURAZIONE FIREBASE (Incolla qui in cima) ---
+// --- 1. CONFIGURAZIONE FIREBASE ---
 const firebaseConfig = {
   apiKey: "AIzaSyDPtkUaiTQSxUB9x7x1xWF9XHdVqBXLb-s",
   authDomain: "actam-project-8f9de.firebaseapp.com",
@@ -10,20 +10,20 @@ const firebaseConfig = {
 };
 
 // --- 2. INIZIALIZZAZIONE ---
-// Controlliamo che firebase sia stato caricato (per evitare errori se manca internet)
 if (typeof firebase !== 'undefined') {
   firebase.initializeApp(firebaseConfig);
   console.log("🔥 Firebase Client inizializzato!");
 } else {
   console.error("❌ Librerie Firebase non trovate. Controlla index.html");
 }
+
 // --- STATO APP ---
 const state = {
-  role: null,            
-  orgRevenue: 0,          
+  role: null,             
+  orgRevenue: 0,           
   orgRevenueConfirmed: false, 
   currentRoyaltySong: null, 
-  mode: null,             
+  mode: null,              
   route: "roles",         
   concertArtist: "",
   bandArtist: "",
@@ -35,7 +35,7 @@ let songs = [];
 let lastMaxSongId = 0;
 let currentSongId = null;
 let currentCoverUrl = null;
-let explicitRestore = false; // Flag per capire se l'utente ha richiesto esplicitamente il ripristino
+let explicitRestore = false;
 
 let playlistPollInterval = null;
 let sessionStartMs = 0;
@@ -43,7 +43,6 @@ let sessionAccumulatedMs = 0;
 let sessionTick = null;
 
 let undoStack = [];
-let lastSessionSnapshot = null;
 let notesModalContext = "session";
 let hoveredRole = null; 
 
@@ -65,6 +64,19 @@ function formatMoney(amount, currency = "EUR") {
 
 function lerp(start, end, amt) {
     return (1 - amt) * start + amt * end;
+}
+
+// --- CUSTOM ALERT FUNCTION (Dal Collega) ---
+function showCustomAlert(msg) {
+    const m = $("#alert-modal");
+    if (!m) { alert(msg); return; } // Fallback se non esiste il modale nel DOM
+    $("#alert-message").textContent = msg;
+    m.classList.remove("modal--hidden");
+    const btn = $("#alert-ok");
+    // Clone per rimuovere vecchi event listener
+    const newBtn = btn.cloneNode(true);
+    btn.parentNode.replaceChild(newBtn, btn);
+    newBtn.onclick = () => { m.classList.add("modal--hidden"); };
 }
 
 function saveStateToLocal() {
@@ -90,7 +102,7 @@ function setRoute(route) {
   const body = document.body;
   if (body) {
     body.setAttribute("data-active-view", route);
-    if (["welcome", "session", "roles"].includes(route)) body.classList.add("no-scroll");
+    if (["welcome", "session", "roles", "register"].includes(route)) body.classList.add("no-scroll");
     else body.classList.remove("no-scroll");
   }
 }
@@ -104,7 +116,7 @@ function showView(id) {
 }
 
 // ============================================================================
-// GESTIONE RUOLI & AUTH
+// GESTIONE RUOLI & AUTH (MERGED: Collega Logic + Fix ID)
 // ============================================================================
 function initRoleSelection() {
   const roleSpots = document.querySelectorAll(".spotlight-group");
@@ -113,26 +125,21 @@ function initRoleSelection() {
   const btnGuest = $("#btn-auth-guest");
   const linkRegister = $("#link-register");
   const btnCloseAuth = $("#btn-auth-close");
-
   const btnCompBack = $("#btn-comp-back");
+
   if (btnCompBack) {
-      btnCompBack.onclick = () => {
-          showView("#view-welcome");
-      };
+      btnCompBack.onclick = () => showView("#view-welcome");
   }
   
   roleSpots.forEach(spot => {
-    spot.addEventListener("mouseenter", () => {
-      hoveredRole = spot.dataset.role;
-    });
-    spot.addEventListener("mouseleave", () => {
-      hoveredRole = null;
-    });
+    spot.addEventListener("mouseenter", () => { hoveredRole = spot.dataset.role; });
+    spot.addEventListener("mouseleave", () => { hoveredRole = null; });
     spot.addEventListener("click", () => {
       const role = spot.dataset.role;
       pendingRole = role; 
-      $("#auth-email").value = "";
-      $("#auth-pass").value = "";
+      // FIX ID: Il collega usava auth-user-email, ma l'HTML è auth-email
+      if($("#auth-email")) $("#auth-email").value = "";
+      if($("#auth-pass")) $("#auth-pass").value = "";
       authModal.classList.remove("modal--hidden");
     });
   });
@@ -146,54 +153,119 @@ function initRoleSelection() {
 
   if (btnLogin) {
     btnLogin.onclick = async () => {
-        const email = $("#auth-email").value.trim();
+        // FIX ID qui
+        const identifier = $("#auth-email").value.trim();
         const pass = $("#auth-pass").value.trim();
+        
+        if(!identifier || !pass) return showCustomAlert("Inserisci email/username e password");
+        if(!pendingRole) return showCustomAlert("Errore ruolo non selezionato");
 
-        if(!email || !pass) {
-            alert("Per favore inserisci email e password");
-            return;
-        }
-
-        // --- INTEGRAZIONE FIREBASE ---
         try {
-            // Cambio il testo del bottone per feedback visivo
-            const originalText = btnLogin.textContent;
-            btnLogin.textContent = "Accesso in corso...";
+            btnLogin.textContent = "Verifica...";
             btnLogin.disabled = true;
 
-            // Chiamata reale a Firebase Auth
-            // Assicurati che 'auth' sia importato/inizializzato nel tuo progetto
-            // (es. import { auth } from './firebase-config.js' oppure window.auth)
-            await firebase.auth().signInWithEmailAndPassword(email, pass);
-            
-            // Se non va in errore, l'observer onAuthStateChanged (se lo hai) 
-            // o la funzione qui sotto gestirà il redirect.
-            completeAuth(); 
+            const res = await fetch("/api/login", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({
+                    username: identifier, // Backend gestisce Username o Email
+                    password: pass,
+                    role: pendingRole 
+                })
+            });
+            const data = await res.json();
 
-        } catch (error) {
-            console.error("Login error:", error);
-            alert("Errore login: " + error.message);
+            if(data.success) {
+                completeAuth(); 
+            } else {
+                showCustomAlert(data.error); 
+            }
+        } catch(e) {
+            console.error(e);
+            showCustomAlert("Errore server login");
         } finally {
-            // Ripristino bottone
             btnLogin.textContent = "Accedi";
             btnLogin.disabled = false;
         }
-        // -----------------------------
     };
   }
 
-  if (btnGuest) {
-    btnGuest.onclick = () => {
-        completeAuth();
-    };
-  }
+  if (btnGuest) btnGuest.onclick = () => completeAuth();
 
   if (linkRegister) {
     linkRegister.onclick = (e) => {
         e.preventDefault();
-        alert("Redirect alla pagina di registrazione (non implementata)");
+        $("#auth-modal").classList.add("modal--hidden");
+        showView("#view-register");
     };
   }
+}
+
+function initRegistration() {
+    const btnReg = $("#btn-do-register");
+    const btnCancel = $("#btn-cancel-register");
+    const roleSelect = $("#reg-role");
+    const stageNameWrapper = $("#reg-stage-name-wrapper");
+
+    // Gestione visualizzazione campo Stage Name
+    if(roleSelect) {
+        roleSelect.addEventListener("change", () => {
+            if(roleSelect.value === "composer") {
+                stageNameWrapper.classList.remove("hidden");
+            } else {
+                stageNameWrapper.classList.add("hidden");
+                $("#reg-stage-name").value = ""; 
+            }
+        });
+    }
+
+    if(btnCancel) {
+        btnCancel.onclick = () => showView("#view-roles");
+    }
+
+    if(btnReg) {
+        btnReg.onclick = async () => {
+            const payload = {
+                nome: $("#reg-name").value.trim(),
+                cognome: $("#reg-surname").value.trim(),
+                email: $("#reg-email").value.trim(),
+                username: $("#reg-username").value.trim(),
+                password: $("#reg-pass").value.trim(),
+                birthdate: $("#reg-birthdate").value,
+                role: $("#reg-role").value,
+                stage_name: $("#reg-stage-name").value.trim()
+            };
+
+            if(!payload.username || !payload.password || !payload.role || !payload.email) {
+                return showCustomAlert("Compila tutti i campi obbligatori");
+            }
+
+            try {
+                btnReg.textContent = "Registrazione...";
+                btnReg.disabled = true;
+
+                const res = await fetch("/api/register", {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify(payload)
+                });
+                const data = await res.json();
+
+                if(data.success) {
+                    showCustomAlert("Registrazione avvenuta con successo! Ora puoi accedere.");
+                    showView("#view-roles");
+                } else {
+                    showCustomAlert("Errore: " + data.error);
+                }
+            } catch(e) {
+                console.error(e);
+                showCustomAlert("Errore di connessione");
+            } finally {
+                btnReg.textContent = "Registrati";
+                btnReg.disabled = false;
+            }
+        };
+    }
 }
 
 function completeAuth() {
@@ -227,8 +299,7 @@ function initComposerDashboard() {
         }]
       },
       options: {
-        responsive: true,
-        maintainAspectRatio: false,
+        responsive: true, maintainAspectRatio: false,
         plugins: { legend: { display: false } },
         scales: {
           y: { grid: { color: 'rgba(255,255,255,0.1)' }, ticks: { color: '#9fb0c2' } },
@@ -266,7 +337,6 @@ function hydrateSessionHeader() {
           revDisplay.classList.add("hidden");
           if(btnStart) {
               btnStart.disabled = true; 
-              // MODIFICA: Aggiunto Tooltip per l'organizzatore quando non ha confermato
               btnStart.setAttribute("data-tooltip", "Indicare l'incasso dell'evento prima di avviare la sessione");
           }
       } else {
@@ -275,7 +345,6 @@ function hydrateSessionHeader() {
           revDisplay.textContent = `Incasso: ${formatMoney(state.orgRevenue)}`;
           if(btnStart) {
               btnStart.disabled = false;
-              // Rimuovo il tooltip se tutto è ok
               btnStart.removeAttribute("data-tooltip");
           }
       }
@@ -284,7 +353,6 @@ function hydrateSessionHeader() {
       revDisplay.classList.add("hidden");
       if(btnStart) {
           btnStart.disabled = false;
-          // Rimuovo tooltip per ruoli non-organizzatore
           btnStart.removeAttribute("data-tooltip");
       }
   }
@@ -421,7 +489,6 @@ async function pollPlaylistOnce() {
           manual: song.manual || false,
           is_deleted: isDeleted,
           confirmed: false,
-          // MAPPIAMO I CAMPI ORIGINALI DAL DB
           original_title: song.original_title,
           original_artist: song.original_artist,
           original_composer: song.original_composer
@@ -434,32 +501,20 @@ async function pollPlaylistOnce() {
             pushLog({ id: track.id, index: track.order, title: track.title, composer: track.composer, artist: track.artist, cover: track.cover });
         }
       } else {
-        // 1. Gestione Compositore (già presente)
         if (song.composer && song.composer !== existing.composer) {
             existing.composer = song.composer;
             const rowEl = document.querySelector(`.log-row[data-id="${id}"] .col-composer`);
             if (rowEl) rowEl.textContent = existing.composer;
             if (currentSongId === id) setNow(existing.title, existing.composer);
         }
-        
-        // 2. FIX COVER: Aggiorna l'HTML se la cover cambia (o arriva in ritardo)
-        if (song.cover && song.cover !== existing.cover) {
-            existing.cover = song.cover;
-            
-            // Cerchiamo la cella della cover per questo ID
-            const coverContainer = document.querySelector(`.log-row[data-id="${id}"] .col-cover`);
-            if (coverContainer) {
-                // Sostituiamo il contenuto (che fosse un div grigio o una vecchia img) con la nuova img
-                coverContainer.innerHTML = `<img src="${existing.cover}" alt="Cover" loading="lazy">`;
-            }
-
-            // Se è il brano corrente, aggiorna anche lo sfondo
-            if (currentSongId === id) {
-                currentCoverUrl = existing.cover;
-                updateBackground(existing.cover);
-            }
+        if (song.original_composer && song.original_composer !== existing.original_composer) {
+            existing.original_composer = song.original_composer;
         }
-
+        if (!existing.confirmed) {
+            existing.title = song.title || existing.title;
+            existing.artist = song.artist || existing.artist;
+        }
+        if (song.cover && song.cover !== existing.cover) existing.cover = song.cover;
         existing.is_deleted = isDeleted;
         updatedExisting = true;
       }
@@ -508,16 +563,12 @@ async function sessionStart() {
       led.classList.add("led-active");
   }
 
-  // LOGICA START/RESTORE
-  // Se non ho richiesto esplicitamente il ripristino, forzo un reset del DB
   if (!explicitRestore) {
       try {
           await fetch("/api/reset_session", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) });
-          // Resetto anche localmente per sicurezza visiva immediata
           songs = [];
           $("#live-log").innerHTML = "";
       } catch (err) { console.error(err); }
-      // Dopo il primo start forzato, consideriamo la sessione "avviata" (quindi se mette pausa e start non resetta più)
       explicitRestore = true; 
   }
 
@@ -536,9 +587,7 @@ async function sessionPause() {
   if (btnStop) btnStop.disabled = false;
 
   const led = $(".led-rect");
-  if(led) {
-      led.classList.add("led-paused");
-  }
+  if(led) { led.classList.add("led-paused"); }
   
   pauseSessionTimer();
   await stopBackendRecognition();
@@ -555,9 +604,7 @@ async function sessionStop() {
   if (btnStop) btnStop.disabled = true;
 
   const led = $(".led-rect");
-  if(led) {
-      led.classList.add("led-paused");
-  }
+  if(led) { led.classList.add("led-paused"); }
 
   pauseSessionTimer();
   await stopBackendRecognition();
@@ -598,7 +645,7 @@ async function sessionReset() {
   
   state.orgRevenue = 0;
   state.orgRevenueConfirmed = false;
-  explicitRestore = false; // Reset del flag, prossimo start sarà pulito
+  explicitRestore = false; 
 
   const btnStart = $("#btn-session-start");
   const btnPause = $("#btn-session-pause");
@@ -608,16 +655,11 @@ async function sessionReset() {
   if (btnPause) btnPause.disabled = true;
   if (btnStop) btnStop.disabled = true;
 
-  // ANIMAZIONE LED (Fade in place)
   const led = $(".led-rect");
   if(led) {
-      // Blocca l'animazione dov'è e imposta opacità a 0
       led.classList.add("led-fading-out");
-      
-      // Aspetta che la transizione CSS di 1s finisca prima di resettare le classi
       setTimeout(() => {
           led.classList.remove("led-active", "led-paused", "led-fading-out");
-          // Rimuovere led-active resetta lo stroke-dashoffset, ma ora è invisibile (opacity 0)
       }, 1000);
   }
   hydrateSessionHeader();
@@ -649,7 +691,6 @@ function renderReview() {
     inputTitle.value = song.title || "";
     
     if (song.manual) node.classList.add("row--manual");
-
     if(song.confirmed) {
         inputComposer.readOnly = true;
         inputTitle.readOnly = true;
@@ -724,23 +765,18 @@ function openRoyaltiesView(song) {
     showView("#view-royalties");
     
     const isOrg = (state.role === 'org');
-
     const boxRevenue = $("#box-revenue");
     const boxQuota = $("#box-quota");
     
-    // Aggiornamento Box Revenue
     if(boxRevenue) {
         if(isOrg) {
             boxRevenue.classList.remove("hidden");
             $("#roy-total-revenue").textContent = formatMoney(state.orgRevenue);
         } else {
-            // Se non sei organizzatore, nascondi l'intero box o rendilo invisibile
-            // Qui usiamo display:none tramite la classe hidden
             boxRevenue.classList.add("hidden");
         }
     }
     
-    // Aggiornamento Box Quota
     if(boxQuota) {
         if(isOrg) {
             boxQuota.classList.remove("hidden");
@@ -783,10 +819,8 @@ function openRoyaltiesView(song) {
         
         const row = document.createElement("div");
         row.className = "row";
-        
         const displayStyle = isOrg ? "block" : "none";
 
-        // MODIFICA: Rimossa colonna 'Nota' (span con 'Incluso')
         row.innerHTML = `
             <span class="col-left">${comp}</span>
             <span class="col-center">${myShare}/24</span>
@@ -808,12 +842,7 @@ function initGlobalPayments() {
         showView("#view-payments");
     };
   }
-  
-  if(btnBack) {
-    btnBack.onclick = () => {
-        showView("#view-review");
-    };
-  }
+  if(btnBack) btnBack.onclick = () => showView("#view-review");
 }
 
 function calculateAndShowPayments() {
@@ -840,15 +869,8 @@ function calculateAndShowPayments() {
   });
 
   const sortedComposers = Object.entries(composerTotals).sort((a,b) => b[1] - a[1]); 
-  
-  let chartLabels = [];
-  let chartData = [];
-  let chartColors = [];
-
-  const palette = [
-    "#FF6384", "#36A2EB", "#FFCE56", "#4BC0C0", "#9966FF", "#FF9F40", 
-    "#C9CBCF", "#FFCD56", "#E7E9ED", "#76D7C4", "#1E8449", "#F1948A"
-  ];
+  let chartLabels = [], chartData = [], chartColors = [];
+  const palette = ["#FF6384", "#36A2EB", "#FFCE56", "#4BC0C0", "#9966FF", "#FF9F40", "#C9CBCF", "#FFCD56", "#E7E9ED", "#76D7C4", "#1E8449", "#F1948A"];
 
   sortedComposers.forEach(([comp, amount], index) => {
       const row = document.createElement("div");
@@ -871,7 +893,6 @@ function calculateAndShowPayments() {
       };
 
       listContainer.appendChild(row);
-
       chartLabels.push(comp);
       chartData.push(amount);
       chartColors.push(palette[index % palette.length]);
@@ -882,33 +903,21 @@ function calculateAndShowPayments() {
 }
 
 let paymentChartInstance = null;
-
 function renderPaymentChart(labels, data, colors) {
   const ctx = document.getElementById('paymentsChart');
   if(!ctx) return;
-
   if(paymentChartInstance) paymentChartInstance.destroy();
-
   paymentChartInstance = new Chart(ctx, {
     type: 'doughnut',
     data: {
       labels: labels,
       datasets: [{
-        data: data,
-        backgroundColor: colors,
-        borderColor: '#12151a',
-        borderWidth: 2
+        data: data, backgroundColor: colors, borderColor: '#12151a', borderWidth: 2
       }]
     },
     options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: {
-          position: 'right',
-          labels: { color: '#e6eef8', font: { size: 11 } }
-        }
-      }
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position: 'right', labels: { color: '#e6eef8', font: { size: 11 } } } }
     }
   });
 }
@@ -950,14 +959,11 @@ function initWelcome() {
   document.querySelectorAll(".mode-card").forEach((card) => {
     card.addEventListener("click", (e) => {
       if(e.target.tagName === "INPUT" || e.target.tagName === "BUTTON") return;
-      
       const mode = card.dataset.mode;
-      
       if(mode === "stats") {
           showView("#view-composer");
           initComposerDashboard();
       } else {
-          // Se cambio modalità, resetto la volontà di ripristino
           explicitRestore = false;
           state.mode = mode;
           applyTheme();
@@ -980,27 +986,20 @@ function initWelcome() {
     showView("#view-session");
   };
 
-  // --- NUOVA LOGICA TASTO INDIETRO (PAGE 2 -> PAGE 1) ---
   const btnBackRoles = $("#btn-back-roles");
   if(btnBackRoles) {
       btnBackRoles.onclick = () => {
-          // Reset completo stato
-          state.role = null;
-          state.mode = null;
-          explicitRestore = false;
-          
-          hoveredRole = null;
-          pendingRole = null;
-
+          state.role = null; state.mode = null; explicitRestore = false;
+          hoveredRole = null; pendingRole = null;
           showView("#view-roles");
       };
   }
 
-  // --- NUOVA FUNZIONE HELPER PER IL PREFETCH ---
+  // --- REINSERIMENTO PREFETCH (TUA LOGICA) ---
   const triggerBackendPrefetch = (artistName) => {
       if (!artistName) return;
       console.log("🚀 Avvio prefetch dati per:", artistName);
-      // Chiamata "fire and forget" (non usiamo await perché vogliamo cambiare pagina subito)
+      // Chiamata "fire and forget"
       fetch("/api/prepare_session", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -1011,15 +1010,14 @@ function initWelcome() {
   $("#artistConfirmBtn").onclick = (e) => {
     e.preventDefault();
     const name = $("#artistInput").value.trim();
-    if (!name) return alert("Inserisci nome artista");
+    if (!name) return showCustomAlert("Inserisci nome artista");
     
     state.concertArtist = name;
     saveStateToLocal();
     
-    // 1. Lancia il download (non blocca la UI)
+    // Attivo Prefetch
     triggerBackendPrefetch(name);
     
-    // 2. Vai subito alla sessione
     goToSession();
   };
 
@@ -1030,14 +1028,12 @@ function initWelcome() {
     state.bandArtist = name;
     saveStateToLocal();
     
-    // 1. Lancia il download (anche se vuoto, resetta il bias)
+    // Attivo Prefetch
     triggerBackendPrefetch(name);
     
-    // 2. Vai subito alla sessione
     goToSession();
   };
 
-  // --- NUOVA LOGICA DI RIPRISTINO MANUALE ---
   const btnRestore = $("#btn-manual-restore");
   if(btnRestore) {
       btnRestore.onclick = async (e) => {
@@ -1048,52 +1044,40 @@ function initWelcome() {
               const data = await res.json();
               
               if (!data.playlist || data.playlist.length === 0) {
-                   alert("Nessuna sessione interrotta trovata");
-                   return;
+                    showCustomAlert("Nessuna sessione interrotta trovata");
+                    return;
               }
 
-              // Se troviamo dati, proviamo a recuperare il contesto da localStorage
               const savedMode = localStorage.getItem("appMode");
               if (savedMode) {
-                   state.mode = savedMode;
-                   state.concertArtist = localStorage.getItem("concertArtist") || "";
-                   state.bandArtist = localStorage.getItem("bandArtist") || "";
-                   
-                   // IMPORTANTE: Impostiamo il flag per dire "ok, stiamo ripristinando, non cancellare"
-                   explicitRestore = true;
-
-                   // Avvia direttamente la sessione recuperata
-                   sessionStart();
+                    state.mode = savedMode;
+                    state.concertArtist = localStorage.getItem("concertArtist") || "";
+                    state.bandArtist = localStorage.getItem("bandArtist") || "";
+                    explicitRestore = true;
+                    sessionStart();
               } else {
-                   alert("Dati sessione trovati, ma impossibile determinare la modalità precedente. Riavviare una nuova sessione");
+                    showCustomAlert("Dati sessione trovati, ma impossibile determinare la modalità precedente.");
               }
           } catch(err) {
               console.error(err);
-              alert("Errore durante il controllo della sessione");
+              showCustomAlert("Errore durante il controllo della sessione");
           }
       };
   }
 }
 
-// === NUOVA FUNZIONE PER GESTIRE I DOWNLOAD EXPORT ===
-// Questa funzione chiama l'endpoint unico /api/generate_report configurando correttamente il formato
 async function downloadExport(uiType) {
-  // MODIFICA IMPORTANTE: Se il tipo è 'raw', inviamo TUTTI i brani, anche i cancellati.
-  // Per Excel e PDF Ufficiale, inviamo solo gli attivi.
   let songsPayload = songs;
-  
   if (uiType !== 'raw') {
       songsPayload = songs.filter(s => !s.is_deleted);
   }
 
-  if (!songsPayload.length) return alert("Nessun dato da esportare.");
+  if (!songsPayload.length) return showCustomAlert("Nessun dato da esportare.");
 
-  // Mappatura tipo UI -> formato Backend (app.py)
   let backendFormat = "excel";
   if (uiType === 'pdf') backendFormat = "pdf_official";
   else if (uiType === 'raw') backendFormat = "pdf_raw";
   
-  // Dati da inviare al backend per generare il report
   const payload = {
       songs: songsPayload, 
       mode: state.mode || "session",
@@ -1107,21 +1091,16 @@ async function downloadExport(uiType) {
       btn.textContent = "Generazione...";
       btn.disabled = true;
 
-      // Endpoint confermato da app.py
       const res = await fetch("/api/generate_report", { 
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload)
+          method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload)
       });
 
       if (!res.ok) throw new Error("Errore durante l'export");
 
-      // Gestione download blob
       const blob = await res.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      // Estensione file corretta
       const ext = (backendFormat === 'excel') ? 'xlsx' : 'pdf';
       a.download = `borderò_${backendFormat}_${Date.now()}.${ext}`;
       
@@ -1136,8 +1115,7 @@ async function downloadExport(uiType) {
 
   } catch (err) {
       console.error(err);
-      alert("Errore export: " + err.message);
-      // Ripristina stato bottone
+      showCustomAlert("Errore export: " + err.message);
       const btn = $(`#btn-export-${uiType}`);
       if(btn) {
           btn.textContent = (uiType === 'excel' ? 'Excel (SIAE)' : (uiType === 'pdf' ? 'PDF Ufficiale' : 'Log Tecnico'));
@@ -1145,7 +1123,6 @@ async function downloadExport(uiType) {
       }
   }
 }
-// ====================================================
 
 function wireSessionButtons() {
   $("#btn-session-start").onclick = (e) => { e.preventDefault(); sessionStart(); };
@@ -1159,19 +1136,12 @@ function wireSessionButtons() {
   
   $("#btn-session-stop").onclick = async (e) => { 
     e.preventDefault(); 
-    
     const led = $(".led-rect");
     if(led) led.classList.add("led-paused");
-
     const confirmed = await showConfirm("Vuoi davvero stoppare la sessione?");
-
-    if(confirmed) {
-        sessionStop(); 
-    } else {
+    if(confirmed) { sessionStop(); } else {
         const btnStart = $("#btn-session-start");
-        if (btnStart && btnStart.disabled) {
-             if(led) led.classList.remove("led-paused");
-        } 
+        if (btnStart && btnStart.disabled) { if(led) led.classList.remove("led-paused"); } 
     }
   };
 
@@ -1183,9 +1153,7 @@ function wireSessionButtons() {
   $("#btn-undo").onclick = (e) => { e.preventDefault(); undoLast(); };
   
   const btnBackReview = $("#btn-back-review");
-  if(btnBackReview) {
-      btnBackReview.onclick = () => showView("#view-review");
-  }
+  if(btnBackReview) { btnBackReview.onclick = () => showView("#view-review"); }
 
   const btnConfirmRev = $("#btn-confirm-revenue");
   if(btnConfirmRev) {
@@ -1193,7 +1161,7 @@ function wireSessionButtons() {
           const inp = $("#session-revenue-input");
           const val = parseFloat(inp.value);
           if(isNaN(val) || val <= 0) {
-              alert("Inserisci un importo valido per iniziare");
+              showCustomAlert("Inserisci un importo valido per iniziare");
               return;
           }
           state.orgRevenue = val;
@@ -1215,48 +1183,29 @@ function wireSessionButtons() {
       btnGenerate.onclick = (e) => {
           e.preventDefault();
           const activeSongs = songs.filter(s => !s.is_deleted);
-          if(activeSongs.length === 0) return alert("Nessun brano attivo");
+          if(activeSongs.length === 0) return showCustomAlert("Nessun brano attivo");
           exportModal.classList.remove("modal--hidden");
       };
   }
 
   $("#btn-export-close").onclick = () => exportModal.classList.add("modal--hidden");
 
-  // === AGGIUNTA EVENTI BOTTONI EXPORT ===
-  // Colleghiamo i pulsanti del modale alla funzione downloadExport corretta
   $("#btn-export-excel").onclick = () => downloadExport("excel");
   $("#btn-export-pdf").onclick = () => downloadExport("pdf");
   $("#btn-export-raw").onclick = () => downloadExport("raw");
-
-  // === FIX QR CODE: Aggiungi queste righe ===
+  
   const btnQr = $("#btn-show-qr");
   const qrModal = $("#qr-modal");
+  const qrImage = $("#qr-image");
   const qrClose = $("#qr-close");
 
   if (btnQr && qrModal) {
-      btnQr.onclick = (e) => {
-          e.preventDefault();
-          const img = $("#qr-image");
-          if(img) {
-              // Aggiungiamo timestamp per evitare cache e forzare il ricaricamento
-              img.src = "/api/get_qr_image?t=" + Date.now();
-              // Gestione errore se Ngrok non è attivo
-              img.onerror = () => {
-                  alert("Impossibile caricare il QR Code. Tunnel Ngrok non attivo o errore server.");
-                  qrModal.classList.add("modal--hidden");
-              };
-          }
+      btnQr.onclick = () => {
+          qrImage.src = `/api/get_qr_image?t=${Date.now()}`;
           qrModal.classList.remove("modal--hidden");
       };
+      qrClose.onclick = () => { qrModal.classList.add("modal--hidden"); };
   }
-
-  if (qrClose && qrModal) {
-      qrClose.onclick = (e) => {
-          e.preventDefault();
-          qrModal.classList.add("modal--hidden");
-      };
-  }
-  // ======================================
 }
 
 function syncReviewNotes() {
@@ -1314,63 +1263,25 @@ function showConfirm(msg) {
 }
 
 // ============================================================================
-// ANIMAZIONE PALCO (JS PHYSICS - Page 1 & Global)
+// ANIMAZIONE PALCO (JS PHYSICS)
 // ============================================================================
-
 const lightsState = [
-    { 
-        id: 'left', // User
-        role: 'user',
-        vertex: { x: 250, y: 150 }, 
-        baseY: 680,
-        originalBaseX: 250,
-        originalAmplitude: 150,
-        currentAmp: 150,
-        currentOp: 0.7,
-        phase: 0,
-        speed: 0.8,
-        rx: 160
-    },
-    { 
-        id: 'center', // Org
-        role: 'org',
-        vertex: { x: 600, y: 150 }, 
-        baseY: 720,
-        originalBaseX: 600,
-        originalAmplitude: 180,
-        currentAmp: 180,
-        currentOp: 1.0, 
-        phase: 2,
-        speed: 0.6,
-        rx: 160
-    },
-    { 
-        id: 'right', // Composer
-        role: 'composer',
-        vertex: { x: 950, y: 150 }, 
-        baseY: 680,
-        originalBaseX: 950,
-        originalAmplitude: 150,
-        currentAmp: 150,
-        currentOp: 0.7,
-        phase: 4,
-        speed: 0.75,
-        rx: 160
-    }
+    { id: 'left', role: 'user', vertex: { x: 250, y: 150 }, baseY: 680, originalBaseX: 250, originalAmplitude: 150, currentAmp: 150, currentOp: 0.7, phase: 0, speed: 0.8, rx: 160 },
+    { id: 'center', role: 'org', vertex: { x: 600, y: 150 }, baseY: 720, originalBaseX: 600, originalAmplitude: 180, currentAmp: 180, currentOp: 1.0, phase: 2, speed: 0.6, rx: 160 },
+    { id: 'right', role: 'composer', vertex: { x: 950, y: 150 }, baseY: 680, originalBaseX: 950, originalAmplitude: 150, currentAmp: 150, currentOp: 0.7, phase: 4, speed: 0.75, rx: 160 }
 ];
 
 const globalLightsState = [
-    { id: 'gl-beam-tl', vertex: { x: 0, y: 0 },      baseY: 800, baseX: 500,  amp: 120, phase: 0, speed: 0.52 },
-    { id: 'gl-beam-tr', vertex: { x: 1920, y: 0 },    baseY: 800, baseX: 1420, amp: 120, phase: 2, speed: 0.46 },
-    { id: 'gl-beam-bl', vertex: { x: 0, y: 1080 },    baseY: 280, baseX: 500,  amp: 100, phase: 1, speed: 0.40 },
+    { id: 'gl-beam-tl', vertex: { x: 0, y: 0 }, baseY: 800, baseX: 500, amp: 120, phase: 0, speed: 0.52 },
+    { id: 'gl-beam-tr', vertex: { x: 1920, y: 0 }, baseY: 800, baseX: 1420, amp: 120, phase: 2, speed: 0.46 },
+    { id: 'gl-beam-bl', vertex: { x: 0, y: 1080 }, baseY: 280, baseX: 500, amp: 100, phase: 1, speed: 0.40 },
     { id: 'gl-beam-br', vertex: { x: 1920, y: 1080 }, baseY: 280, baseX: 1420, amp: 100, phase: 3, speed: 0.52 }
 ];
 
 function animateStageLights() {
     const time = Date.now() * 0.00195;
-    
-    // --- MODIFICA: Logica statica vs dinamica per Page 3 vs Page 4 ---
     const isReviewMode = state.route === 'review';
+    const isRegisterMode = state.route === 'register';
 
     lightsState.forEach(light => {
         const beam = document.getElementById(`beam-${light.id}`);
@@ -1382,105 +1293,77 @@ function animateStageLights() {
 
         let targetAmp = light.originalAmplitude;
         let targetOp = (light.id === 'center') ? 1.0 : 0.7; 
-
-        // MODIFICA QUI: Aggiunto pendingRole (modal open) alla logica di priorità
         let targetRole = state.role || pendingRole || hoveredRole;
 
         if (targetRole) {
             targetAmp = 0; 
-            if (targetRole === light.role) {
-                targetOp = (light.id === 'center') ? 1.0 : 0.7;
-            } else {
-                targetOp = 0.0;
-            }
+            if (targetRole === light.role) { targetOp = (light.id === 'center') ? 1.0 : 0.7; } 
+            else { targetOp = 0.0; }
         }
+
+        if (isRegisterMode) { targetAmp = 0; targetOp = 1.0; }
 
         light.currentAmp = lerp(light.currentAmp, targetAmp, 0.05);
         light.currentOp = lerp(light.currentOp, targetOp, 0.05);
 
         group.style.opacity = light.currentOp.toFixed(3);
-
         const sway = Math.sin(time * light.speed + light.phase);
         const offsetX = sway * light.currentAmp;
         
-        const currentX = light.originalBaseX + offsetX;
+        let currentX;
+        if (isRegisterMode) { currentX = 600; } else { currentX = light.originalBaseX + offsetX; }
+        
         const currentRx = light.rx;
-
         spot.setAttribute('cx', currentX);
         spot.setAttribute('rx', currentRx);
 
         const xLeft = currentX - currentRx;
         const xRight = currentX + currentRx;
         const curveDepth = 40; 
-        
         const d = `M${light.vertex.x},${light.vertex.y} L${xLeft},${light.baseY} Q${currentX},${light.baseY + curveDepth} ${xRight},${light.baseY} Z`;
 
         beam.setAttribute('d', d);
         if(maskPath) maskPath.setAttribute('d', d);
     });
 
-    // GESTIONE LUCI GLOBALI (4 Angoli)
     globalLightsState.forEach(gl => {
         const beam = document.getElementById(gl.id);
         if(!beam) return;
-
         let currentX;
-        
         if (isReviewMode) {
-            // Coordinate statiche per Review Mode
-            if (gl.id === 'gl-beam-tl') currentX = 380;   // Top Left
-            else if (gl.id === 'gl-beam-tr') currentX = 1540; // Top Right (1920 - 380)
-            else if (gl.id === 'gl-beam-bl') currentX = 600;  // Bottom Left
-            else if (gl.id === 'gl-beam-br') currentX = 1320; // Bottom Right
+            if (gl.id === 'gl-beam-tl') currentX = 380;
+            else if (gl.id === 'gl-beam-tr') currentX = 1540;
+            else if (gl.id === 'gl-beam-bl') currentX = 600;
+            else if (gl.id === 'gl-beam-br') currentX = 1320;
         } else {
-            // Oscillazione standard per Session Mode
             const sway = Math.sin(time * gl.speed + gl.phase);
             currentX = gl.baseX + (sway * gl.amp);
         }
-        
         const width = 190; 
         const xLeft = currentX - width;
         const xRight = currentX + width;
-        
         const d = `M${gl.vertex.x},${gl.vertex.y} L${xLeft},${gl.baseY} L${xRight},${gl.baseY} Z`;
         beam.setAttribute('d', d);
     });
-
     requestAnimationFrame(animateStageLights);
 }
 
-// --- BOOTSTRAP ---
-// --- BOOTSTRAP ---
 document.addEventListener("DOMContentLoaded", () => {
   const app = document.getElementById("app");
-  
-  // MODIFICA QUI: Aggiungi il controllo diretto dei parametri URL
-  const urlParams = new URLSearchParams(window.location.search);
-  // Ora isViewer è vero se lo dice il server OPPURE se c'è ?mode=viewer nell'URL
-  const isViewer = app.dataset.viewer === "true" || urlParams.get("mode") === "viewer";
-
+  const isViewer = app.dataset.viewer === "true";
   wireSessionButtons();
   animateStageLights();
 
   if (isViewer) {
-    // Forza la vista sessione
     showView("#view-session");
-    
-    // Nascondi elementi non necessari allo spettatore
-    const sessionControls = document.querySelector(".session-panel .controls");
-    if(sessionControls) sessionControls.style.display = "none"; // Nasconde i tasti Play/Pause
-    
-    // Idratazione header
     hydrateSessionHeader();
     startPlaylistPolling();
-    
-    // Nascondi eventuali modali di recupero
     const rm = document.getElementById("restore-modal");
     if(rm) rm.classList.add("modal--hidden");
-    
   } else {
     initRoleSelection();
     initGlobalPayments();
+    initRegistration();
     showView("#view-roles");
     syncReviewNotes();
   }

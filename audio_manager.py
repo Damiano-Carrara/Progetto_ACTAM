@@ -23,14 +23,14 @@ from concurrent.futures import ThreadPoolExecutor
 # --- IMPORT DEI BOT ---
 from spotify_manager import SpotifyManager
 from setlist_manager import SetlistManager
-from lyrics_manager import LyricsManager  # <--- NUOVO IMPORT
+from lyrics_manager import LyricsManager  # ✅ MANTENIAMO Scribe (Hybrid Mode)
 
 load_dotenv()
 
 class AudioManager:
     def __init__(self, callback_function=None):
         """
-        Inizializza il gestore audio, i buffer e i bot ausiliari.
+        Inizializza il gestore audio ibrido (ACRCloud + Scribe).
         """
         # --- 1. CONFIGURAZIONE CREDENZIALI ---
         self.host = os.getenv("ACRCLOUD_HOST") or os.getenv("ACR_HOST")
@@ -73,36 +73,32 @@ class AudioManager:
         
         self.context_ready = False 
         self.predicted_next_song = None
-        self.cycle_counter = 0  # <--- Serve per l'ottimizzazione Scribe (1 su 3)
+        self.cycle_counter = 0
 
         # --- 5. INIZIALIZZAZIONE BOT ---
         print("🤖 Inizializzazione Bot...")
-        self.executor = ThreadPoolExecutor(max_workers=4) # Aumentato a 4 workers per gestire il parallelismo
+        self.executor = ThreadPoolExecutor(max_workers=4) # 4 workers per gestire ACR + Scribe
         
         self.setlist_bot = SetlistManager()
         self.spotify_bot = SpotifyManager()
-        self.lyrics_bot = LyricsManager() # <--- Inizializzazione Scribe Bot
+        self.lyrics_bot = LyricsManager() # ✅ Scribe attivo
 
         print("🎤 Audio Manager Pronto. Modalità: Ibrida (ACRCloud + Scribe).")
 
     def update_target_artist(self, artist_name):
         """
-        Scarica il contesto completo: Setlist.fm (Scalette) + Spotify (Audio Features) + Genius (Testi).
+        Scarica il contesto completo: Setlist.fm + Spotify + Genius.
         """
-        # OTTIMIZZAZIONE: Se l'artista è lo stesso, evitiamo di riscaricare tutto
-        if artist_name == self.target_artist_bias and self.context_ready:
-            print(f"⚡ [Context] Artista '{artist_name}' già in memoria. Salto refresh.")
-            return
-
-        # Reset stato
+        # Aggiornamento immediato Bias e Reset stato
         self.target_artist_bias = artist_name
         self.context_ready = False 
         self.predicted_next_song = None
         
-        # Pulizia Cache Precedente
+        # === FIX DEL COLLEGA: PULIZIA CACHE IMMEDIATA ===
         self.setlist_bot.cached_songs = []
         self.setlist_bot.concert_sequences = []
         print(f"🧹 [Context] Cache precedente svuotata.")
+        # ================================================
 
         if artist_name:
             def fetch_full_context():
@@ -156,7 +152,7 @@ class AudioManager:
 
         return (normalized * 32767).astype(np.int16)
 
-    # --- PROCESSO PRINCIPALE (IBRIDO) ---
+    # --- PROCESSO PRINCIPALE (IBRIDO) - MANTENIAMO LA TUA LOGICA ---
     def _process_window(self):
         # Acquisizione Lock (evita sovrapposizioni)
         if not self.upload_lock.acquire(blocking=False):
@@ -187,7 +183,7 @@ class AudioManager:
             wav.write(wav_buffer, write_rate, final_audio)
             wav_buffer.seek(0)
             
-            # --- LOGICA PARALLELA ---
+            # --- LOGICA PARALLELA (TUA) ---
             self.cycle_counter += 1
             # Esegui Scribe solo se c'è un artista target E siamo ogni 3 cicli
             run_scribe = (self.target_artist_bias is not None) and (self.cycle_counter % 3 == 0)
@@ -222,7 +218,7 @@ class AudioManager:
 
             scribe_score = scribe_result.get("score", 0) if scribe_result else 0
 
-            # === ARBITRAGGIO IBRIDO ===
+            # === ARBITRAGGIO IBRIDO (TUA LOGICA) ===
 
             # A. FAST TRACK (Conferma Reciproca Assoluta)
             if scribe_result and acr_best:
@@ -355,7 +351,7 @@ class AudioManager:
         print("🛑 Monitoraggio Fermato.")
         return True
 
-    # --- HELPER FUNCTIONS (Preservate dalla tua versione) ---
+    # --- HELPER FUNCTIONS ---
     def _normalize_text(self, text):
         if not text: return ""
         platform_patterns = r"(?i)\b(amazon\s+music|apple\s+music|spotify|deezer|youtube|vevo)\b.*"
@@ -436,11 +432,8 @@ class AudioManager:
         except: pass
         return None
 
-    # --- API ACRCLOUD (Invariata) ---
+    # --- API ACRCLOUD COMPLETA (DAL COLLEGA - LOGICA MIGLIORATA) ---
     def _call_acr_api(self, audio_buffer, bias_artist=None):
-        # (Il codice interno di questa funzione è identico al tuo, 
-        #  gestisce l'invio ad ACRCloud e i boost di punteggio)
-        # Copialo esattamente com'era nel file del collega o nel tuo
         THRESHOLD_MUSIC = 72
         THRESHOLD_HUMMING = 72
 
@@ -488,19 +481,15 @@ class AudioManager:
 
                 def norm(sc): return int(float(sc) * 100) if float(sc) <= 1.0 else int(float(sc))
                 
-                # ... (Qui va tutta la logica di parsing e boost che avevi già) ...
-                # Per brevità nel prompt, immagina qui la funzione 'process_section' completa
-                # che include i boost per Whitelist e Predizione.
-                # È IDENTICA nel codice del collega.
-
-                # Per semplicità d'uso, ti includo la parte essenziale del parsing:
                 def aggregate_tracks(raw_list):
                     grouped = []
                     for t in raw_list:
                         merged = False
                         for g in grouped:
                             if self._are_tracks_equivalent(t, g):
-                                g["score"] = max(norm(g.get("score", 0)), norm(t.get("score", 0))) + 5
+                                existing_score = norm(g.get("score", 0))
+                                new_score = norm(t.get("score", 0))
+                                g["score"] = max(existing_score, new_score) + 5
                                 merged = True; break
                         if not merged: grouped.append(t)
                     return grouped
@@ -512,25 +501,71 @@ class AudioManager:
                         final_score = raw_score
                         title = t.get("title", "Sconosciuto")
                         
-                        # --- CALCOLO BOOST (Bias, Setlist, Prediction) ---
-                        # ... (Logica identica a prima) ...
+                        artist_names_found = set()
+                        main_artist = self._get_artist_name(t)
+                        if main_artist: artist_names_found.add(main_artist)
+                        if "external_metadata" in t:
+                             for provider in t["external_metadata"].values():
+                                if isinstance(provider, dict):
+                                    if "artists" in provider:
+                                        for art in provider["artists"]:
+                                            if "name" in art: artist_names_found.add(art["name"])
+                                    if "channel_title" in provider: artist_names_found.add(provider["channel_title"])
+
+                        display_artist = main_artist if main_artist else "Sconosciuto"
+                        applied_boost_type = "None"
+                        boost_amount = 0
+
+                        # === 1. SUPER BOOST SCALETTA ===
                         is_in_whitelist = self.setlist_bot.check_is_likely(title)
-                        if is_in_whitelist: final_score += 65
-                        elif bias_artist and bias_artist.lower() in self._get_artist_name(t).lower(): final_score += 50
+                        if is_in_whitelist:
+                            boost_amount = 65 
+                            final_score += boost_amount
+                            applied_boost_type = "Whitelist/Setlist"
                         
+                        # === 2. BOOST ARTISTA BIAS ===
+                        elif bias_artist:
+                            bias_norm = self._normalize_for_match(bias_artist)
+                            is_artist_match = False
+                            for found_art in artist_names_found:
+                                art_norm = self._normalize_for_match(found_art)
+                                if len(art_norm) < 2: continue
+                                if (bias_norm in art_norm) or (art_norm in bias_norm):
+                                    is_artist_match = True; break
+                                bias_tokens = set(bias_norm.split())
+                                target_tokens = set(art_norm.split())
+                                if bias_tokens and target_tokens and bias_tokens.issubset(target_tokens):
+                                    is_artist_match = True; break
+                            
+                            if is_artist_match:
+                                boost_amount = 50 
+                                final_score += boost_amount
+                                applied_boost_type = "Artist Match"
+
+                        # === 3. BOOST PREDIZIONE ===
                         if self.predicted_next_song:
                              if SequenceMatcher(None, title.lower(), self.predicted_next_song.lower()).ratio() > 0.85:
-                                 final_score += 80
+                                 boost_amount = 80 
+                                 final_score += boost_amount
+                                 applied_boost_type = f"PREDICTION ({self.predicted_next_song})"
+
+                        # 4. Penalità ID
+                        clean_check = re.sub(r"[\(\[].*?[\)\]]", "", title)
+                        clean_check = re.sub(r"(?i)\b(feat\.|ft\.|remix|edit|version|live|mixed|vip)\b.*", "", clean_check)
+                        clean_check = re.sub(r"[^a-zA-Z0-9]", "", clean_check).lower().strip()
+                        if re.match(r"^(id|track)\d*$", clean_check):
+                            final_score -= (final_score * 0.30)
+
+                        if boost_amount > 0:
+                            print(f"🚀 [BOOST {applied_boost_type}] '{title}': {raw_score}% + {boost_amount}% = {final_score}%")
 
                         if final_score >= threshold:
                             cover_url = self._extract_best_cover(t)
                             all_found.append({
                                 "status": "success", "type": type_label,
-                                "title": title, 
-                                "artist": self._get_artist_name(t),
+                                "title": title, "artist": display_artist,
                                 "album": t.get("album", {}).get("name"),
-                                "cover": cover_url,
-                                "score": final_score, 
+                                "cover": cover_url, "score": final_score, 
                                 "duration_ms": t.get("duration_ms"),
                                 "external_metadata": t.get("external_metadata", {}),
                                 "contributors": t.get("contributors", {}),
@@ -541,7 +576,9 @@ class AudioManager:
 
                 if all_found:
                     all_found.sort(key=lambda x: x["score"], reverse=True)
+                    print(f"✅ TROVATO MIGLIORE: {all_found[0]['title']} ({all_found[0]['score']}%)")
                     return {"status": "multiple_results", "tracks": all_found}
+                print("⚠️ Nessun risultato sopra soglia.")
                 return {"status": "not_found"}
 
             elif status_code == 1001:
@@ -550,8 +587,20 @@ class AudioManager:
                 return {"status": "not_found"}
         except Exception as e:
             print(f"❌ Errore rete ACR: {e}")
+            if not self.low_quality_mode:
+                self.low_quality_mode = True
+                self.overlap_interval = 10
             return {"status": "error"}
 
 if __name__ == "__main__":
-    bot = AudioManager()
-    print("Test mode")
+    print("🔧 Avvio test manuale AudioManager...")
+    def dummy_callback(data, target_artist=None):
+        print(f"📨 CALLBACK RICEVUTA: {data['title']} - {data['artist']} (Score: {data['score']})")
+
+    bot = AudioManager(callback_function=dummy_callback)
+    bot.start_continuous_recognition(dummy_callback, target_artist="Linkin Park")
+    try:
+        while True: time.sleep(1)
+    except KeyboardInterrupt:
+        bot.stop_continuous_recognition()
+        print("Test terminato.")
