@@ -19,7 +19,7 @@ if (typeof firebase !== 'undefined') {
 
 // --- STATO APP ---
 const state = {
-  role: null,            
+  role: null,             
   orgRevenue: 0,          
   orgRevenueConfirmed: false,
   currentRoyaltySong: null,
@@ -127,6 +127,7 @@ function initRoleSelection() {
   const linkRegister = $("#link-register");
   const btnCloseAuth = $("#btn-auth-close");
   const btnCompBack = $("#btn-comp-back");
+  const app = document.getElementById("app");
 
   if (btnCompBack) {
       btnCompBack.onclick = () => showView("#view-welcome");
@@ -143,6 +144,9 @@ function initRoleSelection() {
       let themeColor = "var(--c-cyan)"; // Default user
       if (role === "org") themeColor = "var(--c-green)";
       else if (role === "composer") themeColor = "var(--c-pink)";
+      
+      // FIX BUG COLORE: Rimuovi le classi tema precedenti da #app per evitare conflitti
+      app.classList.remove("theme-band", "theme-concert", "theme-dj");
       
       authModal.style.setProperty("--primary", themeColor);
 
@@ -417,7 +421,6 @@ function initUserProfile() {
                     const data = await res.json();
 
                     if(data.success) {
-                        // Modifica richiesta: Nessun alert, ricarica e torna alla partenza
                         state.role = null;
                         state.user = null;
                         sessionReset(); // Pulisce sessione se attiva
@@ -687,10 +690,12 @@ function hydrateSessionHeader() {
 
   if (state.mode === "band") {
     const artistName = state.bandArtist ? state.bandArtist.toUpperCase() : "";
-    badge.textContent = artistName ? `LIVE BAND: ${artistName}` : "LIVE BAND";
+    // MODIFICA: Trattino al posto dei due punti
+    badge.textContent = artistName ? `LIVE BAND - ${artistName}` : "LIVE BAND";
   } else if (state.mode === "concert") {
     const artistName = state.concertArtist ? state.concertArtist.toUpperCase() : "";
-    badge.textContent = artistName ? `CONCERTO: ${artistName}` : "CONCERTO";
+    // MODIFICA: Trattino al posto dei due punti
+    badge.textContent = artistName ? `CONCERTO - ${artistName}` : "CONCERTO";
   } else {
     badge.textContent = "SESSIONE";
   }
@@ -1352,11 +1357,11 @@ function calculateAndShowPayments(showPayActions) {
       }
   }
   
-  renderPaymentChart(chartLabels, chartData, chartColors);
+  renderPaymentChart(chartLabels, chartData, chartColors, isOrg);
 }
 
 let paymentChartInstance = null;
-function renderPaymentChart(labels, data, colors) {
+function renderPaymentChart(labels, data, colors, isCurrency) {
   const ctx = document.getElementById('paymentsChart');
   if(!ctx) return;
   if(paymentChartInstance) paymentChartInstance.destroy();
@@ -1370,7 +1375,30 @@ function renderPaymentChart(labels, data, colors) {
     },
     options: {
       responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { position: 'right', labels: { color: '#e6eef8', font: { size: 11 } } } }
+      plugins: { 
+          legend: { position: 'right', labels: { color: '#e6eef8', font: { size: 11 } } },
+          tooltip: {
+              callbacks: {
+                  label: function(context) {
+                      let label = context.label || '';
+                      if (label) { label += ': '; }
+                      
+                      if (isCurrency) {
+                           // Formattazione Valuta per Organizzatore
+                           label += new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' }).format(context.raw);
+                      } else {
+                           // Formattazione Percentuale per altri ruoli
+                           // Calcola la somma totale del dataset per derivare la percentuale
+                           let sum = context.chart._metasets[context.datasetIndex].total;
+                           let val = context.raw;
+                           let percentage = (val * 100 / sum).toFixed(1) + "%";
+                           label += percentage;
+                      }
+                      return label;
+                  }
+              }
+          }
+      }
     }
   });
 }
@@ -1762,9 +1790,10 @@ function showConfirm(msg) {
 // ANIMAZIONE PALCO (JS PHYSICS)
 // ============================================================================
 const lightsState = [
-    { id: 'left', role: 'user', vertex: { x: 250, y: 150 }, baseY: 680, originalBaseX: 250, originalAmplitude: 150, currentAmp: 150, currentOp: 0.7, phase: 0, speed: 0.8, rx: 160 },
-    { id: 'center', role: 'org', vertex: { x: 600, y: 150 }, baseY: 720, originalBaseX: 600, originalAmplitude: 180, currentAmp: 180, currentOp: 1.0, phase: 2, speed: 0.6, rx: 160 },
-    { id: 'right', role: 'composer', vertex: { x: 950, y: 150 }, baseY: 680, originalBaseX: 950, originalAmplitude: 150, currentAmp: 150, currentOp: 0.7, phase: 4, speed: 0.75, rx: 160 }
+    // MODIFICA: rx aumentato a 200 per allargare il cono (angolo al vertice aumentato)
+    { id: 'left', role: 'user', vertex: { x: 250, y: 150 }, baseY: 680, originalBaseX: 250, originalAmplitude: 150, currentAmp: 150, currentOp: 0.7, phase: 0, speed: 0.8, rx: 200 },
+    { id: 'center', role: 'org', vertex: { x: 600, y: 150 }, baseY: 720, originalBaseX: 600, originalAmplitude: 180, currentAmp: 180, currentOp: 1.0, phase: 2, speed: 0.6, rx: 200 },
+    { id: 'right', role: 'composer', vertex: { x: 950, y: 150 }, baseY: 680, originalBaseX: 950, originalAmplitude: 150, currentAmp: 150, currentOp: 0.7, phase: 4, speed: 0.75, rx: 200 }
 ];
 
 const globalLightsState = [
@@ -1827,7 +1856,17 @@ function animateStageLights() {
         const beam = document.getElementById(gl.id);
         if(!beam) return;
         let currentX;
-        if (isReviewMode) {
+        // MODIFICA: Logica speciale per Profile Mode (Luci fisse angolate)
+        if (isProfileMode) {
+            // Angolo 30° da orizzontale (per le luci basse) -> ~1385 px offset su 800px altezza
+            // Angolo 60° da verticale (per le luci alte) -> ~1385 px offset su 800px altezza
+            
+            if (gl.id === 'gl-beam-tl') currentX = 1385;        // Top Left
+            else if (gl.id === 'gl-beam-tr') currentX = 1920 - 1385; // Top Right (535)
+            else if (gl.id === 'gl-beam-bl') currentX = 1385;   // Bottom Left
+            else if (gl.id === 'gl-beam-br') currentX = 1920 - 1385; // Bottom Right (535)
+        }
+        else if (isReviewMode) {
             if (gl.id === 'gl-beam-tl') currentX = 380;
             else if (gl.id === 'gl-beam-tr') currentX = 1540;
             else if (gl.id === 'gl-beam-bl') currentX = 600;

@@ -79,15 +79,15 @@ body.no-scroll { overflow: hidden; }
   overflow: visible;
 }
 
-/* VISIBILITA' LUCI: Nascoste in Roles, Welcome, REGISTER e PROFILE */
+/* VISIBILITA' LUCI: Nascoste in Roles, Welcome, REGISTER. VISIBILI in PROFILE e REVIEW */
 body[data-active-view="roles"] #global-stage-lights,
 body[data-active-view="welcome"] #global-stage-lights,
-body[data-active-view="register"] #global-stage-lights,
-body[data-active-view="profile"] #global-stage-lights {
+body[data-active-view="register"] #global-stage-lights {
   opacity: 0;
   display: none;
 }
-body:not([data-active-view="roles"]):not([data-active-view="welcome"]):not([data-active-view="register"]):not([data-active-view="profile"]) #global-stage-lights {
+/* Modifica: profile rimosso da qui, quindi luci visibili */
+body:not([data-active-view="roles"]):not([data-active-view="welcome"]):not([data-active-view="register"]) #global-stage-lights {
   opacity: 1;
   display: block;
 }
@@ -519,6 +519,25 @@ input.inline { width: 100%; background: #0d1117; color: var(--text); border: 1px
 .btn-icon-close:hover { color: white; }
 
 /* === STILI PER IL PROFILO UTENTE === */
+/* MODIFICA: Forziamo il colore specifico #8ACE00 nella vista Profilo */
+#view-profile {
+    --primary: #8ACE00; 
+}
+#view-profile .btn-profile:hover {
+    border-color: #8ACE00;
+    color: #8ACE00;
+}
+#view-profile .tab-btn.active {
+    color: #8ACE00;
+    background: rgba(138, 206, 0, 0.1);
+}
+#view-profile .form-group input:focus {
+    border-color: #8ACE00;
+}
+#view-profile .bar-row .bar {
+    background: #8ACE00;
+}
+
 .profile-card {
     display: flex;
     flex-direction: column;
@@ -580,7 +599,7 @@ input.inline { width: 100%; background: #0d1117; color: var(--text); border: 1px
 }
 
 .tab-btn.active {
-    background: rgba(81, 229, 255, 0.1); /* Default cyan tint */
+    background: rgba(81, 229, 255, 0.1); /* Default cyan tint fallback */
     color: var(--primary);
     font-weight: 600;
 }

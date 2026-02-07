@@ -74,10 +74,10 @@
                 <path id="beam-left" class="beam" d="M250,150 L90,680 Q250,720 410,680 Z"
                       fill="url(#gradBeamUser)" style="mix-blend-mode: screen;" filter="url(#softBlur)"></path>
                 <ellipse id="spot-left" cx="250" cy="680" rx="160" ry="20" fill="rgba(81, 229, 255, 0.4)" filter="url(#softBlur)" style="mix-blend-mode: screen;"></ellipse>
-                <text x="250" y="640" text-anchor="middle" font-size="44" font-weight="800" fill="#1f2530" letter-spacing="2">UTENTE</text>
+                <text x="250" y="640" text-anchor="middle" font-size="33" font-weight="800" fill="#1f2530" letter-spacing="2">UTENTE</text>
                 <text x="250" y="670" text-anchor="middle" font-size="16" font-weight="400" fill="#1f2530">Genera borderò e report per eventi</text>
                 <g mask="url(#maskLeft)">
-                    <text x="250" y="640" text-anchor="middle" font-size="44" font-weight="800" fill="#51E5FF" letter-spacing="2" style="filter: drop-shadow(0 0 10px rgba(81, 229, 255,1));">UTENTE</text>
+                    <text x="250" y="640" text-anchor="middle" font-size="33" font-weight="800" fill="#51E5FF" letter-spacing="2" style="filter: drop-shadow(0 0 10px rgba(81, 229, 255,1));">UTENTE</text>
                     <text x="250" y="670" text-anchor="middle" font-size="16" font-weight="500" fill="#cffafe">Genera borderò e report per eventi</text>
                 </g>
                 <rect x="90" y="150" width="320" height="600" fill="transparent" style="cursor: pointer;" />
@@ -87,10 +87,10 @@
                 <path id="beam-right" class="beam" d="M950,150 L790,680 Q950,720 1110,680 Z"
                       fill="url(#gradBeamArtist)" style="mix-blend-mode: screen;" filter="url(#softBlur)"></path>
                 <ellipse id="spot-right" cx="950" cy="680" rx="160" ry="20" fill="rgba(236, 54, 141, 0.4)" filter="url(#softBlur)" style="mix-blend-mode: screen;"></ellipse>
-                <text x="950" y="640" text-anchor="middle" font-size="36" font-weight="800" fill="#1f2530" letter-spacing="1">COMPOSITORE</text>
+                <text x="950" y="640" text-anchor="middle" font-size="33" font-weight="800" fill="#1f2530" letter-spacing="1">COMPOSITORE</text>
                 <text x="950" y="670" text-anchor="middle" font-size="16" font-weight="400" fill="#1f2530">Visualizza statistiche e royalties</text>
                 <g mask="url(#maskRight)">
-                    <text x="950" y="640" text-anchor="middle" font-size="36" font-weight="800" fill="#EC368D" letter-spacing="1" style="filter: drop-shadow(0 0 10px rgba(236, 54, 141,1));">COMPOSITORE</text>
+                    <text x="950" y="640" text-anchor="middle" font-size="33" font-weight="800" fill="#EC368D" letter-spacing="1" style="filter: drop-shadow(0 0 10px rgba(236, 54, 141,1));">COMPOSITORE</text>
                     <text x="950" y="670" text-anchor="middle" font-size="16" font-weight="500" fill="#fce7f3">Visualizza statistiche e royalties</text>
                 </g>
                 <rect x="790" y="150" width="320" height="600" fill="transparent" style="cursor: pointer;" />
@@ -100,10 +100,10 @@
                 <path id="beam-center" class="beam" d="M600,150 L440,720 Q600,760 760,720 Z"
                       fill="url(#gradBeamOrg)" style="mix-blend-mode: screen;" filter="url(#softBlur)"></path>
                 <ellipse id="spot-center" cx="600" cy="720" rx="160" ry="20" fill="rgba(112, 238, 156, 0.3)" filter="url(#softBlur)" style="mix-blend-mode: screen;"></ellipse>
-                <text x="600" y="680" text-anchor="middle" font-size="44" font-weight="900" fill="#1f2530" letter-spacing="2">ORGANIZZATORE</text>
+                <text x="600" y="680" text-anchor="middle" font-size="33" font-weight="900" fill="#1f2530" letter-spacing="2">ORGANIZZATORE</text>
                 <text x="600" y="710" text-anchor="middle" font-size="16" font-weight="400" fill="#1f2530">Gestisci artisti, incassi e pagamenti</text>
                 <g mask="url(#maskCenter)">
-                    <text x="600" y="680" text-anchor="middle" font-size="44" font-weight="900" fill="#70EE9C" letter-spacing="2" style="filter: drop-shadow(0 0 15px rgba(112, 238, 156,1));">ORGANIZZATORE</text>
+                    <text x="600" y="680" text-anchor="middle" font-size="33" font-weight="900" fill="#70EE9C" letter-spacing="2" style="filter: drop-shadow(0 0 15px rgba(112, 238, 156,1));">ORGANIZZATORE</text>
                     <text x="600" y="710" text-anchor="middle" font-size="16" font-weight="500" fill="#dcfce7">Gestisci artisti, incassi e pagamenti</text>
                 </g>
                 <rect x="440" y="150" width="320" height="600" fill="transparent" style="cursor: pointer;" />
@@ -478,36 +478,15 @@
                     <p id="profile-role-display" style="color: var(--muted); margin: 0; font-size: 0.9rem;">Ruolo</p>
                     
                     <div class="profile-tabs">
-                        <button class="tab-btn active" data-tab="settings">Impostazioni</button>
-                        <button class="tab-btn" data-tab="stats">Statistiche</button>
+                        <button class="tab-btn active" data-tab="stats">Statistiche</button>
                         <button class="tab-btn" data-tab="history">Storico Sessioni</button>
+                        <button class="tab-btn" data-tab="settings">Impostazioni</button>
                     </div>
                 </div>
 
                 <div class="profile-content">
                     
-                    <div id="tab-settings" class="tab-pane active">
-                        <h3>Modifica Credenziali</h3>
-                        <p class="subtitle" style="margin-bottom: 20px;">Aggiorna i tuoi dati di accesso</p>
-                        
-                        <div class="form-group">
-                            <label>Nuovo Username</label>
-                            <input type="text" id="edit-username" placeholder="Inserisci nuovo username">
-                        </div>
-                        <div class="form-group">
-                            <label>Nuova Password</label>
-                            <input type="password" id="edit-password" placeholder="Inserisci nuova password">
-                        </div>
-                        <button id="btn-save-profile" class="btn btn--primary" style="margin-top: 10px;">Salva Modifiche</button>
-                        
-                        <hr style="border: 0; border-top: 1px solid var(--border); margin: 30px 0;">
-                        
-                        <h3 style="color: #ef4444;">Zona Pericolosa</h3>
-                        <p class="subtitle" style="color: #fca5a5;">Queste azioni sono irreversibili</p>
-                        <button id="btn-delete-account" class="btn" style="background: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1px solid #ef4444; margin-top: 10px;">Elimina Account</button>
-                    </div>
-
-                    <div id="tab-stats" class="tab-pane">
+                    <div id="tab-stats" class="tab-pane active">
                         <h3>Statistiche Utente</h3>
                         <div class="stats-grid-mockup">
                             <div class="stat-card-mock">
@@ -535,6 +514,27 @@
                         <div class="history-list-mockup">
                             <span style="opacity: 0.5;">Caricamento storico...</span>
                         </div>
+                    </div>
+
+                    <div id="tab-settings" class="tab-pane">
+                        <h3>Modifica Credenziali</h3>
+                        <p class="subtitle" style="margin-bottom: 20px;">Aggiorna i tuoi dati di accesso</p>
+                        
+                        <div class="form-group">
+                            <label>Nuovo Username</label>
+                            <input type="text" id="edit-username" placeholder="Inserisci nuovo username">
+                        </div>
+                        <div class="form-group">
+                            <label>Nuova Password</label>
+                            <input type="password" id="edit-password" placeholder="Inserisci nuova password">
+                        </div>
+                        <button id="btn-save-profile" class="btn btn--primary" style="margin-top: 10px;">Salva Modifiche</button>
+                        
+                        <hr style="border: 0; border-top: 1px solid var(--border); margin: 30px 0;">
+                        
+                        <h3 style="color: #ef4444;">Gestione Account</h3>
+                        <p class="subtitle" style="color: #fca5a5;">Procedura per la rimozione definitiva dell'account</p>
+                        <button id="btn-delete-account" class="btn" style="background: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1px solid #ef4444; margin-top: 10px;">Elimina Account</button>
                     </div>
 
                 </div>
