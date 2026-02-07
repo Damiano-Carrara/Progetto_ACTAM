@@ -28,7 +28,10 @@ class SessionManager:
         self.session_ref = None
         self.user_ref = None
 
+        self.composer_map = {}
+
         if self.db:
+            self._refresh_composer_map()
             # Creiamo una sessione iniziale di default
             self._start_new_firestore_session()
         else:
@@ -450,6 +453,7 @@ class SessionManager:
         if not doc.exists:
             return {
                 "total_plays": 0,
+                "total_revenue": 0.0, # Default a 0
                 "top_tracks": [],
                 "history": {},
                 "display_name": stage_name
@@ -457,15 +461,19 @@ class SessionManager:
 
         data = doc.to_dict()
         
+        # Recupero tracce top
         tracks_ref = doc_ref.collection('top_tracks').stream()
         tracks = [{"title": t.get("title"), "count": t.get("play_count")} for t in [d.to_dict() for d in tracks_ref]]
         top_5 = sorted(tracks, key=lambda x: x['count'], reverse=True)[:5]
 
+        # Recupero storico mensile
         hist_ref = doc_ref.collection('history').stream()
         history = {d.id: d.to_dict().get("play_count") for d in hist_ref} 
 
         return {
             "total_plays": data.get("total_plays", 0),
+            # QUI: Restituiamo il valore reale dal DB, non una stima calcolata
+            "total_revenue": data.get("total_revenue", 0.0), 
             "top_tracks": top_5,
             "history": history,
             "display_name": data.get("display_name", stage_name)
@@ -530,6 +538,7 @@ class SessionManager:
         if not self.db or not composer_raw or composer_raw in ["Sconosciuto", "Pending", "⏳ Ricerca..."]:
             return
 
+        # Pulizia stringa compositori
         composers = [c.strip() for c in composer_raw.replace("/", ",").split(",") if len(c.strip()) > 2]
         
         month_key = datetime.now().strftime("%Y-%m")
@@ -537,23 +546,38 @@ class SessionManager:
         batch = self.db.batch()
         
         for comp in composers:
-            comp_id = self._normalize_string(comp).replace(" ", "_")
+            # --- MODIFICA FONDAMENTALE ---
+            # Prima: comp_id = self._normalize_string(comp).replace(" ", "_")
+            # Adesso: Usiamo la risoluzione alias per unificare i profili
+            comp_id = self._resolve_composer_id(comp)
+            
             if not comp_id: continue
 
             comp_ref = self.db.collection('stats_composers').document(comp_id)
             
-            batch.set(comp_ref, {
-                'display_name': comp,
+            # Prepariamo i dati da aggiornare
+            stats_update = {
                 'total_plays': firestore.Increment(1),
-                'last_updated': firestore.SERVER_TIMESTAMP
-            }, merge=True)
+                'last_updated': firestore.SERVER_TIMESTAMP,
+                # Salviamo l'ultimo nome rilevato in un campo a parte per debug/info,
+                # senza sovrascrivere il 'display_name' ufficiale (es. Tropico)
+                'last_detected_name': comp 
+            }
+            
+            # Se il documento non esiste (nuovo autore), impostiamo anche il display_name.
+            # Nota: batch.set con merge=True non permette logica condizionale facile, 
+            # ma rimuovendo 'display_name' dall'update evitiamo di "rovinare" i profili esistenti.
+            
+            batch.set(comp_ref, stats_update, merge=True)
 
+            # Aggiornamento Top Tracks (sotto l'ID unificato)
             track_ref = comp_ref.collection('top_tracks').document(self._normalize_string(title).replace(" ", "_"))
             batch.set(track_ref, {
                 'title': title,
                 'play_count': firestore.Increment(1)
             }, merge=True)
 
+            # Aggiornamento Storico
             hist_ref = comp_ref.collection('history').document(month_key)
             batch.set(hist_ref, {
                 'date': month_key,
@@ -562,7 +586,7 @@ class SessionManager:
 
         try:
             batch.commit()
-            print(f"📈 Stats aggiornate per: {composers}")
+            print(f"📈 Stats aggiornate (Plays + Tracks) per ID unificati: {[self._resolve_composer_id(c) for c in composers]}")
         except Exception as e:
             print(f"❌ Errore aggiornamento stats: {e}")
     
@@ -715,3 +739,219 @@ class SessionManager:
         except Exception as e:
             print(f"❌ Errore recupero sessione passata: {e}")
             return []
+        
+    # --- AGGIUNGI QUESTO NUOVO METODO ---
+    def finalize_session_revenue(self, total_org_revenue):
+        if not self.db or total_org_revenue <= 0:
+            return {"success": False, "message": "Dati non validi o DB offline"}
+
+        if not self.session_ref:
+            return {"success": False, "message": "Nessuna sessione attiva trovata"}
+
+        # --- 1. CONTROLLO ANTI-DUPLICAZIONE ---
+        # Leggiamo lo stato attuale della sessione dal DB
+        session_snap = self.session_ref.get()
+        if session_snap.exists:
+            session_data = session_snap.to_dict()
+            # Se è già segnata come 'paid', blocchiamo tutto!
+            if session_data.get('revenue_status') == 'paid':
+                print(f"🛑 Tentativo di doppio pagamento bloccato per sessione {self.session_ref.id}")
+                return {"success": False, "message": "Questa sessione è già stata pagata/liquidata."}
+
+        # --- 2. LOGICA STANDARD ---
+        valid_songs = [s for s in self.playlist if not s.get('is_deleted', False)]
+        if not valid_songs:
+            return {"success": False, "message": "Nessun brano valido"}
+
+        self._refresh_composer_map()
+
+        rights_pot = total_org_revenue * 0.10
+        value_per_song = rights_pot / len(valid_songs)
+
+        print(f"💰 Finalizzazione: Incasso €{total_org_revenue}. Per brano: €{value_per_song:.2f}")
+
+        try:
+            batch = self.db.batch()
+            
+            # A. Distribuzione ai compositori
+            for song in valid_songs:
+                composer_raw = song.get('composer', "")
+                if not composer_raw or composer_raw in ["Sconosciuto", "Pending", "⏳ Ricerca..."]:
+                    continue
+
+                composers = [c.strip() for c in composer_raw.replace("/", ",").split(",") if len(c.strip()) > 2]
+                if not composers: continue
+
+                value_per_composer = value_per_song / len(composers)
+
+                for comp_name in composers:
+                    final_id = self._resolve_composer_id(comp_name)
+                    comp_ref = self.db.collection('stats_composers').document(final_id)
+                    
+                    batch.set(comp_ref, {
+                        'last_detected_name': comp_name,
+                        'total_revenue': firestore.Increment(value_per_composer),
+                        'last_updated': firestore.SERVER_TIMESTAMP
+                    }, merge=True)
+
+            # --- 3. BLOCCO DELLA SESSIONE ---
+            # Marciamo la sessione come 'paid' nello stesso batch atomico.
+            # Se la distribuzione fallisce, fallisce anche questo mark (e viceversa).
+            batch.update(self.session_ref, {
+                'revenue_status': 'paid',           # IL FLAG DI SICUREZZA
+                'final_revenue_amount': total_org_revenue,
+                'closed_at': firestore.SERVER_TIMESTAMP
+            })
+
+            batch.commit()
+            return {"success": True}
+
+        except Exception as e:
+            print(f"❌ Errore finalizzazione: {e}")
+            return {"success": False, "message": str(e)}
+        
+    def _refresh_composer_map(self):
+        """
+        Scarica gli utenti 'composer' e crea le associazioni:
+        - Nome d'arte -> ID Nome d'arte
+        - Nome Reale + Cognome -> ID Nome d'arte
+        """
+        if not self.db: return
+        print("🔄 Aggiornamento mappa alias compositori...")
+        
+        self.composer_map = {} # Reset mappa
+        
+        try:
+            # Scarica tutti i compositori
+            users_ref = self.db.collection('users').where('role', '==', 'composer').stream()
+            
+            for doc in users_ref:
+                data = doc.to_dict()
+                
+                # Dati grezzi dal DB
+                stage_name = data.get('stage_name', '').strip()
+                nome = data.get('nome', '').strip()
+                cognome = data.get('cognome', '').strip()
+                
+                # Se non c'è stage name, usiamo il nome reale come fallback
+                if not stage_name: continue
+
+                # ID DESTINAZIONE: Sarà sempre il nome d'arte normalizzato (es. "tropico")
+                # Questo è l'ID del documento dove finiscono i soldi
+                target_id = self._normalize_string(stage_name).replace(" ", "_")
+                
+                # CHIAVE 1: Nome d'arte (es. "tropico" -> "tropico")
+                key_stage = self._normalize_string(stage_name)
+                if key_stage:
+                    self.composer_map[key_stage] = target_id
+                
+                # CHIAVE 2: Nome Reale Completo (es. "davide_petrella" -> "tropico")
+                if nome and cognome:
+                    full_name_raw = f"{nome} {cognome}"
+                    key_real = self._normalize_string(full_name_raw).replace(" ", "_") # Aggiunto replace per sicurezza
+                    self.composer_map[key_real] = target_id
+                    
+                    # DEBUG: Stampiamo per vedere se sta funzionando
+                    print(f"   🔗 Alias creato: '{key_real}' -> '{target_id}'")
+
+            print(f"✅ Mappa Alias pronta: {len(self.composer_map)} voci.")
+            
+        except Exception as e:
+            print(f"⚠️ Errore refresh mappa: {e}")
+
+    # Helper per risolvere l'ID
+    def _resolve_composer_id(self, raw_name):
+        # Pulisce la stringa in arrivo dai metadati (es. "Davide Petrella")
+        clean_key = self._normalize_string(raw_name).replace(" ", "_")
+        
+        # Cerca nella mappa. Se trova "davide_petrella", restituisce "tropico".
+        # Se non trova nulla, restituisce "davide_petrella" (creando un nuovo profilo slegato).
+        return self.composer_map.get(clean_key, clean_key)
+    
+    def migrate_legacy_data(self):
+        """
+        Sposta i dati dai profili 'alias' (es. davide_petrella) 
+        ai profili 'principali' (es. tropico) ed elimina i vecchi.
+        """
+        if not self.db: return {"success": False, "message": "DB Offline"}
+        
+        # 1. Assicuriamoci di avere la mappa aggiornata
+        self._refresh_composer_map()
+        
+        migrated_count = 0
+        logs = []
+
+        # 2. Iteriamo su tutti gli alias conosciuti
+        # source_key = "davide_petrella" (chi deve sparire)
+        # target_id = "tropico" (chi deve ricevere i dati)
+        for source_key, target_id in self.composer_map.items():
+            
+            # Se la chiave è uguale al target, è il profilo principale. Saltiamo.
+            if source_key == target_id: 
+                continue
+
+            source_ref = self.db.collection('stats_composers').document(source_key)
+            target_ref = self.db.collection('stats_composers').document(target_id)
+
+            # Controlliamo se esiste il profilo "sbagliato" (vecchio)
+            source_snap = source_ref.get()
+            if not source_snap.exists:
+                continue
+
+            print(f"📦 Migrazione in corso: {source_key} -> {target_id}...")
+            source_data = source_snap.to_dict()
+            
+            # A. SPOSTIAMO I TOTALI (Plays e Revenue)
+            plays_to_move = source_data.get('total_plays', 0)
+            revenue_to_move = source_data.get('total_revenue', 0.0)
+
+            if plays_to_move > 0 or revenue_to_move > 0:
+                target_ref.set({
+                    'total_plays': firestore.Increment(plays_to_move),
+                    'total_revenue': firestore.Increment(revenue_to_move),
+                    'last_updated': firestore.SERVER_TIMESTAMP
+                }, merge=True)
+
+            # B. SPOSTIAMO LE SOTTO-COLLEZIONI (Top Tracks)
+            # Dobbiamo leggere ogni brano del vecchio profilo e sommarlo al nuovo
+            tracks = source_ref.collection('top_tracks').stream()
+            for t in tracks:
+                t_data = t.to_dict()
+                t_id = t.id # ID del documento (titolo normalizzato)
+                t_plays = t_data.get('play_count', 0)
+                t_title = t_data.get('title', 'Sconosciuto')
+
+                target_track_ref = target_ref.collection('top_tracks').document(t_id)
+                target_track_ref.set({
+                    'title': t_title,
+                    'play_count': firestore.Increment(t_plays)
+                }, merge=True)
+                
+                # Cancelliamo la traccia vecchia
+                t.reference.delete()
+
+            # C. SPOSTIAMO LO STORICO (History)
+            history = source_ref.collection('history').stream()
+            for h in history:
+                h_data = h.to_dict()
+                h_id = h.id # es. "2023-10"
+                h_plays = h_data.get('play_count', 0)
+
+                target_hist_ref = target_ref.collection('history').document(h_id)
+                target_hist_ref.set({
+                    'date': h_id,
+                    'play_count': firestore.Increment(h_plays)
+                }, merge=True)
+                
+                # Cancelliamo lo storico vecchio
+                h.reference.delete()
+
+            # D. CANCELLIAMO IL PROFILO VECCHIO
+            source_ref.delete()
+            
+            msg = f"✅ Migrato {source_key}: +{plays_to_move} plays, +€{revenue_to_move:.2f}"
+            logs.append(msg)
+            print(msg)
+            migrated_count += 1
+
+        return {"success": True, "migrated": migrated_count, "logs": logs}

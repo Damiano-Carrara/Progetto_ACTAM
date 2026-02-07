@@ -232,6 +232,26 @@ def api_logout():
         return jsonify(res)
     return jsonify({"success": True}) # Fallback se il metodo non esiste ancora
 
+@app.route("/api/admin/migrate_aliases", methods=["GET"])
+def admin_migrate():
+    # Sicurezza base: idealmente dovresti proteggerla, ma per uso locale va bene
+    if hasattr(session_bot, 'migrate_legacy_data'):
+        result = session_bot.migrate_legacy_data()
+        return jsonify(result)
+    return jsonify({"error": "Funzione non trovata"}), 500
+
+@app.route("/api/finalize_revenue", methods=["POST"])
+def finalize_revenue():
+    data = request.get_json()
+    revenue = data.get("revenue", 0)
+    
+    # Chiama il metodo del session manager
+    if hasattr(session_bot, 'finalize_session_revenue'):
+        res = session_bot.finalize_session_revenue(revenue)
+        return jsonify(res)
+    
+    return jsonify({"error": "Funzione non disponibile"}), 503
+
 @app.route("/api/download_history_report", methods=["GET"])
 def download_history_report():
     session_id = request.args.get("session_id")

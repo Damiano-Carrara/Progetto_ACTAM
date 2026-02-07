@@ -60,7 +60,7 @@ class LyricsManager:
         
         # 2. PARALLELISMO CAUTO: Usiamo 2 worker (non 4)
         # 2 thread sono il compromesso giusto: raddoppi la velocità ma sembri ancora "umano" (come due tab aperti)
-        self.executor = ThreadPoolExecutor(max_workers=5)
+        self.executor = ThreadPoolExecutor(max_workers=2)
 
     def update_artist_context(self, artist_name):
         if not artist_name or artist_name == self.current_artist:

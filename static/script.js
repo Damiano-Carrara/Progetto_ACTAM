@@ -591,8 +591,8 @@ async function initComposerDashboard() {
       const totalPlays = data.total_plays || 0;
       $("#comp-total-plays").textContent = totalPlays;
       
-      const estRevenue = totalPlays * 2.50;
-      $("#comp-est-revenue").textContent = formatMoney(estRevenue);
+      const realRevenue = data.total_revenue || 0.0;
+      $("#comp-est-revenue").textContent = formatMoney(realRevenue);
 
       const today = new Date();
       const currentKey = `${today.getFullYear()}-${pad2(today.getMonth()+1)}`;
@@ -1241,10 +1241,58 @@ function initGlobalPayments() {
   const btnHome = $("#btn-home-restart");
   
   if(btnPayments) {
-    btnPayments.onclick = () => {
+    btnPayments.onclick = async () => {
         if(state.role !== 'org') return;
-        calculateAndShowPayments(true); // true = mostra bottoni pagamento
-        showView("#view-payments");
+
+        // 1. Controllo di sicurezza: c'è l'incasso?
+        if (!state.orgRevenue || state.orgRevenue <= 0) {
+            showCustomAlert("Attenzione: Incasso non inserito o pari a zero.");
+            return;
+        }
+
+        // 2. Chiediamo conferma esplicita (Punto di non ritorno)
+        if (!await showConfirm("Confermi il borderò? Questa azione distribuirà le royalties ai compositori.")) {
+            return;
+        }
+
+        // 3. INVIO ROYALTIES (Spostato qui)
+        try {
+            const originalText = btnPayments.textContent;
+            btnPayments.textContent = "Elaborazione...";
+            btnPayments.disabled = true;
+
+            const res = await fetch("/api/finalize_revenue", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ revenue: state.orgRevenue })
+            });
+            const data = await res.json();
+
+           if (data.success) {
+                showCustomAlert("✅ Royalties distribuite con successo!");
+                calculateAndShowPayments(true);
+                showView("#view-payments");
+                // Opzionale: disabilita il tasto per questa sessione di pagina
+                btnPayments.disabled = true; 
+                btnPayments.textContent = "Pagamento Completato";
+            } else {
+                // Gestione messaggio "Già pagato"
+                if (data.message && data.message.includes("già stata pagata")) {
+                    showCustomAlert("ℹ️ " + data.message);
+                    // Portalo comunque alla vista pagamenti per vedere il riepilogo
+                    calculateAndShowPayments(true);
+                    showView("#view-payments");
+                } else {
+                    showCustomAlert("Errore distribuzione: " + data.message);
+                }
+            }
+        } catch (e) {
+            console.error(e);
+            showCustomAlert("Errore di rete durante il pagamento.");
+        } finally {
+            btnPayments.textContent = "Vai ai Pagamenti";
+            btnPayments.disabled = false;
+        }
     };
   }
   
