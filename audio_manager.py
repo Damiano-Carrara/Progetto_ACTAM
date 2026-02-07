@@ -89,6 +89,19 @@ class AudioManager:
         """
         Scarica il contesto completo: Setlist.fm + Spotify + Genius.
         """
+        # --- FIX INTELLIGENTE: SKIP SE GIÀ SCARICATO ---
+        # Normalizziamo le stringhe per sicurezza
+        curr_artist_norm = (self.target_artist_bias or "").strip().lower()
+        new_artist_norm = (artist_name or "").strip().lower()
+
+        # Se l'artista richiesto è lo stesso che abbiamo già in memoria...
+        if new_artist_norm and new_artist_norm == curr_artist_norm:
+            # ...e se abbiamo effettivamente dei dati caricati (context_ready o cache popolata)
+            if self.context_ready or len(self.setlist_bot.cached_songs) > 0:
+                print(f"✅ [Context] Dati per '{artist_name}' già in memoria (da Prefetch). Skip download.")
+                return
+        # -----------------------------------------------
+
         # Aggiornamento immediato Bias e Reset stato
         self.target_artist_bias = artist_name
         self.context_ready = False 

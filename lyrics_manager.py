@@ -18,6 +18,15 @@ class LyricsManager:
     def __init__(self):
         self.genius_token = os.getenv("GENIUS_ACCESS_TOKEN")
         self.elevenlabs_key = os.getenv("ELEVENLABS_API_KEY")
+
+         # --- NUOVA LISTA USER-AGENTS (ROTANTE) ---
+        self.user_agents = [
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/121.0',
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Safari/605.1.15',
+            'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36'
+        ]
         
         if self.genius_token:
             # 1. CONFIGURAZIONE "CAMUFFATA"
@@ -32,10 +41,13 @@ class LyricsManager:
                 sleep_time=0.1 # Teniamo basso questo, gestiamo noi la pausa
             )
             
-            # TRUCCO FONDAMENTALE: Mascheriamo lo User-Agent
-            # Genius vedrà queste richieste come provenienti da un utente Chrome, non da Python
+            # SELEZIONE RANDOM DELL'AGENTE
+            # Ogni volta che avvii la classe, sembrerai un utente diverso
+            chosen_agent = random.choice(self.user_agents)
+            print(f"🕵️ [Stealth] User-Agent attivo: {chosen_agent[:30]}...")
+            
             self.genius._session.headers.update({
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
+                "User-Agent": chosen_agent
             })
         else:
             self.genius = None
@@ -48,7 +60,7 @@ class LyricsManager:
         
         # 2. PARALLELISMO CAUTO: Usiamo 2 worker (non 4)
         # 2 thread sono il compromesso giusto: raddoppi la velocità ma sembri ancora "umano" (come due tab aperti)
-        self.executor = ThreadPoolExecutor(max_workers=2)
+        self.executor = ThreadPoolExecutor(max_workers=5)
 
     def update_artist_context(self, artist_name):
         if not artist_name or artist_name == self.current_artist:
