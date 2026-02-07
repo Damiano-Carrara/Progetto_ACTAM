@@ -8,7 +8,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   </head>
   <body id="body-container">
-    <div id="app-background" class="app-background {{ 'viewer-bg' if viewer_mode }}"></div>
+    <div id="app-background" class="app-background"></div>
     <div class="app-background-overlay"></div>
 
     <div id="global-stage-lights">
@@ -30,7 +30,7 @@
       </svg>
     </div>
 
-    <main id="app" data-viewer="{{ 'true' if viewer_mode else 'false' }}">
+    <main id="app">
       
       <section id="view-roles" class="view view--active">
         <div class="stage-wrapper">
@@ -304,14 +304,10 @@
 
             </div>
             <div class="controls">
-              {% if not viewer_mode %}
                 <button id="btn-session-start" class="btn btn--ctl">Start</button>
                 <button id="btn-session-pause" class="btn btn--ctl" disabled>Pause</button>
                 <button id="btn-session-stop" class="btn btn--ctl" disabled>Stop</button>
                 <button id="btn-session-reset" class="btn btn--ctl">Reset</button>
-              {% else %}
-                <span class="badge" style="background: #7c3aed; color: white;">Modalità Spettatore</span>
-              {% endif %}
             </div>
           </section>
 
@@ -380,12 +376,10 @@
             </template>
           </div>
           <div class="actions">
-            {% if not viewer_mode %}
               <button id="btn-undo" class="btn btn--small" disabled>Undo</button>
               <button id="btn-global-splits" class="btn btn--primary hidden">Ripartizioni Totali</button>
               <button id="btn-global-payments" class="btn btn--primary" disabled>Vai ai Pagamenti</button>
               <button id="btn-generate" class="btn btn--primary" disabled>Scarica i documenti</button>
-            {% endif %}
           </div>
         </div>
       </section>

@@ -1846,22 +1846,14 @@ function animateStageLights() {
 }
 
 document.addEventListener("DOMContentLoaded", () => {
-  const app = document.getElementById("app");
-  const isViewer = app.dataset.viewer === "true";
+  // Wire pulsanti e animazioni
   wireSessionButtons();
   animateStageLights();
 
-  if (isViewer) {
-    showView("#view-session");
-    hydrateSessionHeader();
-    startPlaylistPolling();
-    const rm = document.getElementById("restore-modal");
-    if(rm) rm.classList.add("modal--hidden");
-  } else {
-    initRoleSelection();
-    initGlobalPayments();
-    initRegistration();
-    showView("#view-roles");
-    syncReviewNotes();
-  }
+  // Inizializzazione standard
+  initRoleSelection();
+  initGlobalPayments();
+  initRegistration();
+  showView("#view-roles"); // Parte sempre dalla selezione ruoli
+  syncReviewNotes();
 });
