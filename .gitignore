@@ -5,3 +5,4 @@ __pycache__/
 *.wav
 lyrics_cache/.
 firebase_credentials.json
+test_token.py

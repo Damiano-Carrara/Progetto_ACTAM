@@ -1,4 +1,4 @@
-// --- 1. CONFIGURAZIONE FIREBASE (Incolla qui in cima) ---
+// --- 1. CONFIGURAZIONE FIREBASE ---
 const firebaseConfig = {
   apiKey: "AIzaSyDPtkUaiTQSxUB9x7x1xWF9XHdVqBXLb-s",
   authDomain: "actam-project-8f9de.firebaseapp.com",
@@ -10,24 +10,26 @@ const firebaseConfig = {
 };
 
 // --- 2. INIZIALIZZAZIONE ---
-// Controlliamo che firebase sia stato caricato (per evitare errori se manca internet)
 if (typeof firebase !== 'undefined') {
   firebase.initializeApp(firebaseConfig);
   console.log("🔥 Firebase Client inizializzato!");
 } else {
   console.error("❌ Librerie Firebase non trovate. Controlla index.html");
 }
+
 // --- STATO APP ---
 const state = {
   role: null,            
   orgRevenue: 0,          
-  orgRevenueConfirmed: false, 
-  currentRoyaltySong: null, 
-  mode: null,             
-  route: "roles",         
+  orgRevenueConfirmed: false,
+  currentRoyaltySong: null,
+  mode: null,              
+  route: "roles",        
   concertArtist: "",
   bandArtist: "",
-  notes: ""
+  notes: "",
+  user: null, // Oggetto utente completo dal login
+  stage_name: ""
 };
 
 let pendingRole = null;
@@ -35,7 +37,7 @@ let songs = [];
 let lastMaxSongId = 0;
 let currentSongId = null;
 let currentCoverUrl = null;
-let explicitRestore = false; // Flag per capire se l'utente ha richiesto esplicitamente il ripristino
+let explicitRestore = false;
 
 let playlistPollInterval = null;
 let sessionStartMs = 0;
@@ -43,9 +45,8 @@ let sessionAccumulatedMs = 0;
 let sessionTick = null;
 
 let undoStack = [];
-let lastSessionSnapshot = null;
 let notesModalContext = "session";
-let hoveredRole = null; 
+let hoveredRole = null;
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -65,6 +66,18 @@ function formatMoney(amount, currency = "EUR") {
 
 function lerp(start, end, amt) {
     return (1 - amt) * start + amt * end;
+}
+
+// --- CUSTOM ALERT FUNCTION ---
+function showCustomAlert(msg) {
+    const m = $("#alert-modal");
+    if (!m) { alert(msg); return; }
+    $("#alert-message").textContent = msg;
+    m.classList.remove("modal--hidden");
+    const btn = $("#alert-ok");
+    const newBtn = btn.cloneNode(true);
+    btn.parentNode.replaceChild(newBtn, btn);
+    newBtn.onclick = () => { m.classList.add("modal--hidden"); };
 }
 
 function saveStateToLocal() {
@@ -90,7 +103,7 @@ function setRoute(route) {
   const body = document.body;
   if (body) {
     body.setAttribute("data-active-view", route);
-    if (["welcome", "session", "roles"].includes(route)) body.classList.add("no-scroll");
+    if (["welcome", "session", "roles", "register", "profile"].includes(route)) body.classList.add("no-scroll");
     else body.classList.remove("no-scroll");
   }
 }
@@ -113,26 +126,28 @@ function initRoleSelection() {
   const btnGuest = $("#btn-auth-guest");
   const linkRegister = $("#link-register");
   const btnCloseAuth = $("#btn-auth-close");
-
   const btnCompBack = $("#btn-comp-back");
+
   if (btnCompBack) {
-      btnCompBack.onclick = () => {
-          showView("#view-welcome");
-      };
+      btnCompBack.onclick = () => showView("#view-welcome");
   }
   
   roleSpots.forEach(spot => {
-    spot.addEventListener("mouseenter", () => {
-      hoveredRole = spot.dataset.role;
-    });
-    spot.addEventListener("mouseleave", () => {
-      hoveredRole = null;
-    });
+    spot.addEventListener("mouseenter", () => { hoveredRole = spot.dataset.role; });
+    spot.addEventListener("mouseleave", () => { hoveredRole = null; });
     spot.addEventListener("click", () => {
       const role = spot.dataset.role;
-      pendingRole = role; 
-      $("#auth-email").value = "";
-      $("#auth-pass").value = "";
+      pendingRole = role;
+      
+      // CAMBIO COLORE MODALE DINAMICO IN BASE AL RUOLO
+      let themeColor = "var(--c-cyan)"; // Default user
+      if (role === "org") themeColor = "var(--c-green)";
+      else if (role === "composer") themeColor = "var(--c-pink)";
+      
+      authModal.style.setProperty("--primary", themeColor);
+
+      if($("#auth-email")) $("#auth-email").value = "";
+      if($("#auth-pass")) $("#auth-pass").value = "";
       authModal.classList.remove("modal--hidden");
     });
   });
@@ -140,102 +155,522 @@ function initRoleSelection() {
   if(btnCloseAuth) {
       btnCloseAuth.onclick = () => {
           authModal.classList.add("modal--hidden");
-          pendingRole = null; 
+          pendingRole = null;
       };
   }
 
-  if (btnLogin) {
-    btnLogin.onclick = async () => {
-        const email = $("#auth-email").value.trim();
+  // FUNZIONE DI LOGIN
+  const performLogin = async () => {
+        const identifier = $("#auth-email").value.trim();
         const pass = $("#auth-pass").value.trim();
+        
+        if(!identifier || !pass) return showCustomAlert("Inserisci email/username e password");
+        if(!pendingRole) return showCustomAlert("Errore ruolo non selezionato");
 
-        if(!email || !pass) {
-            alert("Per favore inserisci email e password");
-            return;
-        }
-
-        // --- INTEGRAZIONE FIREBASE ---
         try {
-            // Cambio il testo del bottone per feedback visivo
-            const originalText = btnLogin.textContent;
-            btnLogin.textContent = "Accesso in corso...";
+            btnLogin.textContent = "Verifica...";
             btnLogin.disabled = true;
 
-            // Chiamata reale a Firebase Auth
-            // Assicurati che 'auth' sia importato/inizializzato nel tuo progetto
-            // (es. import { auth } from './firebase-config.js' oppure window.auth)
-            await firebase.auth().signInWithEmailAndPassword(email, pass);
-            
-            // Se non va in errore, l'observer onAuthStateChanged (se lo hai) 
-            // o la funzione qui sotto gestirà il redirect.
-            completeAuth(); 
+            const res = await fetch("/api/login", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({
+                    username: identifier,
+                    password: pass,
+                    role: pendingRole
+                })
+            });
+            const data = await res.json();
 
-        } catch (error) {
-            console.error("Login error:", error);
-            alert("Errore login: " + error.message);
+            if(data.success) {
+                state.user = data.user;
+                state.stage_name = data.user.stage_name || data.user.username;
+                completeAuth();
+            } else {
+                showCustomAlert(data.error);
+            }
+        } catch(e) {
+            console.error(e);
+            showCustomAlert("Errore server login");
         } finally {
-            // Ripristino bottone
             btnLogin.textContent = "Accedi";
             btnLogin.disabled = false;
         }
-        // -----------------------------
-    };
-  }
+  };
 
-  if (btnGuest) {
-    btnGuest.onclick = () => {
-        completeAuth();
-    };
-  }
+  if (btnLogin) btnLogin.onclick = performLogin;
+
+  // GESTIONE TASTO INVIO SU INPUT LOGIN
+  const inputs = [$("#auth-email"), $("#auth-pass")];
+  inputs.forEach(input => {
+      if(input) {
+          input.addEventListener("keyup", (event) => {
+              if (event.key === "Enter") {
+                  performLogin();
+              }
+          });
+      }
+  });
+
+  if (btnGuest) btnGuest.onclick = () => completeAuth();
 
   if (linkRegister) {
     linkRegister.onclick = (e) => {
         e.preventDefault();
-        alert("Redirect alla pagina di registrazione (non implementata)");
+        $("#auth-modal").classList.add("modal--hidden");
+        showView("#view-register");
     };
   }
 }
 
+function initRegistration() {
+    const btnReg = $("#btn-do-register");
+    const btnCancel = $("#btn-cancel-register");
+    const roleSelect = $("#reg-role");
+    const stageNameWrapper = $("#reg-stage-name-wrapper");
+
+    if(roleSelect) {
+        roleSelect.addEventListener("change", () => {
+            if(roleSelect.value === "composer") {
+                stageNameWrapper.classList.remove("hidden");
+            } else {
+                stageNameWrapper.classList.add("hidden");
+                $("#reg-stage-name").value = "";
+            }
+        });
+    }
+
+    if(btnCancel) {
+        btnCancel.onclick = () => {
+            // FIX ANIMAZIONE: Resetta pendingRole per far ripartire le luci
+            pendingRole = null;
+            hoveredRole = null;
+            showView("#view-roles");
+        };
+    }
+
+    if(btnReg) {
+        btnReg.onclick = async () => {
+            const payload = {
+                nome: $("#reg-name").value.trim(),
+                cognome: $("#reg-surname").value.trim(),
+                email: $("#reg-email").value.trim(),
+                username: $("#reg-username").value.trim(),
+                password: $("#reg-pass").value.trim(),
+                birthdate: $("#reg-birthdate").value,
+                role: $("#reg-role").value,
+                stage_name: $("#reg-stage-name").value.trim()
+            };
+
+            if(!payload.username || !payload.password || !payload.role || !payload.email) {
+                return showCustomAlert("Compila tutti i campi obbligatori");
+            }
+
+            try {
+                btnReg.textContent = "Registrazione...";
+                btnReg.disabled = true;
+
+                const res = await fetch("/api/register", {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify(payload)
+                });
+                const data = await res.json();
+
+                if(data.success) {
+                    showCustomAlert("Registrazione avvenuta con successo! Ora puoi accedere.");
+                    // Anche qui, resetta il ruolo pendente per ripristinare le luci
+                    pendingRole = null;
+                    showView("#view-roles");
+                } else {
+                    showCustomAlert("Errore: " + data.error);
+                }
+            } catch(e) {
+                console.error(e);
+                showCustomAlert("Errore di connessione");
+            } finally {
+                btnReg.textContent = "Registrati";
+                btnReg.disabled = false;
+            }
+        };
+    }
+}
+
 function completeAuth() {
     const authModal = $("#auth-modal");
-    authModal.classList.add("modal--hidden"); 
-    state.role = pendingRole; 
-    state.orgRevenueConfirmed = false; 
+    authModal.classList.add("modal--hidden");
+    state.role = pendingRole;
+    state.orgRevenueConfirmed = false;
     state.orgRevenue = 0;
     showView("#view-welcome");
     initWelcome();
+    initUserProfile(); // Inizializza pulsante profilo e logica
 }
 
-function initComposerDashboard() {
-  $("#comp-total-plays").textContent = Math.floor(Math.random() * 500) + 1000;
-  $("#comp-est-revenue").textContent = formatMoney(Math.random() * 5000 + 12000);
+// ============================================================================
+// NUOVA LOGICA PROFILO UTENTE
+// ============================================================================
+function initUserProfile() {
+    const btnProfile = $("#btn-user-profile");
+    if(!btnProfile) return;
 
-  const ctx = document.getElementById('composerChart');
-  if(ctx && window.Chart) {
-    if(window.compChartInstance) window.compChartInstance.destroy();
-    window.compChartInstance = new Chart(ctx, {
-      type: 'line',
-      data: {
-        labels: ['Lug', 'Ago', 'Set', 'Ott', 'Nov', 'Dic'],
-        datasets: [{
-          label: 'Esecuzioni',
-          data: [65, 120, 80, 85, 95, 130],
-          borderColor: "#EC368D",
-          backgroundColor: "#EC368D33",
-          tension: 0.4,
-          fill: true
-        }]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: { legend: { display: false } },
-        scales: {
-          y: { grid: { color: 'rgba(255,255,255,0.1)' }, ticks: { color: '#9fb0c2' } },
-          x: { grid: { display: false }, ticks: { color: '#9fb0c2' } }
-        }
-      }
+    // Mostra il pulsante solo se c'è un utente loggato (non ospite)
+    if(state.user && state.user.username) {
+        btnProfile.classList.remove("hidden");
+    } else {
+        btnProfile.classList.add("hidden");
+        return;
+    }
+
+    btnProfile.onclick = () => {
+        showView("#view-profile");
+        populateProfileView();
+    };
+
+    // Bottone Indietro in Profilo
+    const btnBackProfile = $("#btn-profile-back");
+    if(btnBackProfile) {
+        btnBackProfile.onclick = () => {
+            showView("#view-welcome");
+        };
+    }
+
+    // Gestione Tabs
+    const tabs = document.querySelectorAll(".tab-btn");
+    tabs.forEach(t => {
+        t.onclick = () => {
+            document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+            document.querySelectorAll(".tab-pane").forEach(p => p.classList.remove("active"));
+            
+            t.classList.add("active");
+            const target = t.dataset.tab;
+            const pane = document.getElementById(`tab-${target}`);
+            if(pane) pane.classList.add("active");
+        };
     });
+
+    // Azione Salva Modifiche
+    const btnSave = $("#btn-save-profile");
+    if(btnSave) {
+        btnSave.onclick = async () => {
+            const newUsername = $("#edit-username").value.trim();
+            const newPassword = $("#edit-password").value.trim();
+
+            if(!newUsername && !newPassword) return showCustomAlert("Nessuna modifica inserita");
+            if(newUsername && newUsername.length < 3) return showCustomAlert("Username troppo corto");
+
+            if(await showConfirm("Confermi le modifiche all'account?")) {
+                try {
+                    btnSave.textContent = "Salvataggio...";
+                    btnSave.disabled = true;
+
+                    const res = await fetch("/api/update_user", {
+                        method: "POST",
+                        headers: {"Content-Type": "application/json"},
+                        body: JSON.stringify({
+                            old_username: state.user.username,
+                            new_data: {
+                                new_username: newUsername,
+                                new_password: newPassword
+                            }
+                        })
+                    });
+                    const data = await res.json();
+
+                    if(data.success) {
+                        showCustomAlert("Profilo aggiornato con successo!");
+                        if(data.new_username) {
+                            state.user.username = data.new_username;
+                            $("#profile-username-display").textContent = data.new_username;
+                        }
+                        $("#edit-username").value = "";
+                        $("#edit-password").value = "";
+                    } else {
+                        showCustomAlert("Errore: " + data.error);
+                    }
+
+                } catch(e) {
+                    console.error(e);
+                    showCustomAlert("Errore di connessione");
+                } finally {
+                    btnSave.textContent = "Salva Modifiche";
+                    btnSave.disabled = false;
+                }
+            }
+        };
+    }
+
+    // Azione Elimina Account
+    const btnDel = $("#btn-delete-account");
+    if(btnDel) {
+        btnDel.onclick = async () => {
+            if(await showConfirm("ATTENZIONE: Questa azione cancellerà definitivamente il tuo account e tutte le sessioni salvate. Procedere?")) {
+                try {
+                    btnDel.textContent = "Cancellazione...";
+                    btnDel.disabled = true;
+
+                    const res = await fetch("/api/delete_account", {
+                        method: "POST",
+                        headers: {"Content-Type": "application/json"},
+                        body: JSON.stringify({ username: state.user.username })
+                    });
+                    const data = await res.json();
+
+                    if(data.success) {
+                        // Modifica richiesta: Nessun alert, ricarica e torna alla partenza
+                        state.role = null;
+                        state.user = null;
+                        sessionReset(); // Pulisce sessione se attiva
+                        window.location.reload(); 
+                    } else {
+                        showCustomAlert("Errore eliminazione: " + data.error);
+                        btnDel.textContent = "Elimina Account";
+                        btnDel.disabled = false;
+                    }
+                } catch(e) {
+                    showCustomAlert("Errore di rete");
+                    btnDel.textContent = "Elimina Account";
+                    btnDel.disabled = false;
+                }
+            }
+        };
+    }
+}
+
+async function populateProfileView() {
+    console.log("🔄 populateProfileView avviato...");
+    if(!state.user) {
+        console.warn("Nessun utente loggato nello state.");
+        return;
+    }
+    
+    $("#profile-username-display").textContent = state.user.username;
+    
+    // Mappa Ruoli
+    const roleMap = { 'user': 'Utente Base', 'composer': 'Compositore', 'org': 'Organizzatore', 'band': 'Band' };
+    $("#profile-role-display").textContent = roleMap[state.user.role] || state.user.role.toUpperCase();
+
+    // RIFERIMENTI DOM
+    const tracksContainer = document.querySelector(".mock-bar-chart");
+    const historyList = document.querySelector(".history-list-mockup");
+
+    // PULIZIA PREVENTIVA (Così non vedi i dati vecchi/finti)
+    if(tracksContainer) tracksContainer.innerHTML = "<div style='padding:10px; opacity:0.6;'>Caricamento stats...</div>";
+    if(historyList) historyList.innerHTML = "<div style='padding:10px; opacity:0.6;'>Caricamento storico...</div>";
+
+    // 1. FETCH STATISTICHE
+    try {
+        console.log("📡 Fetching /api/user_profile_stats...");
+        const resStats = await fetch("/api/user_profile_stats");
+        if(!resStats.ok) throw new Error("Errore HTTP Stats");
+        const stats = await resStats.json();
+        console.log("✅ Stats ricevute:", stats);
+        
+        // Cards
+        $("#mock-sessions-count").textContent = stats.total_sessions || 0;
+        $("#mock-songs-count").textContent = stats.total_songs || 0;
+        $("#mock-top-artist").textContent = stats.top_artist || "—";
+        
+        // Top Tracks List
+        if(tracksContainer) {
+            tracksContainer.innerHTML = ""; 
+            if(stats.top_tracks && stats.top_tracks.length > 0) {
+                stats.top_tracks.forEach((t, idx) => {
+                    const maxPlays = stats.top_tracks[0].play_count;
+                    const percent = Math.round((t.play_count / maxPlays) * 100);
+                    
+                    const row = document.createElement("div");
+                    row.className = "bar-row";
+                    row.innerHTML = `
+                        <span class="label" style="width: 20px;">${idx + 1}</span>
+                        <div style="flex:1; display:flex; flex-direction:column; gap:2px;">
+                            <div style="display:flex; justify-content:space-between; font-size:0.85rem;">
+                                <span>${t.title} <span style="opacity:0.6">- ${t.artist}</span></span>
+                                <span>${t.play_count}</span>
+                            </div>
+                            <div class="bar" style="width: ${percent}%;"></div>
+                        </div>
+                    `;
+                    tracksContainer.appendChild(row);
+                });
+            } else {
+                tracksContainer.innerHTML = "<span style='opacity:0.5; font-size:0.9rem;'>Nessun dato di ascolto disponibile.</span>";
+            }
+        }
+    } catch(e) {
+        console.error("❌ Errore stats:", e);
+        if(tracksContainer) tracksContainer.innerHTML = "<span style='color:#f87171'>Errore caricamento dati.</span>";
+    }
+
+    // 2. FETCH STORICO
+    try {
+        console.log("📡 Fetching /api/user_session_history...");
+        const resHist = await fetch("/api/user_session_history");
+        if(!resHist.ok) throw new Error("Errore HTTP History");
+        const dataHist = await resHist.json();
+        
+        if(historyList) {
+            historyList.innerHTML = ""; 
+            
+            // Filtro client-side di sicurezza (anche se il backend lo fa già)
+            const validSessions = (dataHist.history || []).filter(s => s.song_count > 0);
+
+            if(validSessions.length > 0) {
+                validSessions.forEach(sess => {
+                    const item = document.createElement("div");
+                    item.className = "history-item";
+                    
+                    const title = `Live Session (${sess.song_count} brani)`;
+
+                    item.innerHTML = `
+                        <div class="h-info">
+                            <strong>${title}</strong>
+                            <span>${sess.date} • ID: ${sess.id.substring(8, 16)}</span>
+                        </div>
+                        <button class="btn btn--xs btn--primary" onclick="downloadHistorySession('${sess.id}')">
+                            Scarica PDF
+                        </button>
+                    `;
+                    historyList.appendChild(item);
+                });
+            } else {
+                historyList.innerHTML = "<div style='padding:20px; text-align:center; opacity:0.5;'>Nessuna sessione valida trovata.</div>";
+            }
+        }
+    } catch(e) {
+        console.error("❌ Errore history:", e);
+        if(historyList) historyList.innerHTML = "<span style='color:#f87171'>Errore caricamento storico.</span>";
+    }
+}
+
+
+async function initComposerDashboard() {
+  let currentStageName = state.stage_name;
+  if (!currentStageName) {
+      const storedUser = localStorage.getItem("kyma_user");
+      if(storedUser) {
+          const u = JSON.parse(storedUser);
+          currentStageName = u.stage_name || u.username;
+      } else {
+          currentStageName = "Vasco Rossi";
+      }
+  }
+
+  $("#comp-total-plays").textContent = "...";
+  $("#comp-est-revenue").textContent = "...";
+  const trendEl = document.getElementById("comp-trend-plays");
+  if(trendEl) trendEl.innerHTML = `<span style="opacity:0.5">Calcolo...</span>`;
+  
+  try {
+      const res = await fetch("/api/composer_stats", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ stage_name: currentStageName })
+      });
+      
+      const data = await res.json();
+      if(data.error) throw new Error(data.error);
+
+      const totalPlays = data.total_plays || 0;
+      $("#comp-total-plays").textContent = totalPlays;
+      
+      const estRevenue = totalPlays * 2.50;
+      $("#comp-est-revenue").textContent = formatMoney(estRevenue);
+
+      const today = new Date();
+      const currentKey = `${today.getFullYear()}-${pad2(today.getMonth()+1)}`;
+      const prevDate = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+      const prevKey = `${prevDate.getFullYear()}-${pad2(prevDate.getMonth()+1)}`;
+
+      const currentCount = data.history[currentKey] || 0;
+      const prevCount = data.history[prevKey] || 0;
+      
+      let trendHtml = `<span style="opacity:0.5">Dati insufficienti</span>`;
+      
+      if (prevCount > 0) {
+          const diff = currentCount - prevCount;
+          const pct = Math.round((diff / prevCount) * 100);
+          const symbol = pct >= 0 ? "↑" : "↓";
+          const color = pct >= 0 ? "#4ade80" : "#f87171";
+          trendHtml = `<span style="color:${color}">${symbol} ${Math.abs(pct)}% questo mese</span>`;
+      } else if (currentCount > 0) {
+          trendHtml = `<span style="color:#4ade80">↑ 100% questo mese</span>`;
+      } else {
+          trendHtml = `<span style="opacity:0.5">Nessuna variazione</span>`;
+      }
+      
+      if(trendEl) trendEl.innerHTML = trendHtml;
+
+      // POPOLIAMO LA NUOVA LISTA SCORRIBILE (TABELLA)
+      const statList = document.querySelector(".stat-list");
+      if(statList) {
+          statList.innerHTML = "";
+          if(data.top_tracks && data.top_tracks.length > 0) {
+              data.top_tracks.forEach(t => {
+                  const li = document.createElement("li");
+                  // Layout stile griglia per allinearsi con l'header
+                  li.style.display = "grid";
+                  li.style.gridTemplateColumns = "2fr 1fr";
+                  li.style.padding = "10px 14px";
+                  li.style.borderBottom = "1px solid var(--border)";
+                  li.innerHTML = `<span>${t.title}</span> <span style="text-align:right;">${t.count}</span>`;
+                  statList.appendChild(li);
+              });
+          } else {
+              statList.innerHTML = "<li style='padding:10px; opacity:0.5'>Nessun brano rilevato.</li>";
+          }
+      }
+
+      const ctx = document.getElementById('composerChart');
+      if(ctx && window.Chart) {
+        if(window.compChartInstance) window.compChartInstance.destroy();
+        
+        const labels = [];
+        const chartData = [];
+        
+        for(let i=5; i>=0; i--) {
+            const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
+            const key = `${d.getFullYear()}-${pad2(d.getMonth()+1)}`;
+            const monthName = d.toLocaleString('it-IT', { month: 'short' });
+            
+            labels.push(monthName);
+            chartData.push(data.history[key] || 0);
+        }
+
+        window.compChartInstance = new Chart(ctx, {
+          type: 'line',
+          data: {
+            labels: labels,
+            datasets: [{
+              label: 'Esecuzioni',
+              data: chartData,
+              borderColor: "#EC368D",
+              backgroundColor: "rgba(236, 54, 141, 0.2)",
+              tension: 0.4,
+              fill: true,
+              pointBackgroundColor: "#fff",
+              pointBorderColor: "#EC368D",
+              pointRadius: 4
+            }]
+          },
+          options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+              y: {
+                  grid: { color: 'rgba(255,255,255,0.05)' },
+                  ticks: { color: '#9fb0c2', precision:0 },
+                  beginAtZero: true
+              },
+              x: { grid: { display: false }, ticks: { color: '#9fb0c2' } }
+            }
+          }
+        });
+      }
+
+  } catch(e) {
+      console.error("Errore stats dashboard:", e);
+      showCustomAlert("Impossibile caricare le statistiche: " + e.message);
   }
 }
 
@@ -265,8 +700,7 @@ function hydrateSessionHeader() {
           revInputContainer.classList.remove("hidden");
           revDisplay.classList.add("hidden");
           if(btnStart) {
-              btnStart.disabled = true; 
-              // MODIFICA: Aggiunto Tooltip per l'organizzatore quando non ha confermato
+              btnStart.disabled = true;
               btnStart.setAttribute("data-tooltip", "Indicare l'incasso dell'evento prima di avviare la sessione");
           }
       } else {
@@ -275,7 +709,6 @@ function hydrateSessionHeader() {
           revDisplay.textContent = `Incasso: ${formatMoney(state.orgRevenue)}`;
           if(btnStart) {
               btnStart.disabled = false;
-              // Rimuovo il tooltip se tutto è ok
               btnStart.removeAttribute("data-tooltip");
           }
       }
@@ -284,7 +717,6 @@ function hydrateSessionHeader() {
       revDisplay.classList.add("hidden");
       if(btnStart) {
           btnStart.disabled = false;
-          // Rimuovo tooltip per ruoli non-organizzatore
           btnStart.removeAttribute("data-tooltip");
       }
   }
@@ -302,8 +734,8 @@ function pushLog({ id, index, title, composer, artist, cover }) {
   const row = document.createElement("div");
   row.className = "log-row";
   if (id != null) row.dataset.id = id;
-  const imgHtml = cover 
-    ? `<img src="${cover}" alt="Cover" loading="lazy">` 
+  const imgHtml = cover
+    ? `<img src="${cover}" alt="Cover" loading="lazy">`
     : `<div style="width:32px; height:32px; background: rgba(255,255,255,0.1); border-radius:4px;"></div>`;
 
   row.innerHTML = `
@@ -392,7 +824,7 @@ function updateBackground(url) {
             bgEl.style.opacity = "1";
         };
     } else {
-        bgEl.style.opacity = "0"; 
+        bgEl.style.opacity = "0";
     }
 }
 
@@ -409,19 +841,18 @@ async function pollPlaylistOnce() {
       const id = Number(song.id);
       if (!Number.isFinite(id)) return;
       const existing = songs.find((t) => t.id === id);
-      const isDeleted = song.is_deleted; 
+      const isDeleted = song.is_deleted;
 
       if (!existing) {
         const track = {
-          id, order: songs.length + 1, 
+          id, order: songs.length + 1,
           title: song.title || "Titolo sconosciuto",
-          composer: song.composer || "—", 
+          composer: song.composer || "—",
           artist: song.artist || "",
           cover: song.cover || null,
           manual: song.manual || false,
           is_deleted: isDeleted,
           confirmed: false,
-          // MAPPIAMO I CAMPI ORIGINALI DAL DB
           original_title: song.original_title,
           original_artist: song.original_artist,
           original_composer: song.original_composer
@@ -440,12 +871,9 @@ async function pollPlaylistOnce() {
             if (rowEl) rowEl.textContent = existing.composer;
             if (currentSongId === id) setNow(existing.title, existing.composer);
         }
-        
-        // Aggiorniamo anche i campi originali nel caso l'enrichment li abbia cambiati
         if (song.original_composer && song.original_composer !== existing.original_composer) {
             existing.original_composer = song.original_composer;
         }
-
         if (!existing.confirmed) {
             existing.title = song.title || existing.title;
             existing.artist = song.artist || existing.artist;
@@ -499,17 +927,13 @@ async function sessionStart() {
       led.classList.add("led-active");
   }
 
-  // LOGICA START/RESTORE
-  // Se non ho richiesto esplicitamente il ripristino, forzo un reset del DB
   if (!explicitRestore) {
       try {
           await fetch("/api/reset_session", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) });
-          // Resetto anche localmente per sicurezza visiva immediata
           songs = [];
           $("#live-log").innerHTML = "";
       } catch (err) { console.error(err); }
-      // Dopo il primo start forzato, consideriamo la sessione "avviata" (quindi se mette pausa e start non resetta più)
-      explicitRestore = true; 
+      explicitRestore = true;
   }
 
   if (!sessionTick) startSessionTimer();
@@ -527,10 +951,8 @@ async function sessionPause() {
   if (btnStop) btnStop.disabled = false;
 
   const led = $(".led-rect");
-  if(led) {
-      led.classList.add("led-paused");
-  }
-  
+  if(led) { led.classList.add("led-paused"); }
+
   pauseSessionTimer();
   await stopBackendRecognition();
   stopPlaylistPolling();
@@ -546,9 +968,7 @@ async function sessionStop() {
   if (btnStop) btnStop.disabled = true;
 
   const led = $(".led-rect");
-  if(led) {
-      led.classList.add("led-paused");
-  }
+  if(led) { led.classList.add("led-paused"); }
 
   pauseSessionTimer();
   await stopBackendRecognition();
@@ -589,7 +1009,7 @@ async function sessionReset() {
   
   state.orgRevenue = 0;
   state.orgRevenueConfirmed = false;
-  explicitRestore = false; // Reset del flag, prossimo start sarà pulito
+  explicitRestore = false;
 
   const btnStart = $("#btn-session-start");
   const btnPause = $("#btn-session-pause");
@@ -599,16 +1019,11 @@ async function sessionReset() {
   if (btnPause) btnPause.disabled = true;
   if (btnStop) btnStop.disabled = true;
 
-  // ANIMAZIONE LED (Fade in place)
   const led = $(".led-rect");
   if(led) {
-      // Blocca l'animazione dov'è e imposta opacità a 0
       led.classList.add("led-fading-out");
-      
-      // Aspetta che la transizione CSS di 1s finisca prima di resettare le classi
       setTimeout(() => {
           led.classList.remove("led-active", "led-paused", "led-fading-out");
-          // Rimuovere led-active resetta lo stroke-dashoffset, ma ora è invisibile (opacity 0)
       }, 1000);
   }
   hydrateSessionHeader();
@@ -619,6 +1034,7 @@ function renderReview() {
   const template = $("#review-row-template");
   const btnGenerate = $("#btn-generate");
   const btnPayments = $("#btn-global-payments");
+  const btnSplits = $("#btn-global-splits");
 
   if (!container || !template || !btnGenerate) return;
 
@@ -640,7 +1056,6 @@ function renderReview() {
     inputTitle.value = song.title || "";
     
     if (song.manual) node.classList.add("row--manual");
-
     if(song.confirmed) {
         inputComposer.readOnly = true;
         inputTitle.readOnly = true;
@@ -650,11 +1065,23 @@ function renderReview() {
     const unlockHandler = () => {
         if(song.confirmed) {
             song.confirmed = false;
-            renderReview(); 
+            renderReview();
         }
     };
     inputComposer.onclick = unlockHandler;
     inputTitle.onclick = unlockHandler;
+
+    // GESTIONE ENTER PER CONFERMARE LA RIGA
+    const enterHandler = (e) => {
+        if(e.key === "Enter") {
+            // Triggera il click sul bottone conferma della riga corrente
+            node.querySelector(".btn-confirm").click();
+            // Rimuove il focus per evitare doppi invii
+            e.target.blur();
+        }
+    };
+    inputComposer.addEventListener("keyup", enterHandler);
+    inputTitle.addEventListener("keyup", enterHandler);
 
     const btn24 = node.querySelector(".btn-24ths");
     btn24.classList.remove("hidden");
@@ -666,14 +1093,14 @@ function renderReview() {
         song.composer = inputComposer.value || "";
         song.title = inputTitle.value || "";
         song.confirmed = true;
-        renderReview(); 
+        renderReview();
     });
 
     node.querySelector(".btn-delete").addEventListener("click", async (e) => {
         e.preventDefault();
         if(await showConfirm("Sei sicuro?")) {
             pushUndoState();
-            song.is_deleted = true; 
+            song.is_deleted = true;
             try {
                 await fetch("/api/delete_song", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: song.id }) });
             } catch(err){console.error(err);}
@@ -697,12 +1124,19 @@ function renderReview() {
   
   btnGenerate.disabled = !enableGlobalActions;
   
-  if(btnPayments) {
-      if(state.role === 'org') {
+  // GESTIONE BOTTONI PAGAMENTO vs RIPARTIZIONI
+  if(state.role === 'org') {
+      if(btnPayments) {
           btnPayments.classList.remove("hidden");
           btnPayments.disabled = !enableGlobalActions;
-      } else {
-          btnPayments.classList.add("hidden");
+      }
+      if(btnSplits) btnSplits.classList.add("hidden");
+  } else {
+      if(btnPayments) btnPayments.classList.add("hidden");
+      if(btnSplits) {
+          btnSplits.classList.remove("hidden");
+          // Abilitato sempre o solo se confermati? Solitamente se confermati.
+          btnSplits.disabled = !enableGlobalActions;
       }
   }
 
@@ -715,23 +1149,18 @@ function openRoyaltiesView(song) {
     showView("#view-royalties");
     
     const isOrg = (state.role === 'org');
-
     const boxRevenue = $("#box-revenue");
     const boxQuota = $("#box-quota");
     
-    // Aggiornamento Box Revenue
     if(boxRevenue) {
         if(isOrg) {
             boxRevenue.classList.remove("hidden");
             $("#roy-total-revenue").textContent = formatMoney(state.orgRevenue);
         } else {
-            // Se non sei organizzatore, nascondi l'intero box o rendilo invisibile
-            // Qui usiamo display:none tramite la classe hidden
             boxRevenue.classList.add("hidden");
         }
     }
     
-    // Aggiornamento Box Quota
     if(boxQuota) {
         if(isOrg) {
             boxQuota.classList.remove("hidden");
@@ -774,10 +1203,8 @@ function openRoyaltiesView(song) {
         
         const row = document.createElement("div");
         row.className = "row";
-        
         const displayStyle = isOrg ? "block" : "none";
 
-        // MODIFICA: Rimossa colonna 'Nota' (span con 'Incluso')
         row.innerHTML = `
             <span class="col-left">${comp}</span>
             <span class="col-center">${myShare}/24</span>
@@ -790,31 +1217,70 @@ function openRoyaltiesView(song) {
 
 function initGlobalPayments() {
   const btnPayments = $("#btn-global-payments");
+  const btnSplits = $("#btn-global-splits");
   const btnBack = $("#btn-back-from-payments");
+  const btnHome = $("#btn-home-restart");
   
   if(btnPayments) {
     btnPayments.onclick = () => {
-        if(state.role !== 'org') return; 
-        calculateAndShowPayments();
+        if(state.role !== 'org') return;
+        calculateAndShowPayments(true); // true = mostra bottoni pagamento
         showView("#view-payments");
     };
   }
   
-  if(btnBack) {
-    btnBack.onclick = () => {
-        showView("#view-review");
-    };
+  // NUOVO LISTENER PER LE RIPARTIZIONI UTENTE/COMPOSITORE
+  if(btnSplits) {
+      btnSplits.onclick = () => {
+          calculateAndShowPayments(false); // false = sola visualizzazione
+          showView("#view-payments");
+      };
+  }
+
+  if(btnBack) btnBack.onclick = () => showView("#view-review");
+
+  // LISTENER TASTO HOME (RESET COMPLETO)
+  if(btnHome) {
+      btnHome.onclick = async () => {
+          if(await showConfirm("Tornare alla Home e terminare sessione?")) {
+              await sessionReset(); // Resetta DB, Timer, Stop Polling
+              state.role = null;
+              state.mode = null;
+              state.user = null;
+              pendingRole = null;
+              hoveredRole = null;
+              showView("#view-roles");
+          }
+      };
   }
 }
 
-function calculateAndShowPayments() {
+// Parametro showPayActions controlla se mostrare i bottoni "Paga"
+function calculateAndShowPayments(showPayActions) {
   const listContainer = $("#global-payment-rows");
   const totalDisplay = $("#total-distributed-amount");
+  const headerAction = $("#header-pay-action");
+  
   if(!listContainer) return;
   listContainer.innerHTML = "";
+  
+  // Nascondi o mostra la colonna "Azione" nell'header
+  if(headerAction) {
+      headerAction.style.display = showPayActions ? "block" : "none";
+  }
 
   const activeSongs = songs.filter(s => !s.is_deleted);
-  const potPerSong = (state.orgRevenue * 0.10) / (activeSongs.length || 1); 
+  
+  // LOGICA "TOTAL SPLITS" PER UTENTI/COMPOSITORI:
+  const isOrg = (state.role === 'org');
+  let potPerSong = 0;
+  
+  if (isOrg) {
+     potPerSong = (state.orgRevenue * 0.10) / (activeSongs.length || 1);
+  } else {
+     // Modalità "Percentuale pura": ogni canzone contribuisce con un peso uniforme
+     potPerSong = 1.0;
+  }
   
   let composerTotals = {};
   let globalSum = 0;
@@ -830,16 +1296,9 @@ function calculateAndShowPayments() {
       });
   });
 
-  const sortedComposers = Object.entries(composerTotals).sort((a,b) => b[1] - a[1]); 
-  
-  let chartLabels = [];
-  let chartData = [];
-  let chartColors = [];
-
-  const palette = [
-    "#FF6384", "#36A2EB", "#FFCE56", "#4BC0C0", "#9966FF", "#FF9F40", 
-    "#C9CBCF", "#FFCD56", "#E7E9ED", "#76D7C4", "#1E8449", "#F1948A"
-  ];
+  const sortedComposers = Object.entries(composerTotals).sort((a,b) => b[1] - a[1]);
+  let chartLabels = [], chartData = [], chartColors = [];
+  const palette = ["#FF6384", "#36A2EB", "#FFCE56", "#4BC0C0", "#9966FF", "#FF9F40", "#C9CBCF", "#FFCD56", "#E7E9ED", "#76D7C4", "#1E8449", "#F1948A"];
 
   sortedComposers.forEach(([comp, amount], index) => {
       const row = document.createElement("div");
@@ -847,59 +1306,71 @@ function calculateAndShowPayments() {
       row.style.display = "flex";
       row.style.justifyContent = "space-between";
       
+      const actionHtml = showPayActions
+          ? `<div style="width: 100px; text-align:center;">
+               <button class="btn btn--small btn--primary btn-pay-global">Paga</button>
+             </div>`
+          : `<div style="width: 100px;"></div>`;
+      
+      let amountDisplay = "";
+      if (isOrg) {
+          amountDisplay = formatMoney(amount);
+      } else {
+          amountDisplay = ((amount / globalSum) * 100).toFixed(1) + "%";
+      }
+
       row.innerHTML = `
         <span style="flex:1;">${comp}</span>
-        <span style="width: 100px; text-align:right;">${formatMoney(amount)}</span>
-        <div style="width: 100px; text-align:center;">
-           <button class="btn btn--small btn--primary btn-pay-global">Paga</button>
-        </div>
+        <span style="width: 100px; text-align:right;">${amountDisplay}</span>
+        ${showPayActions ? actionHtml : ''}
       `;
       
-      row.querySelector(".btn-pay-global").onclick = (e) => {
-        e.target.textContent = "Inviato ✔";
-        e.target.disabled = true;
-        e.target.style.background = "#22c55e";
-      };
+      if(showPayActions) {
+          const btn = row.querySelector(".btn-pay-global");
+          if(btn) {
+              btn.onclick = (e) => {
+                e.target.textContent = "Inviato ✔";
+                e.target.disabled = true;
+                e.target.style.background = "#22c55e";
+              };
+          }
+      }
 
       listContainer.appendChild(row);
-
       chartLabels.push(comp);
       chartData.push(amount);
       chartColors.push(palette[index % palette.length]);
   });
 
-  if(totalDisplay) totalDisplay.textContent = formatMoney(globalSum);
+  if(totalDisplay) {
+      if (isOrg) {
+         totalDisplay.textContent = formatMoney(globalSum);
+         totalDisplay.parentNode.style.display = "flex";
+      } else {
+         totalDisplay.textContent = "100%"; // Totale percentuale
+         totalDisplay.parentNode.style.display = "flex";
+      }
+  }
+  
   renderPaymentChart(chartLabels, chartData, chartColors);
 }
 
 let paymentChartInstance = null;
-
 function renderPaymentChart(labels, data, colors) {
   const ctx = document.getElementById('paymentsChart');
   if(!ctx) return;
-
   if(paymentChartInstance) paymentChartInstance.destroy();
-
   paymentChartInstance = new Chart(ctx, {
     type: 'doughnut',
     data: {
       labels: labels,
       datasets: [{
-        data: data,
-        backgroundColor: colors,
-        borderColor: '#12151a',
-        borderWidth: 2
+        data: data, backgroundColor: colors, borderColor: '#12151a', borderWidth: 2
       }]
     },
     options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: {
-          position: 'right',
-          labels: { color: '#e6eef8', font: { size: 11 } }
-        }
-      }
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position: 'right', labels: { color: '#e6eef8', font: { size: 11 } } } }
     }
   });
 }
@@ -941,14 +1412,11 @@ function initWelcome() {
   document.querySelectorAll(".mode-card").forEach((card) => {
     card.addEventListener("click", (e) => {
       if(e.target.tagName === "INPUT" || e.target.tagName === "BUTTON") return;
-      
       const mode = card.dataset.mode;
-      
       if(mode === "stats") {
           showView("#view-composer");
           initComposerDashboard();
       } else {
-          // Se cambio modalità, resetto la volontà di ripristino
           explicitRestore = false;
           state.mode = mode;
           applyTheme();
@@ -960,7 +1428,7 @@ function initWelcome() {
   const statsBtn = $("#statsConfirmBtn");
   if(statsBtn) {
       statsBtn.onclick = (e) => {
-          e.stopPropagation(); 
+          e.stopPropagation();
           showView("#view-composer");
           initComposerDashboard();
       };
@@ -971,100 +1439,127 @@ function initWelcome() {
     showView("#view-session");
   };
 
-  // --- NUOVA LOGICA TASTO INDIETRO (PAGE 2 -> PAGE 1) ---
   const btnBackRoles = $("#btn-back-roles");
   if(btnBackRoles) {
       btnBackRoles.onclick = () => {
-          // Reset completo stato
-          state.role = null;
-          state.mode = null;
-          explicitRestore = false;
-          
-          hoveredRole = null;
-          pendingRole = null;
-
+          state.role = null; state.mode = null; explicitRestore = false;
+          hoveredRole = null; pendingRole = null;
           showView("#view-roles");
       };
   }
 
-  $("#artistConfirmBtn").onclick = (e) => {
-    e.preventDefault();
+  const triggerBackendPrefetch = (artistName) => {
+      if (!artistName) return;
+      console.log("🚀 Avvio prefetch dati per:", artistName);
+      fetch("/api/prepare_session", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ targetArtist: artistName })
+      }).catch(err => console.warn("Errore prefetch:", err));
+  };
+
+  const confirmArtist = () => {
     const name = $("#artistInput").value.trim();
-    if (!name) return alert("Inserisci nome artista");
+    if (!name) return showCustomAlert("Inserisci nome artista");
     state.concertArtist = name;
     saveStateToLocal();
+    triggerBackendPrefetch(name);
     goToSession();
   };
 
-  $("#bandConfirmBtn").onclick = (e) => {
-    e.preventDefault();
-    state.bandArtist = $("#bandArtistInput") ? $("#bandArtistInput").value.trim() : "";
+  const confirmBand = () => {
+    const name = $("#bandArtistInput") ? $("#bandArtistInput").value.trim() : "";
+    state.bandArtist = name;
     saveStateToLocal();
+    triggerBackendPrefetch(name);
     goToSession();
   };
 
-  // --- NUOVA LOGICA DI RIPRISTINO MANUALE ---
+  $("#artistConfirmBtn").onclick = (e) => { e.preventDefault(); confirmArtist(); };
+  $("#bandConfirmBtn").onclick = (e) => { e.preventDefault(); confirmBand(); };
+
+  // ENTER KEY LISTENER per i campi input in Page 2
+  const artInput = $("#artistInput");
+  if(artInput) {
+      artInput.addEventListener("keyup", (e) => {
+          if(e.key === "Enter") confirmArtist();
+      });
+  }
+  const bandInput = $("#bandArtistInput");
+  if(bandInput) {
+      bandInput.addEventListener("keyup", (e) => {
+          if(e.key === "Enter") confirmBand();
+      });
+  }
+
   const btnRestore = $("#btn-manual-restore");
   if(btnRestore) {
       btnRestore.onclick = async (e) => {
-          e.preventDefault();
-          try {
-              const res = await fetch("/api/get_playlist");
-              if (!res.ok) throw new Error("Errore API");
-              const data = await res.json();
-              
-              if (!data.playlist || data.playlist.length === 0) {
-                   alert("Nessuna sessione interrotta trovata");
-                   return;
-              }
+        e.preventDefault();
+        const originalText = btnRestore.innerHTML;
+        btnRestore.innerHTML = "Recupero...";
+        btnRestore.disabled = true;
 
-              // Se troviamo dati, proviamo a recuperare il contesto da localStorage
-              const savedMode = localStorage.getItem("appMode");
-              if (savedMode) {
-                   state.mode = savedMode;
-                   state.concertArtist = localStorage.getItem("concertArtist") || "";
-                   state.bandArtist = localStorage.getItem("bandArtist") || "";
-                   
-                   // IMPORTANTE: Impostiamo il flag per dire "ok, stiamo ripristinando, non cancellare"
-                   explicitRestore = true;
+        try {
+            const resRecover = await fetch("/api/recover_session", {
+                method: "POST"
+            });
+            const dataRecover = await resRecover.json();
 
-                   // Avvia direttamente la sessione recuperata
-                   sessionStart();
-              } else {
-                   alert("Dati sessione trovati, ma impossibile determinare la modalità precedente. Riavviare una nuova sessione");
-              }
-          } catch(err) {
-              console.error(err);
-              alert("Errore durante il controllo della sessione");
-          }
+            if (!dataRecover.success) {
+                throw new Error(dataRecover.message || "Nessuna sessione trovata");
+            }
+
+            const resPlaylist = await fetch("/api/get_playlist");
+            if (!resPlaylist.ok) throw new Error("Errore nel download playlist");
+            const dataPlaylist = await resPlaylist.json();
+            
+            if (!dataPlaylist.playlist || dataPlaylist.playlist.length === 0) {
+                  throw new Error("Sessione vuota");
+            }
+
+            showCustomAlert(`Bentornato! Recuperati ${dataPlaylist.playlist.length} brani.`);
+
+            const savedMode = localStorage.getItem("appMode");
+            if (savedMode) {
+                  state.mode = savedMode;
+                  state.concertArtist = localStorage.getItem("concertArtist") || "";
+                  state.bandArtist = localStorage.getItem("bandArtist") || "";
+            } else {
+                  state.mode = "band";
+            }
+            
+            explicitRestore = true;
+            sessionStart();
+
+        } catch(err) {
+            console.warn(err);
+            showCustomAlert(err.message);
+        } finally {
+            btnRestore.innerHTML = originalText;
+            btnRestore.disabled = false;
+        }
       };
   }
 }
 
-// === NUOVA FUNZIONE PER GESTIRE I DOWNLOAD EXPORT ===
-// Questa funzione chiama l'endpoint unico /api/generate_report configurando correttamente il formato
 async function downloadExport(uiType) {
-  // MODIFICA IMPORTANTE: Se il tipo è 'raw', inviamo TUTTI i brani, anche i cancellati.
-  // Per Excel e PDF Ufficiale, inviamo solo gli attivi.
   let songsPayload = songs;
-  
   if (uiType !== 'raw') {
       songsPayload = songs.filter(s => !s.is_deleted);
   }
 
-  if (!songsPayload.length) return alert("Nessun dato da esportare.");
+  if (!songsPayload.length) return showCustomAlert("Nessun dato da esportare.");
 
-  // Mappatura tipo UI -> formato Backend (app.py)
   let backendFormat = "excel";
   if (uiType === 'pdf') backendFormat = "pdf_official";
   else if (uiType === 'raw') backendFormat = "pdf_raw";
   
-  // Dati da inviare al backend per generare il report
   const payload = {
-      songs: songsPayload, 
+      songs: songsPayload,
       mode: state.mode || "session",
       artist: (state.mode === 'concert' ? state.concertArtist : state.bandArtist) || "Sconosciuto",
-      format: backendFormat 
+      format: backendFormat
   };
 
   try {
@@ -1073,21 +1568,16 @@ async function downloadExport(uiType) {
       btn.textContent = "Generazione...";
       btn.disabled = true;
 
-      // Endpoint confermato da app.py
-      const res = await fetch("/api/generate_report", { 
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload)
+      const res = await fetch("/api/generate_report", {
+          method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload)
       });
 
       if (!res.ok) throw new Error("Errore durante l'export");
 
-      // Gestione download blob
       const blob = await res.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      // Estensione file corretta
       const ext = (backendFormat === 'excel') ? 'xlsx' : 'pdf';
       a.download = `borderò_${backendFormat}_${Date.now()}.${ext}`;
       
@@ -1102,8 +1592,7 @@ async function downloadExport(uiType) {
 
   } catch (err) {
       console.error(err);
-      alert("Errore export: " + err.message);
-      // Ripristina stato bottone
+      showCustomAlert("Errore export: " + err.message);
       const btn = $(`#btn-export-${uiType}`);
       if(btn) {
           btn.textContent = (uiType === 'excel' ? 'Excel (SIAE)' : (uiType === 'pdf' ? 'PDF Ufficiale' : 'Log Tecnico'));
@@ -1111,33 +1600,25 @@ async function downloadExport(uiType) {
       }
   }
 }
-// ====================================================
 
 function wireSessionButtons() {
   $("#btn-session-start").onclick = (e) => { e.preventDefault(); sessionStart(); };
   
-  $("#btn-session-pause").onclick = (e) => { 
-      e.preventDefault(); 
-      sessionPause(); 
+  $("#btn-session-pause").onclick = (e) => {
+      e.preventDefault();
+      sessionPause();
       const led = $(".led-rect");
       if(led) led.classList.add("led-paused");
   };
   
-  $("#btn-session-stop").onclick = async (e) => { 
-    e.preventDefault(); 
-    
+  $("#btn-session-stop").onclick = async (e) => {
+    e.preventDefault();
     const led = $(".led-rect");
     if(led) led.classList.add("led-paused");
-
     const confirmed = await showConfirm("Vuoi davvero stoppare la sessione?");
-
-    if(confirmed) {
-        sessionStop(); 
-    } else {
+    if(confirmed) { sessionStop(); } else {
         const btnStart = $("#btn-session-start");
-        if (btnStart && btnStart.disabled) {
-             if(led) led.classList.remove("led-paused");
-        } 
+        if (btnStart && btnStart.disabled) { if(led) led.classList.remove("led-paused"); }
     }
   };
 
@@ -1145,27 +1626,44 @@ function wireSessionButtons() {
     e.preventDefault();
     if(await showConfirm("Resettare tutto?")) sessionReset();
   };
+
+  // NUOVO TASTO BACK IN SESSIONE
+  const btnSessionBack = $("#btn-session-back");
+  if(btnSessionBack) {
+      btnSessionBack.onclick = async () => {
+          // Opzionale: chiedi conferma se la sessione è attiva, oppure torna e basta
+          showView("#view-welcome");
+      };
+  }
   
   $("#btn-undo").onclick = (e) => { e.preventDefault(); undoLast(); };
   
   const btnBackReview = $("#btn-back-review");
-  if(btnBackReview) {
-      btnBackReview.onclick = () => showView("#view-review");
-  }
+  if(btnBackReview) { btnBackReview.onclick = () => showView("#view-review"); }
+
+  const confirmRevenue = () => {
+      const inp = $("#session-revenue-input");
+      const val = parseFloat(inp.value);
+      if(isNaN(val) || val <= 0) {
+          showCustomAlert("Inserisci un importo valido per iniziare");
+          return;
+      }
+      state.orgRevenue = val;
+      state.orgRevenueConfirmed = true;
+      hydrateSessionHeader();
+  };
 
   const btnConfirmRev = $("#btn-confirm-revenue");
   if(btnConfirmRev) {
-      btnConfirmRev.onclick = () => {
-          const inp = $("#session-revenue-input");
-          const val = parseFloat(inp.value);
-          if(isNaN(val) || val <= 0) {
-              alert("Inserisci un importo valido per iniziare");
-              return;
-          }
-          state.orgRevenue = val;
-          state.orgRevenueConfirmed = true;
-          hydrateSessionHeader(); 
-      };
+      btnConfirmRev.onclick = confirmRevenue;
+  }
+  
+  // Enter key su revenue input
+  const revInput = $("#session-revenue-input");
+  if(revInput) {
+      revInput.addEventListener("keyup", (e) => {
+          if(e.key === "Enter") confirmRevenue();
+      });
   }
 
   $("#btn-session-notes").onclick = () => openNotesModal("session");
@@ -1181,19 +1679,16 @@ function wireSessionButtons() {
       btnGenerate.onclick = (e) => {
           e.preventDefault();
           const activeSongs = songs.filter(s => !s.is_deleted);
-          if(activeSongs.length === 0) return alert("Nessun brano attivo");
+          if(activeSongs.length === 0) return showCustomAlert("Nessun brano attivo");
           exportModal.classList.remove("modal--hidden");
       };
   }
 
   $("#btn-export-close").onclick = () => exportModal.classList.add("modal--hidden");
 
-  // === AGGIUNTA EVENTI BOTTONI EXPORT ===
-  // Colleghiamo i pulsanti del modale alla funzione downloadExport corretta
   $("#btn-export-excel").onclick = () => downloadExport("excel");
   $("#btn-export-pdf").onclick = () => downloadExport("pdf");
   $("#btn-export-raw").onclick = () => downloadExport("raw");
-  // ======================================
 }
 
 function syncReviewNotes() {
@@ -1228,6 +1723,19 @@ function closeNotesModal(save) {
   modal.classList.add("modal--hidden");
 }
 
+async function downloadHistorySession(sessionId) {
+    if(!sessionId) return;
+    showCustomAlert("Generazione Borderò in corso...");
+    
+    // Creiamo un link invisibile per scaricare
+    const link = document.createElement('a');
+    link.href = `/api/download_history_report?session_id=${sessionId}`;
+    link.target = '_blank';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+}
+
 function showConfirm(msg) {
   return new Promise((resolve) => {
     const m = $("#confirm-modal");
@@ -1251,63 +1759,26 @@ function showConfirm(msg) {
 }
 
 // ============================================================================
-// ANIMAZIONE PALCO (JS PHYSICS - Page 1 & Global)
+// ANIMAZIONE PALCO (JS PHYSICS)
 // ============================================================================
-
 const lightsState = [
-    { 
-        id: 'left', // User
-        role: 'user',
-        vertex: { x: 250, y: 150 }, 
-        baseY: 680,
-        originalBaseX: 250,
-        originalAmplitude: 150,
-        currentAmp: 150,
-        currentOp: 0.7,
-        phase: 0,
-        speed: 0.8,
-        rx: 160
-    },
-    { 
-        id: 'center', // Org
-        role: 'org',
-        vertex: { x: 600, y: 150 }, 
-        baseY: 720,
-        originalBaseX: 600,
-        originalAmplitude: 180,
-        currentAmp: 180,
-        currentOp: 1.0, 
-        phase: 2,
-        speed: 0.6,
-        rx: 160
-    },
-    { 
-        id: 'right', // Composer
-        role: 'composer',
-        vertex: { x: 950, y: 150 }, 
-        baseY: 680,
-        originalBaseX: 950,
-        originalAmplitude: 150,
-        currentAmp: 150,
-        currentOp: 0.7,
-        phase: 4,
-        speed: 0.75,
-        rx: 160
-    }
+    { id: 'left', role: 'user', vertex: { x: 250, y: 150 }, baseY: 680, originalBaseX: 250, originalAmplitude: 150, currentAmp: 150, currentOp: 0.7, phase: 0, speed: 0.8, rx: 160 },
+    { id: 'center', role: 'org', vertex: { x: 600, y: 150 }, baseY: 720, originalBaseX: 600, originalAmplitude: 180, currentAmp: 180, currentOp: 1.0, phase: 2, speed: 0.6, rx: 160 },
+    { id: 'right', role: 'composer', vertex: { x: 950, y: 150 }, baseY: 680, originalBaseX: 950, originalAmplitude: 150, currentAmp: 150, currentOp: 0.7, phase: 4, speed: 0.75, rx: 160 }
 ];
 
 const globalLightsState = [
-    { id: 'gl-beam-tl', vertex: { x: 0, y: 0 },      baseY: 800, baseX: 500,  amp: 120, phase: 0, speed: 0.52 },
-    { id: 'gl-beam-tr', vertex: { x: 1920, y: 0 },    baseY: 800, baseX: 1420, amp: 120, phase: 2, speed: 0.46 },
-    { id: 'gl-beam-bl', vertex: { x: 0, y: 1080 },    baseY: 280, baseX: 500,  amp: 100, phase: 1, speed: 0.40 },
+    { id: 'gl-beam-tl', vertex: { x: 0, y: 0 }, baseY: 800, baseX: 500, amp: 120, phase: 0, speed: 0.52 },
+    { id: 'gl-beam-tr', vertex: { x: 1920, y: 0 }, baseY: 800, baseX: 1420, amp: 120, phase: 2, speed: 0.46 },
+    { id: 'gl-beam-bl', vertex: { x: 0, y: 1080 }, baseY: 280, baseX: 500, amp: 100, phase: 1, speed: 0.40 },
     { id: 'gl-beam-br', vertex: { x: 1920, y: 1080 }, baseY: 280, baseX: 1420, amp: 100, phase: 3, speed: 0.52 }
 ];
 
 function animateStageLights() {
     const time = Date.now() * 0.00195;
-    
-    // --- MODIFICA: Logica statica vs dinamica per Page 3 vs Page 4 ---
     const isReviewMode = state.route === 'review';
+    const isRegisterMode = state.route === 'register';
+    const isProfileMode = state.route === 'profile';
 
     lightsState.forEach(light => {
         const beam = document.getElementById(`beam-${light.id}`);
@@ -1318,81 +1789,66 @@ function animateStageLights() {
         if (!beam || !spot || !group) return;
 
         let targetAmp = light.originalAmplitude;
-        let targetOp = (light.id === 'center') ? 1.0 : 0.7; 
-
-        // MODIFICA QUI: Aggiunto pendingRole (modal open) alla logica di priorità
+        let targetOp = (light.id === 'center') ? 1.0 : 0.7;
         let targetRole = state.role || pendingRole || hoveredRole;
 
         if (targetRole) {
-            targetAmp = 0; 
-            if (targetRole === light.role) {
-                targetOp = (light.id === 'center') ? 1.0 : 0.7;
-            } else {
-                targetOp = 0.0;
-            }
+            targetAmp = 0;
+            if (targetRole === light.role) { targetOp = (light.id === 'center') ? 1.0 : 0.7; }
+            else { targetOp = 0.0; }
         }
+
+        if (isRegisterMode || isProfileMode) { targetAmp = 0; targetOp = 1.0; }
 
         light.currentAmp = lerp(light.currentAmp, targetAmp, 0.05);
         light.currentOp = lerp(light.currentOp, targetOp, 0.05);
 
         group.style.opacity = light.currentOp.toFixed(3);
-
         const sway = Math.sin(time * light.speed + light.phase);
         const offsetX = sway * light.currentAmp;
         
-        const currentX = light.originalBaseX + offsetX;
+        let currentX;
+        if (isRegisterMode || isProfileMode) { currentX = 600; } else { currentX = light.originalBaseX + offsetX; }
+        
         const currentRx = light.rx;
-
         spot.setAttribute('cx', currentX);
         spot.setAttribute('rx', currentRx);
 
         const xLeft = currentX - currentRx;
         const xRight = currentX + currentRx;
-        const curveDepth = 40; 
-        
+        const curveDepth = 40;
         const d = `M${light.vertex.x},${light.vertex.y} L${xLeft},${light.baseY} Q${currentX},${light.baseY + curveDepth} ${xRight},${light.baseY} Z`;
 
         beam.setAttribute('d', d);
         if(maskPath) maskPath.setAttribute('d', d);
     });
 
-    // GESTIONE LUCI GLOBALI (4 Angoli)
     globalLightsState.forEach(gl => {
         const beam = document.getElementById(gl.id);
         if(!beam) return;
-
         let currentX;
-        
         if (isReviewMode) {
-            // Coordinate statiche per Review Mode
-            if (gl.id === 'gl-beam-tl') currentX = 380;   // Top Left
-            else if (gl.id === 'gl-beam-tr') currentX = 1540; // Top Right (1920 - 380)
-            else if (gl.id === 'gl-beam-bl') currentX = 600;  // Bottom Left
-            else if (gl.id === 'gl-beam-br') currentX = 1320; // Bottom Right
+            if (gl.id === 'gl-beam-tl') currentX = 380;
+            else if (gl.id === 'gl-beam-tr') currentX = 1540;
+            else if (gl.id === 'gl-beam-bl') currentX = 600;
+            else if (gl.id === 'gl-beam-br') currentX = 1320;
         } else {
-            // Oscillazione standard per Session Mode
             const sway = Math.sin(time * gl.speed + gl.phase);
             currentX = gl.baseX + (sway * gl.amp);
         }
-        
-        const width = 190; 
+        const width = 190;
         const xLeft = currentX - width;
         const xRight = currentX + width;
-        
         const d = `M${gl.vertex.x},${gl.vertex.y} L${xLeft},${gl.baseY} L${xRight},${gl.baseY} Z`;
         beam.setAttribute('d', d);
     });
-
     requestAnimationFrame(animateStageLights);
 }
 
-// --- BOOTSTRAP ---
 document.addEventListener("DOMContentLoaded", () => {
   const app = document.getElementById("app");
   const isViewer = app.dataset.viewer === "true";
-
   wireSessionButtons();
-
   animateStageLights();
 
   if (isViewer) {
@@ -1404,6 +1860,7 @@ document.addEventListener("DOMContentLoaded", () => {
   } else {
     initRoleSelection();
     initGlobalPayments();
+    initRegistration();
     showView("#view-roles");
     syncReviewNotes();
   }

@@ -9,7 +9,6 @@
   </head>
   <body id="body-container">
     <div id="app-background" class="app-background {{ 'viewer-bg' if viewer_mode }}"></div>
-    
     <div class="app-background-overlay"></div>
 
     <div id="global-stage-lights">
@@ -18,14 +17,12 @@
           <filter id="gBeamBlur">
             <feGaussianBlur stdDeviation="30" />
           </filter>
-          
           <linearGradient id="globalBeamGradient" x1="0%" y1="0%" x2="0%" y2="100%">
             <stop offset="0%" stop-color="rgba(255, 255, 255, 0.65)" />
             <stop offset="50%" stop-color="rgba(255, 255, 255, 0.22)" />
             <stop offset="100%" stop-color="rgba(255, 255, 255, 0)" />
           </linearGradient>
         </defs>
-        
         <path id="gl-beam-tl" fill="url(#globalBeamGradient)" filter="url(#gBeamBlur)" style="mix-blend-mode: overlay;" />
         <path id="gl-beam-tr" fill="url(#globalBeamGradient)" filter="url(#gBeamBlur)" style="mix-blend-mode: overlay;" />
         <path id="gl-beam-bl" fill="url(#globalBeamGradient)" filter="url(#gBeamBlur)" style="mix-blend-mode: overlay;" />
@@ -41,7 +38,6 @@
             <h1 style="font-size: 10rem; line-height: 1; margin: 0; font-weight: 900; letter-spacing: 15px; opacity: 0.9;">KYMA</h1>
             <p style="font-size: 1.2rem; opacity: 0.7; letter-spacing: 1px; margin-top: 10px;">Seleziona la tua modalità di accesso</p>
           </div>
-
           <div class="stage-scene">
             <svg viewBox="0 0 1200 800" preserveAspectRatio="xMidYMid slice" role="img">
               <defs>
@@ -63,7 +59,6 @@
                   <stop offset="40%" stop-color="rgba(236, 54, 141, 0.2)"/>
                   <stop offset="100%" stop-color="rgba(236, 54, 141, 0.65)"/>
                 </linearGradient>
-                
                 <mask id="maskLeft">
                   <path id="mask-path-left" d="M250,150 L90,680 Q250,720 410,680 Z" fill="white" filter="url(#softBlur)"/>
                 </mask>
@@ -76,10 +71,9 @@
               </defs>
 
               <g class="spotlight-group" data-role="user">
-                <path id="beam-left" class="beam" d="M250,150 L90,680 Q250,720 410,680 Z" 
+                <path id="beam-left" class="beam" d="M250,150 L90,680 Q250,720 410,680 Z"
                       fill="url(#gradBeamUser)" style="mix-blend-mode: screen;" filter="url(#softBlur)"></path>
                 <ellipse id="spot-left" cx="250" cy="680" rx="160" ry="20" fill="rgba(81, 229, 255, 0.4)" filter="url(#softBlur)" style="mix-blend-mode: screen;"></ellipse>
-                
                 <text x="250" y="640" text-anchor="middle" font-size="44" font-weight="800" fill="#1f2530" letter-spacing="2">UTENTE</text>
                 <text x="250" y="670" text-anchor="middle" font-size="16" font-weight="400" fill="#1f2530">Genera borderò e report per eventi</text>
                 <g mask="url(#maskLeft)">
@@ -90,10 +84,9 @@
               </g>
 
               <g class="spotlight-group" data-role="composer">
-                <path id="beam-right" class="beam" d="M950,150 L790,680 Q950,720 1110,680 Z" 
+                <path id="beam-right" class="beam" d="M950,150 L790,680 Q950,720 1110,680 Z"
                       fill="url(#gradBeamArtist)" style="mix-blend-mode: screen;" filter="url(#softBlur)"></path>
                 <ellipse id="spot-right" cx="950" cy="680" rx="160" ry="20" fill="rgba(236, 54, 141, 0.4)" filter="url(#softBlur)" style="mix-blend-mode: screen;"></ellipse>
-                
                 <text x="950" y="640" text-anchor="middle" font-size="36" font-weight="800" fill="#1f2530" letter-spacing="1">COMPOSITORE</text>
                 <text x="950" y="670" text-anchor="middle" font-size="16" font-weight="400" fill="#1f2530">Visualizza statistiche e royalties</text>
                 <g mask="url(#maskRight)">
@@ -104,10 +97,9 @@
               </g>
 
               <g class="spotlight-group spotlight-group--center" data-role="org">
-                <path id="beam-center" class="beam" d="M600,150 L440,720 Q600,760 760,720 Z" 
+                <path id="beam-center" class="beam" d="M600,150 L440,720 Q600,760 760,720 Z"
                       fill="url(#gradBeamOrg)" style="mix-blend-mode: screen;" filter="url(#softBlur)"></path>
                 <ellipse id="spot-center" cx="600" cy="720" rx="160" ry="20" fill="rgba(112, 238, 156, 0.3)" filter="url(#softBlur)" style="mix-blend-mode: screen;"></ellipse>
-                
                 <text x="600" y="680" text-anchor="middle" font-size="44" font-weight="900" fill="#1f2530" letter-spacing="2">ORGANIZZATORE</text>
                 <text x="600" y="710" text-anchor="middle" font-size="16" font-weight="400" fill="#1f2530">Gestisci artisti, incassi e pagamenti</text>
                 <g mask="url(#maskCenter)">
@@ -121,36 +113,84 @@
         </div>
       </section>
 
-      <section id="view-composer" class="view">
-        <header class="hero">
-          <button id="btn-comp-back" class="btn btn--small" style="float: left; margin-right: 10px;">← Indietro</button>
-          <h2>Dashboard Compositore</h2>
-          <p class="subtitle">Benvenuto. Ecco le proiezioni annuali basate sui live rilevati</p>
-        </header>
-        <div class="composer-grid">
-          <div class="card stat-card">
-            <h3>Esecuzioni Totali</h3>
-            <div class="stat-value" id="comp-total-plays">0</div>
-            <div class="stat-trend">↑ 12% questo mese</div>
-          </div>
-          <div class="card stat-card">
-            <h3>Stima Compenso Annuale</h3>
-            <div class="stat-value highlight" id="comp-est-revenue">€ 0</div>
-            <div class="stat-trend">Preventivo basato sui borderò attivi</div>
-          </div>
-          <div class="card stat-card">
-            <h3>Luoghi Top</h3>
-            <ul class="stat-list">
-              <li>📍 Alcatraz (MI) - 42 play</li>
-              <li>📍 Estragon (BO) - 28 play</li>
-              <li>📍 Atlantico (RO) - 15 play</li>
-            </ul>
-          </div>
-          <div class="card chart-card">
-            <h3>Andamento Esecuzioni (Ultimi 6 mesi)</h3>
-            <div style="position: relative; height: 300px;">
-              <canvas id="composerChart"></canvas>
+      <section id="view-register" class="view">
+        <div class="card auth-card" style="max-width: 450px; margin: 40px auto; position: relative; z-index: 20;">
+            <h2 style="text-align: center;">Crea Account</h2>
+            <p class="subtitle" style="text-align: center; margin-bottom: 20px;">Registrati come nuovo utente</p>
+            
+            <div class="auth-inputs">
+                <div style="display: flex; gap: 10px;">
+                    <input type="text" id="reg-name" placeholder="Nome">
+                    <input type="text" id="reg-surname" placeholder="Cognome">
+                </div>
+                <input type="email" id="reg-email" placeholder="Email (es. m.rossi@mail.com)">
+                <input type="text" id="reg-username" placeholder="Username (univoco)">
+                <input type="password" id="reg-pass" placeholder="Password">
+                
+                <label style="font-size: 0.8rem; color: var(--muted); margin-top:5px;">Data di nascita:</label>
+                <input type="date" id="reg-birthdate" style="color-scheme: dark;">
+                
+                <label style="font-size: 0.8rem; color: var(--muted); margin-top:5px;">Tipologia Account:</label>
+                <select id="reg-role" style="padding: 12px; background: #0b0c10; color: white; border: 1px solid var(--border); border-radius: 8px;">
+                    <option value="user">Utente Base</option>
+                    <option value="composer">Compositore</option>
+                    <option value="org">Organizzatore</option>
+                </select>
+
+                <div id="reg-stage-name-wrapper" class="hidden" style="margin-top: 10px;">
+                      <label style="font-size: 0.8rem; color: var(--c-cyan); margin-bottom: 5px; display:block;">Nome d'Arte / Depositato:</label>
+                      <input type="text" id="reg-stage-name" placeholder="Es. Vasco, The Weeknd..." style="border-color: var(--c-cyan);">
+                </div>
             </div>
+
+            <div class="auth-actions" style="margin-top: 20px;">
+                <button id="btn-do-register" class="btn btn--primary" style="width: 100%;">Registrati</button>
+                <button id="btn-cancel-register" class="btn" style="width: 100%; background: transparent; margin-top: 10px;">Annulla</button>
+            </div>
+        </div>
+      </section>
+
+      <section id="view-composer" class="view">
+        <div class="card royalties-card" style="border-top-color: var(--c-pink); min-height: 85vh;">
+          <header class="royalties-header">
+             <button id="btn-comp-back" class="btn btn--small">← Indietro</button>
+             <h2>Dashboard Compositore</h2>
+          </header>
+
+          <div class="composer-layout">
+             <div class="composer-stat-row">
+                 <div class="fin-box" style="border-left-color: var(--c-pink);">
+                    <span class="label">Esecuzioni Totali</span>
+                    <span id="comp-total-plays" class="val">0</span>
+                    <div id="comp-trend-plays" class="stat-trend" style="font-size: 0.8rem; margin-top: 4px; opacity: 0.7;">—</div>
+                 </div>
+                 <div class="fin-box" style="border-left-color: var(--c-pink);">
+                    <span class="label">Stima Compenso Annuale</span>
+                    <span id="comp-est-revenue" class="val">€ 0,00</span>
+                    <div class="stat-trend" style="font-size: 0.8rem; margin-top: 4px; opacity: 0.7;">Preventivo basato sui borderò attivi</div>
+                 </div>
+             </div>
+
+             <div class="composer-content-row">
+                 <div class="split-section" style="flex: 1; display: flex; flex-direction: column; overflow: hidden; height: 100%;">
+                     <h3 style="border-left-color: var(--c-pink);">Brani Top</h3>
+                     <div class="table split-table" style="flex: 1; display: flex; flex-direction: column; overflow: hidden;">
+                        <div class="row row--head">
+                           <span class="col-left">Titolo</span>
+                           <span class="col-right">Riproduzioni</span>
+                        </div>
+                        <div class="stat-list-container" style="flex: 1; overflow-y: auto;">
+                           <ul class="stat-list" style="margin:0; padding:0; list-style:none;">
+                               <li>Caricamento dati...</li>
+                           </ul>
+                        </div>
+                     </div>
+                 </div>
+
+                 <div class="chart-container" style="flex: 1; min-height: 250px;">
+                    <canvas id="composerChart"></canvas>
+                 </div>
+             </div>
           </div>
         </div>
       </section>
@@ -158,16 +198,24 @@
       <section id="view-welcome" class="view">
         <div class="mode-page">
           <div class="mode-container">
-            
-            <div class="welcome-nav-header" style="display: flex; gap: 10px; align-items: center; margin-bottom: 10px;">
-                <button id="btn-back-roles" class="btn btn--small">← Indietro</button>
-                <button id="btn-manual-restore" class="btn btn--small btn--restore-cloud" title="Recupera sessione in caso di interruzione imprevista">
-                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:6px;">
-                       <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                       <polyline points="7 10 12 15 17 10"></polyline>
-                       <line x1="12" y1="15" x2="12" y2="3"></line>
-                   </svg>
-                   Recupera Sessione
+            <div class="welcome-nav-header" style="display: flex; gap: 10px; align-items: center; justify-content: space-between; margin-bottom: 10px;">
+                <div style="display: flex; gap: 10px;">
+                    <button id="btn-back-roles" class="btn btn--small">← Indietro</button>
+                    <button id="btn-manual-restore" class="btn btn--small btn--restore-cloud" title="Recupera sessione in caso di interruzione imprevista">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:6px;">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                            <polyline points="7 10 12 15 17 10"></polyline>
+                            <line x1="12" y1="15" x2="12" y2="3"></line>
+                        </svg>
+                        Recupera Sessione
+                    </button>
+                </div>
+                
+                <button id="btn-user-profile" class="btn btn--small btn-profile hidden" title="Profilo Utente">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                        <circle cx="12" cy="7" r="4"></circle>
+                    </svg>
                 </button>
             </div>
 
@@ -222,8 +270,8 @@
                   </div>
                   <div class="artist-input-wrapper visible" style="border:none; padding-top:0;">
                       <div class="artist-input-row">
-                         <div class="artist-placeholder"></div>
-                         <button type="button" id="statsConfirmBtn" style="background: #e5e7eb; color: #1f2937; width: 100%; border: 1px solid #d1d5db;">Apri Dashboard</button>
+                          <div class="artist-placeholder"></div>
+                          <button type="button" id="statsConfirmBtn" style="background: #e5e7eb; color: #1f2937; width: 100%; border: 1px solid #d1d5db;">Apri Dashboard</button>
                       </div>
                   </div>
                 </div>
@@ -236,9 +284,12 @@
 
       <section id="view-session" class="view">
         <div class="session-grid">
-          <section class="card session-panel {% if not viewer_mode %}session-panel--qr{% endif %}">
-            <div class="left">
+          <section class="card session-panel">
+            <div class="left session-left-col">
+              <button id="btn-session-back" class="btn btn--small" style="align-self: flex-start;">← Indietro</button>
+              
               <h2>Sessione</h2>
+              
               <div class="meta">
                 Modalità: <span id="mode-badge" class="badge"></span>
                 • Tempo sessione: <span id="session-timer">00:00</span>
@@ -262,11 +313,6 @@
                 <span class="badge" style="background: #7c3aed; color: white;">Modalità Spettatore</span>
               {% endif %}
             </div>
-            {% if not viewer_mode %}
-            <div class="qr-corner">
-              <button id="btn-show-qr" class="btn btn--qr" type="button" aria-label="Share QR" title="Share QR">QR</button>
-            </div>
-            {% endif %}
           </section>
 
           <section class="card log-card">
@@ -276,7 +322,7 @@
                 </svg>
             </div>
             <div class="log-header-row">
-              <h3>Log live</h3>
+              <div style="flex:1"></div>
               <button id="btn-session-notes" class="btn btn--small" data-tooltip="aggiungi annotazioni o promemoria utili">Note</button>
             </div>
             <div class="log-head">
@@ -288,17 +334,27 @@
             <div id="live-log" class="log-body"></div>
           </section>
         </div>
-        </section>
+      </section>
 
       <section id="view-review" class="view">
-        <header class="hero hero--small">
-          <h2>Revisione borderò</h2>
-          <p class="subtitle">Controlla i brani rilevati live prima di generare il file SIAE</p>
+        <header class="hero hero--small" style="display: flex; justify-content: space-between; align-items: flex-start;">
+          <div>
+            <h2>Revisione borderò</h2>
+            <p class="subtitle">Controlla i brani rilevati live prima di generare il file SIAE</p>
+          </div>
+          <button id="btn-home-restart" class="btn btn--small" title="Torna alla Home" style="padding: 4px 8px; margin-left: 15px;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+                <polyline points="9 22 9 12 15 12 15 22"></polyline>
+            </svg>
+          </button>
         </header>
         <div class="card review-card">
           <div class="review-header-row">
             <h3>Playlist della serata</h3>
-            <button id="btn-review-notes" class="btn btn--small" data-tooltip="consulta le tue annotazioni">Note</button>
+            <div style="display: flex; gap: 8px; align-items: center;">
+                <button id="btn-review-notes" class="btn btn--small" data-tooltip="consulta le tue annotazioni">Note</button>
+            </div>
           </div>
           
           <div class="table review-table">
@@ -326,8 +382,9 @@
           <div class="actions">
             {% if not viewer_mode %}
               <button id="btn-undo" class="btn btn--small" disabled>Undo</button>
+              <button id="btn-global-splits" class="btn btn--primary hidden">Ripartizioni Totali</button>
               <button id="btn-global-payments" class="btn btn--primary" disabled>Vai ai Pagamenti</button>
-              <button id="btn-generate" class="btn btn--primary" disabled>Generate</button>
+              <button id="btn-generate" class="btn btn--primary" disabled>Scarica i documenti</button>
             {% endif %}
           </div>
         </div>
@@ -379,7 +436,7 @@
         <div class="card payment-card">
           <header class="royalties-header">
             <button id="btn-back-from-payments" class="btn btn--small">← Indietro</button>
-            <h2 style="flex:1; text-align:center;">Riepilogo Pagamenti</h2>
+            <h2 style="flex:1; text-align:center;">Riepilogo Ripartizioni</h2>
             <div style="width: 80px;"></div>
           </header>
 
@@ -394,7 +451,7 @@
                  <div class="row row--head">
                    <span style="flex:1">Compositore</span>
                    <span style="width: 100px; text-align:right">Totale</span>
-                   <span style="width: 100px; text-align:center">Azione</span>
+                   <span id="header-pay-action" style="width: 100px; text-align:center">Azione</span>
                  </div>
                  <div id="global-payment-rows" class="payment-body"></div>
                </div>
@@ -405,6 +462,89 @@
                </div>
             </div>
           </div>
+        </div>
+      </section>
+
+      <section id="view-profile" class="view">
+        <div class="card profile-card" style="max-width: 900px; margin: 20px auto; min-height: 80vh;">
+            <header class="royalties-header">
+                <button id="btn-profile-back" class="btn btn--small">← Indietro</button>
+                <h2>Profilo Utente</h2>
+                <div style="width: 80px;"></div> </header>
+
+            <div class="profile-layout">
+                <div class="profile-sidebar">
+                    <div class="user-avatar-large">
+                        <svg width="60" height="60" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                            <circle cx="12" cy="7" r="4"></circle>
+                        </svg>
+                    </div>
+                    <h3 id="profile-username-display" style="margin: 10px 0 5px;">Username</h3>
+                    <p id="profile-role-display" style="color: var(--muted); margin: 0; font-size: 0.9rem;">Ruolo</p>
+                    
+                    <div class="profile-tabs">
+                        <button class="tab-btn active" data-tab="settings">Impostazioni</button>
+                        <button class="tab-btn" data-tab="stats">Statistiche</button>
+                        <button class="tab-btn" data-tab="history">Storico Sessioni</button>
+                    </div>
+                </div>
+
+                <div class="profile-content">
+                    
+                    <div id="tab-settings" class="tab-pane active">
+                        <h3>Modifica Credenziali</h3>
+                        <p class="subtitle" style="margin-bottom: 20px;">Aggiorna i tuoi dati di accesso</p>
+                        
+                        <div class="form-group">
+                            <label>Nuovo Username</label>
+                            <input type="text" id="edit-username" placeholder="Inserisci nuovo username">
+                        </div>
+                        <div class="form-group">
+                            <label>Nuova Password</label>
+                            <input type="password" id="edit-password" placeholder="Inserisci nuova password">
+                        </div>
+                        <button id="btn-save-profile" class="btn btn--primary" style="margin-top: 10px;">Salva Modifiche</button>
+                        
+                        <hr style="border: 0; border-top: 1px solid var(--border); margin: 30px 0;">
+                        
+                        <h3 style="color: #ef4444;">Zona Pericolosa</h3>
+                        <p class="subtitle" style="color: #fca5a5;">Queste azioni sono irreversibili</p>
+                        <button id="btn-delete-account" class="btn" style="background: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1px solid #ef4444; margin-top: 10px;">Elimina Account</button>
+                    </div>
+
+                    <div id="tab-stats" class="tab-pane">
+                        <h3>Statistiche Utente</h3>
+                        <div class="stats-grid-mockup">
+                            <div class="stat-card-mock">
+                                <span>Sessioni Avviate</span>
+                                <strong id="mock-sessions-count">...</strong>
+                            </div>
+                            <div class="stat-card-mock">
+                                <span>Canzoni Rilevate</span>
+                                <strong id="mock-songs-count">...</strong>
+                            </div>
+                            <div class="stat-card-mock">
+                                <span>Artista Frequente</span>
+                                <strong id="mock-top-artist">...</strong>
+                            </div>
+                        </div>
+                        
+                        <h4 style="margin-top: 20px;">Top 5 Brani</h4>
+                        <div class="mock-bar-chart">
+                            <span style="opacity: 0.5;">In attesa di dati...</span>
+                        </div>
+                    </div>
+
+                    <div id="tab-history" class="tab-pane">
+                        <h3>Storico Sessioni</h3>
+                        <div class="history-list-mockup">
+                            <span style="opacity: 0.5;">Caricamento storico...</span>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
         </div>
       </section>
 
@@ -432,19 +572,6 @@
         </div>
       </div>
 
-      <div id="qr-modal" class="modal modal--hidden">
-        <div class="modal-backdrop"></div>
-        <div class="modal-dialog card" style="max-width: 360px;">
-          <h3>Scansiona per seguire Live</h3>
-          <div style="background: white; padding: 10px; border-radius: 8px; margin: 10px auto; width: fit-content;">
-            <img id="qr-image" src="" alt="QR Code" style="display: block; width: 200px; height: 200px;" />
-          </div>
-          <div class="modal-actions" style="justify-content: center;">
-            <button id="qr-close" class="btn btn--small">Chiudi</button>
-          </div>
-        </div>
-      </div>
-
       <div id="export-modal" class="modal modal--hidden">
         <div class="modal-backdrop"></div>
         <div class="modal-dialog card" style="max-width: 320px; padding: 20px;">
@@ -464,12 +591,11 @@
         <div class="modal-backdrop"></div>
         <div class="modal-dialog card auth-card" style="position: relative;">
             <button id="btn-auth-close" class="btn-icon-close" title="Chiudi">✕</button>
-
             <h2 style="margin-top: 0;">Benvenuto</h2>
             <p class="modal-message" style="margin-bottom: 20px; opacity: 0.7;">Accedi per continuare</p>
             
             <div class="auth-inputs">
-                <input type="email" id="auth-email" placeholder="Email" autocomplete="username">
+                <input type="text" id="auth-email" placeholder="Username o Email" autocomplete="username">
                 <input type="password" id="auth-pass" placeholder="Password" autocomplete="current-password">
             </div>
 
@@ -484,11 +610,21 @@
         </div>
       </div>
 
+      <div id="alert-modal" class="modal modal--hidden">
+        <div class="modal-backdrop"></div>
+        <div class="modal-dialog card" style="max-width: 320px; text-align: center;">
+          <h3 style="margin-top:0; color:#ffc7d5">Attenzione</h3>
+          <p id="alert-message" class="modal-message" style="margin: 15px 0; color: #e6eef8;"></p>
+          <div class="modal-actions" style="justify-content: center;">
+            <button id="alert-ok" class="btn btn--small btn--primary">Capito</button>
+          </div>
+        </div>
+      </div>
     </main>
+
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
-
     <script src="{{ url_for('static', filename='script.js') }}" defer></script>
   </body>
 </html>

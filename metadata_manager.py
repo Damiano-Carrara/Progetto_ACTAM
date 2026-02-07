@@ -190,8 +190,13 @@ class MetadataManager:
         try:
             if not self.genius_token: return None
             if self.genius is None:
-                self.genius = lyricsgenius.Genius(self.genius_token)
-                self.genius.verbose = False 
+                # Aggiungi anche qui sleep_time e retries
+                self.genius = lyricsgenius.Genius(
+                    self.genius_token, 
+                    verbose=False,
+                    sleep_time=0.5,
+                    retries=3
+                ) 
             
             clean_t = title.split("(")[0].strip()
             song = self.genius.search_song(clean_t, artist)
@@ -225,6 +230,7 @@ class MetadataManager:
 
     def _search_itunes(self, title, artist):
         try:
+            # 1. Tentativo SPECIFICO (Titolo + Artista Semplificato)
             simple_artist = re.sub(r"(?i)\b(feat\.|ft\.|&|the)\b.*", "", artist).strip()
             params = {
                 "term": f"{title} {simple_artist}",
@@ -236,6 +242,7 @@ class MetadataManager:
             resp = requests.get(self.itunes_url, params=params, timeout=5)
             results = resp.json().get("results", []) if resp.status_code == 200 else []
 
+            # 2. Tentativo FALLBACK (Solo Titolo - Utile se l'artista è scritto strano)
             if not results:
                 params["term"] = title
                 resp = requests.get(self.itunes_url, params=params, timeout=5)
@@ -247,13 +254,16 @@ class MetadataManager:
                 track_name = res.get("trackName", "")
                 artist_name = res.get("artistName", "")
                 
+                # Controllo similarità titolo (>60%)
                 if SequenceMatcher(None, title.lower(), track_name.lower()).ratio() < 0.6: 
                     continue
                 
+                # Controllo presenza artista (per evitare omonimie nel fallback)
                 found_art_clean = self._clean_string(artist_name)
                 if target_norm in found_art_clean or found_art_clean in target_norm:
                     cover = res.get('artworkUrl100', '').replace('100x100', '600x600')
                     composer = res.get('composerName')
+                    
                     if cover or composer:
                         return composer, cover
         except: pass

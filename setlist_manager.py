@@ -131,45 +131,72 @@ class SetlistManager:
         except: pass
         return []
 
-    # === QUESTA È LA FUNZIONE AGGIORNATA DAL TUO COLLEGA ===
+     # === SOSTITUISCI IL METODO check_is_likely CON QUESTO ===
     def check_is_likely(self, title):
-        """
-        Controlla se il titolo è nella whitelist con regole severe basate sulla lunghezza.
-        Evita che titoli corti (es. "Tu", "I") vengano trovati dentro parole lunghe non correlate.
-        """
         if not self.cached_songs: return False
         
-        # Pulizia input (quello che arriva da ACR)
-        # Rimuoviamo caratteri speciali per confronto pulito
-        clean_input = re.sub(r"[^a-zA-Z0-9\s]", "", title).strip().lower()
+        # 1. Pulizia base (caratteri speciali)
+        raw_clean_input = re.sub(r"[^a-zA-Z0-9\s]", "", title).lower().strip()
         
-        if not clean_input: return False
+        # 2. Pulizia avanzata (rimozione "Live", "Remaster", ecc.)
+        #    Questo trasforma "Let It Be (Live)" in "Let It Be", 
+        #    MA lascia "Let It Be Me" come "Let It Be Me".
+        smart_clean_input = self._clean_noise_words(raw_clean_input)
+        
+        if not smart_clean_input: return False
 
         for likely in self.cached_songs:
-            # Pulizia titolo scaletta
-            clean_likely = re.sub(r"[^a-zA-Z0-9\s]", "", likely).strip().lower()
-            
-            # --- REGOLA 1: TITOLI CORTI (< 5 caratteri) ---
-            # Richiede PRECISIONE ASSOLUTA.
-            if len(clean_likely) < 5:
-                # 1. Match Esatto (es. "tu" == "tu")
-                if clean_input == clean_likely:
-                    return True
+            # Puliamo anche il titolo della scaletta per sicurezza
+            raw_clean_likely = re.sub(r"[^a-zA-Z0-9\s]", "", likely).lower().strip()
+            # Di solito nelle scalette non c'è "Live", ma per sicurezza:
+            clean_likely = self._clean_noise_words(raw_clean_likely) 
+
+            # --- CASO 1: Match Esatto (Dopo la pulizia) ---
+            # Se l'input era "Let It Be (Live)" -> diventa "Let It Be" -> MATCH
+            # Se l'input era "Let It Be Me" -> rimane "Let It Be Me" -> NO MATCH
+            if smart_clean_input == clean_likely:
+                return True
                 
-                # 2. Parola intera isolata (es. trova "tu" in "tu e io", ma NON in "tutto")
+            # --- CASO 2: Fuzzy Match (per piccoli errori di battitura) ---
+            # Alziamo leggermente la soglia o usiamo ratio su stringhe pulite
+            similarity = SequenceMatcher(None, smart_clean_input, clean_likely).ratio()
+            
+            # Soglia alta (0.90 o 0.95)
+            if similarity > 0.92:
+                return True
+            
+            # --- CASO 3: Gestione Titoli Corti (< 5 char) ---
+            # I titoli corti non devono MAI usare fuzzy match lasco.
+            # Devono essere identici (già coperto dal CASO 1) o parole isolate.
+            if len(clean_likely) < 5:
+                # Cerca parola intera esatta nel testo originale pulito
                 pattern = r"\b" + re.escape(clean_likely) + r"\b"
-                if re.search(pattern, clean_input):
+                if re.search(pattern, raw_clean_input): 
+                    # Attenzione: qui è rischioso, ma se vuoi mantenere la logica precedente:
+                    # Verifica che non sia parte di una frase molto più lunga
                     return True
 
-            # --- REGOLA 2: TITOLI LUNGHI (>= 5 caratteri) ---
-            # Qui possiamo tollerare inclusioni o piccole differenze
-            else:
-                # 1. Contenimento semplice (es. "albachiara" in "albachiara live")
-                if clean_likely in clean_input: 
-                    return True
-                
-                # 2. Fuzzy Match ma STRETTO (> 90%)
-                if SequenceMatcher(None, clean_input, clean_likely).ratio() > 0.90:
-                    return True
-                    
         return False
+    
+    # === AGGIUNGI QUESTO METODO HELPER ===
+    def _clean_noise_words(self, text):
+        """
+        Rimuove parole comuni che non cambiano l'identità della canzone
+        ma solo la versione (live, remaster, ecc.).
+        """
+        # Lista di parole da ignorare (puoi estenderla)
+        stop_words = [
+            "live", "remaster", "remastered", "mix", "version", 
+            "edit", "feat", "ft", "studio", "session", "acoustic", 
+            "demo", "official", "video", "lyrics"
+        ]
+        
+        # Crea pattern per rimuovere queste parole (es. " live " o " live" a fine stringa)
+        clean_text = text
+        for word in stop_words:
+            # Rimuove la parola se è isolata (\b)
+            pattern = r"\b" + re.escape(word) + r"\b"
+            clean_text = re.sub(pattern, "", clean_text)
+            
+        # Rimuove spazi doppi creati dalla rimozione
+        return re.sub(r"\s+", " ", clean_text).strip()
