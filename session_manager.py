@@ -147,6 +147,14 @@ class SessionManager:
         self.clear_session() 
         
         return {"success": True, "user": user_data}
+    
+    def logout_user(self):
+        """Resetta l'utente corrente a quello di default (Ospite)."""
+        self.user_id = "demo_user_01"
+        # Resetta anche la sessione in memoria per evitare mix di dati
+        self.clear_session()
+        print("👋 Logout effettuato. Tornato a demo_user_01.")
+        return {"success": True}
 
     # --- NUOVI METODI PER PROFILO UTENTE ---
     def update_user_data(self, old_username, new_data):

@@ -225,6 +225,13 @@ def api_user_session_history():
         return jsonify({"history": data})
     return jsonify({"history": []})
 
+@app.route("/api/logout", methods=["POST"])
+def api_logout():
+    if hasattr(session_bot, 'logout_user'):
+        res = session_bot.logout_user()
+        return jsonify(res)
+    return jsonify({"success": True}) # Fallback se il metodo non esiste ancora
+
 @app.route("/api/download_history_report", methods=["GET"])
 def download_history_report():
     session_id = request.args.get("session_id")

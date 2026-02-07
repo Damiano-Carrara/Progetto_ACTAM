@@ -216,7 +216,21 @@ function initRoleSelection() {
       }
   });
 
-  if (btnGuest) btnGuest.onclick = () => completeAuth();
+  if (btnGuest) btnGuest.onclick = async () => {
+      // 1. Pulisce lo stato locale immediatamante
+      state.user = null;
+      state.stage_name = "";
+      
+      // 2. Chiama il backend per resettare l'ID utente a "demo_user_01"
+      try {
+          await fetch("/api/logout", { method: "POST" });
+      } catch(e) {
+          console.error("Errore logout guest", e);
+      }
+
+      // 3. Procede come ospite
+      completeAuth();
+  };
 
   if (linkRegister) {
     linkRegister.onclick = (e) => {
@@ -1469,9 +1483,23 @@ function initWelcome() {
 
   const btnBackRoles = $("#btn-back-roles");
   if(btnBackRoles) {
-      btnBackRoles.onclick = () => {
-          state.role = null; state.mode = null; explicitRestore = false;
-          hoveredRole = null; pendingRole = null;
+      btnBackRoles.onclick = async () => {
+          // 1. Logout Backend
+          try {
+             await fetch("/api/logout", { method: "POST" });
+          } catch(e) { console.error(e); }
+
+          // 2. Reset Totale Stato Frontend
+          state.role = null; 
+          state.mode = null; 
+          state.user = null; // IMPORTANTE: Resetta l'utente
+          state.stage_name = "";
+          
+          explicitRestore = false;
+          hoveredRole = null; 
+          pendingRole = null;
+
+          // 3. Torna alla vista ruoli
           showView("#view-roles");
       };
   }
