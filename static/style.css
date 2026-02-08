@@ -1,31 +1,38 @@
 :root {
-  --bg: #0b0f14;
-  --panel: #12151a;
-  --text: #e6eef8;
-  --muted: #9fb0c2;
-  --border: #1f242d;
+  /* ==========================================================================
+     VARIABILI GLOBALI
+     Definiamo qui la palette colori per facilitare il theming.
+     ========================================================================== */
+  --bg: #0b0f14; /* Colore di sfondo principale (molto scuro) */
+  --panel: #12151a; /* Sfondo delle card e dei pannelli */
+  --text: #e6eef8; /* Colore testo principale (bianco sporco) */
+  --muted: #9fb0c2; /* Colore testo secondario */
+  --border: #1f242d; /* Colore bordi sottili */
  
-  /* COLORI */
-  --c-cyan: #51E5FF;  /* DJ */
-  --c-green: #70EE9C; /* BAND */
-  --c-pink: #EC368D;  /* CONCERT */
+  /* Colori specifici per i ruoli */
+  --c-cyan: #51E5FF;  /* Utente */
+  --c-green: #70EE9C; /* Organizzatore / Band */
+  --c-pink: #EC368D;  /* Compositore / Concerto */
 
-  --primary: var(--c-cyan);
+  --primary: var(--c-cyan); /* Colore primario di default */
 }
 
-/* RESET BASE */
+/* RESET DI BASE */
 * { box-sizing: border-box; }
 html, body { height: 100%; }
 body {
   margin: 0;
   font-family: "Arial", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  /* Gradiente radiale per dare profondità allo sfondo piatto */
   background: radial-gradient(1200px 700px at 50% 10%, rgba(255,255,255,0.02), transparent 60%), var(--bg);
   color: var(--text);
   overflow-x: hidden;
 }
 button { font-family: inherit; }
+/* Classe utility per bloccare lo scroll quando servono schermate fisse */
 body.no-scroll { overflow: hidden; }
 
+/* CONTENITORE PRINCIPALE APP */
 #app {
   position: relative;
   z-index: 10;
@@ -34,7 +41,11 @@ body.no-scroll { overflow: hidden; }
   padding: 24px 16px 24px;
 }
 
-/* SFONDO DINAMICO */
+/* ==========================================================================
+   SFONDO DINAMICO E ILLUMINAZIONE
+   ========================================================================== */
+
+/* Gestisce la copertina dell'album sfocata come background */
 .app-background {
   position: fixed;
   top: 0;
@@ -45,12 +56,13 @@ body.no-scroll { overflow: hidden; }
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
-  opacity: 0;
+  opacity: 0; /* Invisibile di default, il JS la porta a 1 */
   transition: opacity 1s ease-in-out;
   filter: blur(20px) brightness(0.6);
-  transform: scale(1.1);
+  transform: scale(1.1); /* Leggero zoom per evitare bordi bianchi col blur */
 }
 
+/* Overlay scuro per migliorare la leggibilità del testo sopra le cover */
 .app-background-overlay {
   position: fixed;
   top: 0;
@@ -62,7 +74,7 @@ body.no-scroll { overflow: hidden; }
   pointer-events: none;
 }
 
-/* === FARETTI GLOBALI === */
+/* Container per i fasci di luce SVG */
 #global-stage-lights {
   position: fixed;
   top: 0;
@@ -70,7 +82,7 @@ body.no-scroll { overflow: hidden; }
   width: 100%;
   height: 100%;
   z-index: 5;
-  pointer-events: none;
+  pointer-events: none; /* Permette di cliccare attraverso le luci */
   transition: opacity 0.6s ease;
 }
 #global-stage-lights svg {
@@ -79,14 +91,14 @@ body.no-scroll { overflow: hidden; }
   overflow: visible;
 }
 
-/* VISIBILITA' LUCI: Nascoste in Roles, Welcome, REGISTER. VISIBILI in PROFILE e REVIEW */
+/* Logica condizionale: Nascondi le luci globali nelle viste iniziali */
 body[data-active-view="roles"] #global-stage-lights,
 body[data-active-view="welcome"] #global-stage-lights,
 body[data-active-view="register"] #global-stage-lights {
   opacity: 0;
   display: none;
 }
-/* Modifica: profile rimosso da qui, quindi luci visibili */
+/* Mostrale in tutte le altre viste (es. Sessione, Profilo) */
 body:not([data-active-view="roles"]):not([data-active-view="welcome"]):not([data-active-view="register"]) #global-stage-lights {
   opacity: 1;
   display: block;
@@ -96,7 +108,9 @@ body:not([data-active-view="roles"]):not([data-active-view="welcome"]):not([data
 .view { display: none; }
 .view.view--active { display: block; }
 
-/* === STAGE VIEW === */
+/* ==========================================================================
+   SCENA INIZIALE (FARETTI RUOLI)
+   ========================================================================== */
 .stage-wrapper {
   display: flex;
   flex-direction: column;
@@ -119,6 +133,7 @@ body:not([data-active-view="roles"]):not([data-active-view="welcome"]):not([data
 .stage-scene svg { overflow: visible; width: 100%; height: auto; }
 
 .spotlight-group { cursor: pointer; }
+/* will-change suggerisce al browser di ottimizzare il rendering per queste proprietà */
 .spotlight-group .beam, .spotlight-group ellipse { will-change: d, cx, rx; }
 .spotlight-group:not(.spotlight-group--center) { opacity: 0.7; }
 .beam { opacity: 0.4; transition: filter 0.4s ease; }
@@ -128,6 +143,9 @@ body:not([data-active-view="roles"]):not([data-active-view="welcome"]):not([data
   .stage-scene svg { transform: scale(0.85); transform-origin: top center; }
 }
 
+/* ==========================================================================
+   COMPONENTI UI COMUNI (Card, Bottoni, Hero)
+   ========================================================================== */
 .hero { margin-bottom: 24px; }
 .hero--small { margin-bottom: 12px; }
 .hero h1, .hero h2 { margin: 0 0 4px; }
@@ -179,7 +197,6 @@ body:not([data-active-view="roles"]):not([data-active-view="welcome"]):not([data
 .btn--restore-cloud:hover { background: rgba(255,255,255,0.05); border-color: var(--text); color: var(--text); }
 .badge { display: inline-block; padding: 2px 8px; border: 1px solid var(--border); border-radius: 999px; font-size: 0.9rem; color: #000 !important; font-weight: 700; }
 
-/* NUOVO BOTTONE PROFILO */
 .btn-profile {
     width: 36px;
     height: 36px;
@@ -195,6 +212,9 @@ body:not([data-active-view="roles"]):not([data-active-view="welcome"]):not([data
     color: var(--primary);
 }
 
+/* ==========================================================================
+   VISTA WELCOME (Selezione Modalità)
+   ========================================================================== */
 .mode-page { width: 100%; padding: 24px; }
 .mode-container { max-width: 1100px; margin: 0 auto; text-align: center; }
 .app-title { font-size: 2.1rem; margin-bottom: 0.5rem; }
@@ -219,6 +239,7 @@ body:not([data-active-view="roles"]):not([data-active-view="welcome"]):not([data
 }
 .mode-grid:not(.mode-grid--composer) .mode-card { min-height: 400px; }
 
+/* Strisce colorate al neon sotto le card */
 .light-strip {
   position: absolute;
   bottom: 0;
@@ -267,6 +288,7 @@ body:not([data-active-view="roles"]):not([data-active-view="welcome"]):not([data
 .mode-card:hover .light-strip { height: 9px; filter: brightness(1.2); }
 .mode-card.mode-card--selected .light-strip { height: 9px; box-shadow: 0 -4px 30px currentColor; filter: brightness(1.3); }
 
+/* WRAPPER INPUT ARTISTA (dentro le card) */
 .artist-input-wrapper {
   margin-top: 1rem;
   padding-top: 0.8rem;
@@ -328,12 +350,15 @@ body:not([data-active-view="roles"]):not([data-active-view="welcome"]):not([data
   .mode-content { padding: 1.3rem 1.3rem 1.4rem; }
 }
 
+/* ==========================================================================
+   VISTA SESSIONE (Layout Flessibile)
+   ========================================================================== */
 #view-session.view--active { display: flex; flex-direction: column; gap: 16px; height: calc(100dvh - 48px); min-height: 0; }
 .session-grid { display: flex; flex-direction: column; gap: 16px; width: 100%; flex: 1; min-height: 0; }
 
 .session-panel {
   display: flex;
-  align-items: flex-start; /* Modificato da center a flex-start per allineamento verticale in alto */
+  align-items: flex-start; 
   justify-content: space-between;
   padding: 10px 14px;
   border: 1px solid rgba(255, 255, 255, 0.15);
@@ -361,6 +386,7 @@ body:not([data-active-view="roles"]):not([data-active-view="welcome"]):not([data
 .revenue-container input[type=number] { appearance: textfield; -moz-appearance: textfield; }
 .revenue-container button { height: 100%; }
 
+/* LOG CARD E ANIMAZIONE LED */
 .log-card {
   display: flex;
   flex-direction: column;
@@ -375,6 +401,7 @@ body:not([data-active-view="roles"]):not([data-active-view="welcome"]):not([data
   position: relative;
 }
 
+/* Animazione SVG che simula un LED che scorre lungo il bordo */
 .led-container { position: absolute; inset: 0; pointer-events: none; z-index: 50; overflow: hidden; border-radius: 16px; }
 .led-svg { width: 100%; height: 100%; }
 .led-rect {
@@ -399,6 +426,7 @@ body:not([data-active-view="roles"]):not([data-active-view="welcome"]):not([data
   .session-panel { flex-direction: column; align-items: flex-start; gap: 10px; }
 }
 
+/* VISTA REVIEW */
 .review-card { display: flex; flex-direction: column; height: 460px; z-index: 12; }
 .review-header-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
 .review-table { margin-top: 12px; flex: 1; display: flex; flex-direction: column; min-height: 0; }
@@ -412,13 +440,14 @@ body:not([data-active-view="roles"]):not([data-active-view="welcome"]):not([data
 input.inline { width: 100%; background: #0d1117; color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px; font-size: 0.9rem; }
 .row.row--confirmed input.inline { border-style: solid; color: #ffffff !important; background: rgba(255, 255, 255, 0.05); }
 
+/* SCROLLBAR PERSONALIZZATE */
 .log-body::-webkit-scrollbar, .review-rows-body::-webkit-scrollbar, body::-webkit-scrollbar { width: 8px; }
 .log-body::-webkit-scrollbar-thumb, .review-rows-body::-webkit-scrollbar-thumb, body::-webkit-scrollbar-thumb { background: #111827; border-radius: 999px; }
 
-/* SCROLLBAR AGGIUNTA PER LISTA COMPOSITORI */
 .stat-list-container::-webkit-scrollbar { width: 8px; }
 .stat-list-container::-webkit-scrollbar-thumb { background: #111827; border-radius: 999px; }
 
+/* MODALI */
 .modal { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; z-index: 1000; }
 .modal--hidden { display: none; }
 .modal-backdrop { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.65); }
@@ -430,15 +459,17 @@ input.inline { width: 100%; background: #0d1117; color: var(--text); border: 1px
 #notes-textarea { width: 100%; min-height: 250px; background: #0b0c10; color: var(--text); border: 1px solid var(--border); padding: 12px; border-radius: 8px; resize: none; font-family: inherit; font-size: 0.95rem; outline: none; }
 #notes-textarea:focus { border-color: var(--primary); box-shadow: 0 0 0 1px rgba(255,255,255,0.1); }
 
+/* TOOLTIP CSS-ONLY */
 [data-tooltip] { position: relative; }
 [data-tooltip]::after {
-    content: attr(data-tooltip); position: absolute; bottom: 110%; left: 50%; transform: translateX(-50%) translateY(5px);
-    background: rgba(18, 21, 26, 0.95); color: var(--text); padding: 6px 10px; font-size: 0.8rem; border-radius: 6px;
-    border: 1px solid var(--border); white-space: nowrap; opacity: 0; pointer-events: none; transition: opacity 0.2s, transform 0.2s;
-    box-shadow: 0 4px 10px rgba(0,0,0,0.5); z-index: 100;
+   content: attr(data-tooltip); position: absolute; bottom: 110%; left: 50%; transform: translateX(-50%) translateY(5px);
+   background: rgba(18, 21, 26, 0.95); color: var(--text); padding: 6px 10px; font-size: 0.8rem; border-radius: 6px;
+   border: 1px solid var(--border); white-space: nowrap; opacity: 0; pointer-events: none; transition: opacity 0.2s, transform 0.2s;
+   box-shadow: 0 4px 10px rgba(0,0,0,0.5); z-index: 100;
 }
 [data-tooltip]:hover::after { opacity: 1; transform: translateX(-50%) translateY(0); }
 
+/* VISTE ROYALTIES */
 .royalties-card { display: flex; flex-direction: column; height: auto; min-height: 500px; border-top: 4px solid var(--primary); }
 .royalties-header { position: relative; display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; min-height: 40px; }
 .royalties-header h2 { font-size: 1.2rem; margin: 0; font-weight: 600; text-align: center; color: var(--text); position: absolute; left: 50%; transform: translateX(-50%); width: 100%; pointer-events: none; }
@@ -463,7 +494,6 @@ input.inline { width: 100%; background: #0d1117; color: var(--text); border: 1px
 .split-table .col-right { text-align: right; }
 .split-table .col-center { text-align: center; }
 
-/* COMPOSER DASHBOARD NEW LAYOUT */
 .composer-layout {
     display: flex; flex-direction: column; gap: 20px; flex: 1; min-height: 0;
 }
@@ -486,6 +516,8 @@ input.inline { width: 100%; background: #0d1117; color: var(--text); border: 1px
   .profile-sidebar { border-right: none !important; border-bottom: 1px solid var(--border); padding-bottom: 20px; }
 }
 
+/* OVERRIDE TEMA PER I RUOLI
+   Cambia il colore primario (--primary) in base alla classe presente sul body */
 #app.theme-band { --primary: var(--c-green); }
 #app.theme-band .btn--primary { background: var(--c-green); color: #021315; }
 #app.theme-band .row.row--confirmed input.inline { border-color: var(--c-green); }
@@ -502,6 +534,7 @@ input.inline { width: 100%; background: #0d1117; color: var(--text); border: 1px
 #app.theme-concert .session-panel, #app.theme-concert #view-review .hero.hero--small { background-color: var(--c-pink); border-color: var(--c-pink); color: #21021e; }
 #app.theme-concert .session-panel .meta, #app.theme-concert #view-review .hero.hero--small .subtitle { color: rgba(33, 2, 30, 0.7); }
 
+/* VISTA PAGAMENTI (Organizzatore) */
 .payment-card { display: flex; flex-direction: column; height: calc(100vh - 80px); min-height: 550px; }
 .payment-layout { display: flex; gap: 24px; flex: 1; min-height: 0; }
 .chart-container { flex: 1; background: rgba(0,0,0,0.2); border-radius: 12px; padding: 16px; display: flex; align-items: center; justify-content: center; position: relative; }
@@ -511,6 +544,7 @@ input.inline { width: 100%; background: #0d1117; color: var(--text); border: 1px
 .payment-table .row { display: flex; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); }
 .total-footer { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; font-size: 1.1rem; }
 
+/* AUTH CARD */
 .auth-card { max-width: 380px; width: 100%; padding: 32px 24px; text-align: center; }
 .auth-inputs { display: flex; flex-direction: column; gap: 12px; margin-bottom: 24px; }
 .auth-inputs input { width: 100%; padding: 12px 16px; border-radius: 8px; border: 1px solid var(--border); background: #0b0c10; color: white; font-size: 1rem; outline: none; transition: border-color 0.2s; }
@@ -518,8 +552,8 @@ input.inline { width: 100%; background: #0d1117; color: var(--text); border: 1px
 .btn-icon-close { position: absolute; top: 12px; right: 12px; background: transparent; border: none; color: var(--muted); font-size: 1.2rem; cursor: pointer; transition: color 0.2s; line-height: 1; padding: 4px; }
 .btn-icon-close:hover { color: white; }
 
-/* === STILI PER IL PROFILO UTENTE === */
-/* MODIFICA: Forziamo il colore specifico #8ACE00 nella vista Profilo */
+/* VISTA PROFILO UTENTE */
+/* Qui forziamo un colore specifico Lime Green (#8ACE00) diverso dagli altri */
 #view-profile {
     --primary: #8ACE00; 
 }
@@ -599,7 +633,7 @@ input.inline { width: 100%; background: #0d1117; color: var(--text); border: 1px
 }
 
 .tab-btn.active {
-    background: rgba(81, 229, 255, 0.1); /* Default cyan tint fallback */
+    background: rgba(81, 229, 255, 0.1); 
     color: var(--primary);
     font-weight: 600;
 }
@@ -649,7 +683,7 @@ input.inline { width: 100%; background: #0d1117; color: var(--text); border: 1px
     border-color: var(--primary);
 }
 
-/* Mockup Stats */
+/* MOCKUP GRAFICI STATS (Per la vista Profilo) */
 .stats-grid-mockup {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
@@ -674,7 +708,6 @@ input.inline { width: 100%; background: #0d1117; color: var(--text); border: 1px
 .bar-row .label { width: 50px; text-align: right; color: var(--muted); }
 .bar-row .bar { height: 8px; background: var(--primary); border-radius: 4px; opacity: 0.6; }
 
-/* Mockup History */
 .history-list-mockup {
     display: flex;
     flex-direction: column;

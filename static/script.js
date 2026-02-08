@@ -1,4 +1,10 @@
-// --- 1. CONFIGURAZIONE FIREBASE ---
+/* CONFIGURAZIONE FIREBASE
+
+   Questa sezione inizializza la connessione con Firebase. 
+   Usiamo le librerie "compat" (v8 style) per mantenere la compatibilità 
+   con eventuali script legacy presenti nel progetto. (tipo compilatore di
+   linguaggio)
+ */
 const firebaseConfig = {
   apiKey: "AIzaSyDPtkUaiTQSxUB9x7x1xWF9XHdVqBXLb-s",
   authDomain: "actam-project-8f9de.firebaseapp.com",
@@ -9,7 +15,7 @@ const firebaseConfig = {
   measurementId: "G-RHPHMPTPDE"
 };
 
-// --- 2. INIZIALIZZAZIONE ---
+// Controllo di sicurezza: se le librerie non sono caricate nell'HTML, avvisa in console.
 if (typeof firebase !== 'undefined') {
   firebase.initializeApp(firebaseConfig);
   console.log("🔥 Firebase Client inizializzato!");
@@ -17,42 +23,56 @@ if (typeof firebase !== 'undefined') {
   console.error("❌ Librerie Firebase non trovate. Controlla index.html");
 }
 
-// --- STATO APP ---
+/* STATO GLOBALE DELL'APPLICAZIONE (State Management)
+
+   Per evitare ricaricamenti di pagina (SPA simulation), manteniamo tutto lo 
+   stato dell'app in questo oggetto 'state'. È la nostra "Single Source of Truth".
+ */
 const state = {
-  role: null,             
-  orgRevenue: 0,          
-  orgRevenueConfirmed: false,
-  currentRoyaltySong: null,
-  mode: null,              
-  route: "roles",        
-  concertArtist: "",
-  bandArtist: "",
-  notes: "",
-  user: null, // Oggetto utente completo dal login
-  stage_name: ""
+  role: null,               // Ruolo corrente (user, org, composer)
+  orgRevenue: 0,            // Incasso dell'evento (solo per Org)
+  orgRevenueConfirmed: false, // Se l'organizzatore ha confermato l'incasso
+  currentRoyaltySong: null,// Brano che si sta analizzando nella vista dettagli
+  mode: null,               // Modalità sessione: 'band' (generica) o 'concert' (specifica)
+  route: "roles",           // Vista attualmente visualizzata nel DOM
+  concertArtist: "",        // Nome artista target (modo Concerto)
+  // bandArtist rimosso come richiesto
+  notes: "",                // Note testuali della sessione
+  user: null,               // Oggetto utente completo ricevuto dal backend dopo il login
+  stage_name: ""            // Nome d'arte (usato per le query statistiche del compositore)
 };
 
-let pendingRole = null;
-let songs = [];
-let lastMaxSongId = 0;
-let currentSongId = null;
-let currentCoverUrl = null;
-let explicitRestore = false;
+// Variabili di supporto al runtime 
+let pendingRole = null;    // Ruolo cliccato dall'utente ma in attesa di login
+let songs = [];            // Array locale che contiene la lista dei brani (copia del backend)
+let lastMaxSongId = 0;     // ID più alto visto finora (serve a capire se sono arrivati nuovi brani)
+let currentSongId = null;  // ID del brano attualmente in riproduzione/rilevamento
+let currentCoverUrl = null;// URL della copertina corrente (per aggiornare lo sfondo senza flicker)
+let explicitRestore = false;// Flag per impedire il reset automatico quando si recupera una sessione crashata
 
-let playlistPollInterval = null;
-let sessionStartMs = 0;
-let sessionAccumulatedMs = 0;
-let sessionTick = null;
+// Timer e Polling 
+let playlistPollInterval = null; // ID dell'intervallo per la richiesta periodica della playlist (polling)
+let sessionStartMs = 0;          // Timestamp di inizio sessione (per il cronometro)
+let sessionAccumulatedMs = 0;    // Tempo accumulato prima della pausa
+let sessionTick = null;          // ID dell'intervallo che aggiorna il timer a schermo
 
-let undoStack = [];
-let notesModalContext = "session";
-let hoveredRole = null;
+// User Experience e Navigazione
+let undoStack = [];        // Stack per gestire la funzione "Annulla" (Ctrl+Z)
+let notesModalContext = "session"; // Contesto note: 'session' (editabili) o 'review' (solo lettura)
+let hoveredRole = null;    // Serve per l'animazione fisica dei faretti nella home
 
+// Helper per selezionare elementi DOM più velocemente
 const $ = (sel) => document.querySelector(sel);
 
-// --- UTILS ---
+/* FUNZIONI DI UTILITÀ (Helpers)
+   
+   Funzioni pure per formattazione, matematica e gestione UI generica.
+ */
+
+// Aggiunge zero iniziale ai numeri < 10 (es. 9 -> "09")
 function pad2(n) { return n.toString().padStart(2, "0"); }
 
+// Converte millisecondi in formato stringa "MM:SS" per il timer
 function fmt(ms) {
   const sec = Math.floor(ms / 1000);
   const m = Math.floor(sec / 60);
@@ -60,35 +80,48 @@ function fmt(ms) {
   return `${pad2(m)}:${pad2(s)}`;
 }
 
+// Formatta un numero come valuta Euro usando le impostazioni locali italiane
 function formatMoney(amount, currency = "EUR") {
   return new Intl.NumberFormat('it-IT', { style: 'currency', currency: currency }).format(amount);
 }
 
+// Interpolazione Lineare (Linear Interpolation)
+// Usata per rendere fluidi i movimenti dei faretti (fisica smorzata)
 function lerp(start, end, amt) {
     return (1 - amt) * start + amt * end;
 }
 
-// --- CUSTOM ALERT FUNCTION ---
+// Sostituisce l'alert() nativo del browser con una modale stilizzata HTML
 function showCustomAlert(msg) {
     const m = $("#alert-modal");
-    if (!m) { alert(msg); return; }
+    if (!m) { alert(msg); return; } // Fallback se il DOM non è pronto
     $("#alert-message").textContent = msg;
     m.classList.remove("modal--hidden");
     const btn = $("#alert-ok");
+    // Cloniamo il bottone per rimuovere vecchi event listener ed evitare click multipli
     const newBtn = btn.cloneNode(true);
     btn.parentNode.replaceChild(newBtn, btn);
     newBtn.onclick = () => { m.classList.add("modal--hidden"); };
 }
 
+// Salva lo stato volatile nel LocalStorage del browser.
+// Utile se l'utente ricarica la pagina per sbaglio durante una sessione.
 function saveStateToLocal() {
   if (!state.mode) return;
   localStorage.setItem("appMode", state.mode);
   if (state.concertArtist) localStorage.setItem("concertArtist", state.concertArtist);
   else localStorage.removeItem("concertArtist");
-  if (state.bandArtist) localStorage.setItem("bandArtist", state.bandArtist);
-  else localStorage.removeItem("bandArtist");
+  // bandArtist rimossa da localStorage
+  localStorage.removeItem("bandArtist");
 }
 
+/* ROUTING E GESTIONE VISTE (SPA Simulation)
+   
+   Queste funzioni gestiscono la navigazione simulata nascondendo e mostrando
+   sezioni HTML e applicando le classi CSS corrette al body.
+ */
+
+// Applica il tema colore corretto (Verde, Rosa, Ciano) in base alla modalità corrente
 function applyTheme() {
   const app = document.getElementById("app");
   if (!app) return;
@@ -98,16 +131,20 @@ function applyTheme() {
   else if (state.mode === "dj") app.classList.add("theme-dj");
 }
 
+// Imposta l'attributo data-active-view sul body.
+// Il CSS usa questo attributo per decidere se mostrare o nascondere le luci globali.
 function setRoute(route) {
   state.route = route;
   const body = document.body;
   if (body) {
     body.setAttribute("data-active-view", route);
+    // Blocca lo scroll su viste fisse (es. Home), lo abilita su report lunghi
     if (["welcome", "session", "roles", "register", "profile"].includes(route)) body.classList.add("no-scroll");
     else body.classList.remove("no-scroll");
   }
 }
 
+// Funzione principale per cambiare schermata
 function showView(id) {
   document.querySelectorAll(".view").forEach((v) => v.classList.remove("view--active"));
   const el = document.querySelector(id);
@@ -116,9 +153,12 @@ function showView(id) {
   setRoute(viewName);
 }
 
-// ============================================================================
-// GESTIONE RUOLI & AUTH
-// ============================================================================
+/* LOGICA DI AUTENTICAZIONE E SELEZIONE RUOLO
+   
+   Gestisce l'interazione con i 3 faretti iniziali, l'apertura della modale
+   di login e la chiamata alle API di autenticazione.
+ */
+
 function initRoleSelection() {
   const roleSpots = document.querySelectorAll(".spotlight-group");
   const authModal = $("#auth-modal");
@@ -132,7 +172,8 @@ function initRoleSelection() {
   if (btnCompBack) {
       btnCompBack.onclick = () => showView("#view-welcome");
   }
-  
+   
+  // Listener sui "faretti" (le aree cliccabili SVG)
   roleSpots.forEach(spot => {
     spot.addEventListener("mouseenter", () => { hoveredRole = spot.dataset.role; });
     spot.addEventListener("mouseleave", () => { hoveredRole = null; });
@@ -140,16 +181,16 @@ function initRoleSelection() {
       const role = spot.dataset.role;
       pendingRole = role;
       
-      // CAMBIO COLORE MODALE DINAMICO IN BASE AL RUOLO
-      let themeColor = "var(--c-cyan)"; // Default user
+      // Imposta il colore del tema della modale in base al ruolo cliccato
+      let themeColor = "var(--c-cyan)"; 
       if (role === "org") themeColor = "var(--c-green)";
       else if (role === "composer") themeColor = "var(--c-pink)";
       
-      // FIX BUG COLORE: Rimuovi le classi tema precedenti da #app per evitare conflitti
+      // Rimuove classi vecchie per evitare conflitti di stile
       app.classList.remove("theme-band", "theme-concert", "theme-dj");
-      
       authModal.style.setProperty("--primary", themeColor);
 
+      // Pulisce i campi input
       if($("#auth-email")) $("#auth-email").value = "";
       if($("#auth-pass")) $("#auth-pass").value = "";
       authModal.classList.remove("modal--hidden");
@@ -163,7 +204,7 @@ function initRoleSelection() {
       };
   }
 
-  // FUNZIONE DI LOGIN
+  // Esegue il login chiamando l'API /api/login
   const performLogin = async () => {
         const identifier = $("#auth-email").value.trim();
         const pass = $("#auth-pass").value.trim();
@@ -187,6 +228,7 @@ function initRoleSelection() {
             const data = await res.json();
 
             if(data.success) {
+                // Login OK: salviamo utente nello stato e procediamo
                 state.user = data.user;
                 state.stage_name = data.user.stage_name || data.user.username;
                 completeAuth();
@@ -204,7 +246,7 @@ function initRoleSelection() {
 
   if (btnLogin) btnLogin.onclick = performLogin;
 
-  // GESTIONE TASTO INVIO SU INPUT LOGIN
+  // Supporto tasto Invio nei campi login
   const inputs = [$("#auth-email"), $("#auth-pass")];
   inputs.forEach(input => {
       if(input) {
@@ -216,22 +258,22 @@ function initRoleSelection() {
       }
   });
 
+  // Login Ospite (Bypass Database)
   if (btnGuest) btnGuest.onclick = async () => {
-      // 1. Pulisce lo stato locale immediatamante
       state.user = null;
       state.stage_name = "";
       
-      // 2. Chiama il backend per resettare l'ID utente a "demo_user_01"
+      // Resetta la sessione server per sicurezza
       try {
           await fetch("/api/logout", { method: "POST" });
       } catch(e) {
           console.error("Errore logout guest", e);
       }
 
-      // 3. Procede come ospite
       completeAuth();
   };
 
+  // Navigazione verso la registrazione
   if (linkRegister) {
     linkRegister.onclick = (e) => {
         e.preventDefault();
@@ -241,12 +283,14 @@ function initRoleSelection() {
   }
 }
 
+// Gestione del form di registrazione
 function initRegistration() {
     const btnReg = $("#btn-do-register");
     const btnCancel = $("#btn-cancel-register");
     const roleSelect = $("#reg-role");
     const stageNameWrapper = $("#reg-stage-name-wrapper");
 
+    // Mostra il campo "Nome d'arte" solo se si seleziona "Compositore"
     if(roleSelect) {
         roleSelect.addEventListener("change", () => {
             if(roleSelect.value === "composer") {
@@ -260,7 +304,6 @@ function initRegistration() {
 
     if(btnCancel) {
         btnCancel.onclick = () => {
-            // FIX ANIMAZIONE: Resetta pendingRole per far ripartire le luci
             pendingRole = null;
             hoveredRole = null;
             showView("#view-roles");
@@ -297,7 +340,6 @@ function initRegistration() {
 
                 if(data.success) {
                     showCustomAlert("Registrazione avvenuta con successo! Ora puoi accedere.");
-                    // Anche qui, resetta il ruolo pendente per ripristinare le luci
                     pendingRole = null;
                     showView("#view-roles");
                 } else {
@@ -314,6 +356,7 @@ function initRegistration() {
     }
 }
 
+// Finalizza il processo di autenticazione e porta alla Dashboard (page 2)
 function completeAuth() {
     const authModal = $("#auth-modal");
     authModal.classList.add("modal--hidden");
@@ -322,17 +365,20 @@ function completeAuth() {
     state.orgRevenue = 0;
     showView("#view-welcome");
     initWelcome();
-    initUserProfile(); // Inizializza pulsante profilo e logica
+    initUserProfile(); // Inizializza il bottone profilo nell'header
 }
 
-// ============================================================================
-// NUOVA LOGICA PROFILO UTENTE
-// ============================================================================
+/* PROFILO UTENTE E STATISTICHE
+   
+   Gestisce la visualizzazione dei dati utente, il caricamento asincrono
+   delle statistiche e la modifica delle credenziali.
+ */
+
 function initUserProfile() {
     const btnProfile = $("#btn-user-profile");
     if(!btnProfile) return;
 
-    // Mostra il pulsante solo se c'è un utente loggato (non ospite)
+    // Mostra il pulsante solo se l'utente è loggato (non ospite)
     if(state.user && state.user.username) {
         btnProfile.classList.remove("hidden");
     } else {
@@ -345,7 +391,6 @@ function initUserProfile() {
         populateProfileView();
     };
 
-    // Bottone Indietro in Profilo
     const btnBackProfile = $("#btn-profile-back");
     if(btnBackProfile) {
         btnBackProfile.onclick = () => {
@@ -353,7 +398,7 @@ function initUserProfile() {
         };
     }
 
-    // Gestione Tabs
+    // Gestione Tabs (Stats, History, Settings)
     const tabs = document.querySelectorAll(".tab-btn");
     tabs.forEach(t => {
         t.onclick = () => {
@@ -367,7 +412,7 @@ function initUserProfile() {
         };
     });
 
-    // Azione Salva Modifiche
+    // Salvataggio Modifiche Profilo
     const btnSave = $("#btn-save-profile");
     if(btnSave) {
         btnSave.onclick = async () => {
@@ -418,7 +463,7 @@ function initUserProfile() {
         };
     }
 
-    // Azione Elimina Account
+    // Cancellazione Account (Irreversibile)
     const btnDel = $("#btn-delete-account");
     if(btnDel) {
         btnDel.onclick = async () => {
@@ -437,8 +482,8 @@ function initUserProfile() {
                     if(data.success) {
                         state.role = null;
                         state.user = null;
-                        sessionReset(); // Pulisce sessione se attiva
-                        window.location.reload(); 
+                        sessionReset(); // Pulisce lo stato
+                        window.location.reload(); // Ricarica la pagina da zero
                     } else {
                         showCustomAlert("Errore eliminazione: " + data.error);
                         btnDel.textContent = "Elimina Account";
@@ -454,6 +499,8 @@ function initUserProfile() {
     }
 }
 
+// Caricamento dati asincrono per la vista profilo
+// Usa endpoint separati per statistiche e storico sessioni
 async function populateProfileView() {
     console.log("🔄 populateProfileView avviato...");
     if(!state.user) {
@@ -461,21 +508,20 @@ async function populateProfileView() {
         return;
     }
     
+    // UI Setup
     $("#profile-username-display").textContent = state.user.username;
     
-    // Mappa Ruoli
     const roleMap = { 'user': 'Utente Base', 'composer': 'Compositore', 'org': 'Organizzatore', 'band': 'Band' };
     $("#profile-role-display").textContent = roleMap[state.user.role] || state.user.role.toUpperCase();
 
-    // RIFERIMENTI DOM
     const tracksContainer = document.querySelector(".mock-bar-chart");
     const historyList = document.querySelector(".history-list-mockup");
 
-    // PULIZIA PREVENTIVA (Così non vedi i dati vecchi/finti)
+    // Placeholder di caricamento
     if(tracksContainer) tracksContainer.innerHTML = "<div style='padding:10px; opacity:0.6;'>Caricamento stats...</div>";
     if(historyList) historyList.innerHTML = "<div style='padding:10px; opacity:0.6;'>Caricamento storico...</div>";
 
-    // 1. FETCH STATISTICHE
+    // 1. FETCH STATISTICHE (KPI + Top Tracks)
     try {
         console.log("📡 Fetching /api/user_profile_stats...");
         const resStats = await fetch("/api/user_profile_stats");
@@ -483,15 +529,14 @@ async function populateProfileView() {
         const stats = await resStats.json();
         console.log("✅ Stats ricevute:", stats);
         
-        // Cards
         $("#mock-sessions-count").textContent = stats.total_sessions || 0;
         $("#mock-songs-count").textContent = stats.total_songs || 0;
         $("#mock-top-artist").textContent = stats.top_artist || "—";
         
-        // Top Tracks List
         if(tracksContainer) {
             tracksContainer.innerHTML = ""; 
             if(stats.top_tracks && stats.top_tracks.length > 0) {
+                // Costruisci le barre percentuali
                 stats.top_tracks.forEach((t, idx) => {
                     const maxPlays = stats.top_tracks[0].play_count;
                     const percent = Math.round((t.play_count / maxPlays) * 100);
@@ -519,7 +564,7 @@ async function populateProfileView() {
         if(tracksContainer) tracksContainer.innerHTML = "<span style='color:#f87171'>Errore caricamento dati.</span>";
     }
 
-    // 2. FETCH STORICO
+    // 2. FETCH STORICO SESSIONI
     try {
         console.log("📡 Fetching /api/user_session_history...");
         const resHist = await fetch("/api/user_session_history");
@@ -529,7 +574,6 @@ async function populateProfileView() {
         if(historyList) {
             historyList.innerHTML = ""; 
             
-            // Filtro client-side di sicurezza (anche se il backend lo fa già)
             const validSessions = (dataHist.history || []).filter(s => s.song_count > 0);
 
             if(validSessions.length > 0) {
@@ -560,7 +604,8 @@ async function populateProfileView() {
     }
 }
 
-
+// Inizializzazione Dashboard Compositore (Vista Grafici)
+// Calcola trend mensili e disegna il grafico con Chart.js
 async function initComposerDashboard() {
   let currentStageName = state.stage_name;
   if (!currentStageName) {
@@ -569,15 +614,16 @@ async function initComposerDashboard() {
           const u = JSON.parse(storedUser);
           currentStageName = u.stage_name || u.username;
       } else {
-          currentStageName = "Vasco Rossi";
+          currentStageName = "Vasco Rossi"; // Demo fallback
       }
   }
 
+  // Reset UI
   $("#comp-total-plays").textContent = "...";
   $("#comp-est-revenue").textContent = "...";
   const trendEl = document.getElementById("comp-trend-plays");
   if(trendEl) trendEl.innerHTML = `<span style="opacity:0.5">Calcolo...</span>`;
-  
+   
   try {
       const res = await fetch("/api/composer_stats", {
           method: "POST",
@@ -588,12 +634,14 @@ async function initComposerDashboard() {
       const data = await res.json();
       if(data.error) throw new Error(data.error);
 
+      // Statistiche Compositore
       const totalPlays = data.total_plays || 0;
       $("#comp-total-plays").textContent = totalPlays;
       
       const realRevenue = data.total_revenue || 0.0;
       $("#comp-est-revenue").textContent = formatMoney(realRevenue);
 
+      // Calcolo Trend Mensile
       const today = new Date();
       const currentKey = `${today.getFullYear()}-${pad2(today.getMonth()+1)}`;
       const prevDate = new Date(today.getFullYear(), today.getMonth() - 1, 1);
@@ -618,14 +666,13 @@ async function initComposerDashboard() {
       
       if(trendEl) trendEl.innerHTML = trendHtml;
 
-      // POPOLIAMO LA NUOVA LISTA SCORRIBILE (TABELLA)
+      // Popolazione Tabella Brani Top
       const statList = document.querySelector(".stat-list");
       if(statList) {
           statList.innerHTML = "";
           if(data.top_tracks && data.top_tracks.length > 0) {
               data.top_tracks.forEach(t => {
                   const li = document.createElement("li");
-                  // Layout stile griglia per allinearsi con l'header
                   li.style.display = "grid";
                   li.style.gridTemplateColumns = "2fr 1fr";
                   li.style.padding = "10px 14px";
@@ -638,6 +685,7 @@ async function initComposerDashboard() {
           }
       }
 
+      // Configurazione e Rendering Chart.js
       const ctx = document.getElementById('composerChart');
       if(ctx && window.Chart) {
         if(window.compChartInstance) window.compChartInstance.destroy();
@@ -645,6 +693,7 @@ async function initComposerDashboard() {
         const labels = [];
         const chartData = [];
         
+        // Ultime 6 mensilità
         for(let i=5; i>=0; i--) {
             const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
             const key = `${d.getFullYear()}-${pad2(d.getMonth()+1)}`;
@@ -691,29 +740,34 @@ async function initComposerDashboard() {
   }
 }
 
-// ============================================================================
-// LOGICA SESSIONE
-// ============================================================================
+/* LOGICA SESSIONE LIVE E PLAYLIST
+   
+   Questa parte gestisce il cuore dell'applicazione:
+   1. Avvio/Stop della registrazione audio (chiamate al backend Python)
+   2. Polling continuo per ottenere i brani rilevati
+   3. Aggiornamento in tempo reale della UI (Log e Sfondo)
+ */
+
+// Aggiorna l'header con il nome della modalità o dell'incasso (per Org)
 function hydrateSessionHeader() {
   const badge = $("#mode-badge");
   const revInputContainer = $("#org-revenue-input-container");
   const revDisplay = $("#org-revenue-display");
   const btnStart = $("#btn-session-start");
-  
+   
   if (!badge) return;
 
   if (state.mode === "band") {
-    const artistName = state.bandArtist ? state.bandArtist.toUpperCase() : "";
-    // MODIFICA: Trattino al posto dei due punti
-    badge.textContent = artistName ? `LIVE BAND - ${artistName}` : "LIVE BAND";
+    // MODIFICA: Rimosso nome artista per Live Band, testo fisso
+    badge.textContent = "LIVE BAND";
   } else if (state.mode === "concert") {
     const artistName = state.concertArtist ? state.concertArtist.toUpperCase() : "";
-    // MODIFICA: Trattino al posto dei due punti
     badge.textContent = artistName ? `CONCERTO - ${artistName}` : "CONCERTO";
   } else {
     badge.textContent = "SESSIONE";
   }
 
+  // Se l'utente è un Organizzatore, gestisce la logica di inserimento incasso
   if (state.role === "org") {
       if(!state.orgRevenueConfirmed) {
           revInputContainer.classList.remove("hidden");
@@ -749,6 +803,7 @@ function setNow(title, composer) {
   if (compEl) compEl.textContent = composer || "—";
 }
 
+// Aggiunge una riga al log visivo (append in cima alla lista)
 function pushLog({ id, index, title, composer, artist, cover }) {
   const row = document.createElement("div");
   row.className = "log-row";
@@ -767,6 +822,7 @@ function pushLog({ id, index, title, composer, artist, cover }) {
   $("#live-log").prepend(row);
 }
 
+// Timer: Gestione start, stop e reset del cronometro
 function startSessionTimer() {
   if (sessionTick) return;
   sessionStartMs = Date.now();
@@ -793,10 +849,12 @@ function resetSessionTimer() {
   if (el) el.textContent = "00:00";
 }
 
+// Gestione Stack UNDO (Ctrl+Z)
+// Salva uno snapshot dell'intera lista brani prima di ogni modifica distruttiva
 function pushUndoState() {
   const snapshot = JSON.parse(JSON.stringify(songs));
   undoStack.push(snapshot);
-  if (undoStack.length > 5) undoStack.shift();
+  if (undoStack.length > 5) undoStack.shift(); // Max 5 step
   updateUndoButton();
 }
 
@@ -812,10 +870,11 @@ function undoLast() {
   updateUndoButton();
 }
 
+// Chiamata API per avviare il processo Python di ascolto
 async function startBackendRecognition() {
   const body = {};
   if (state.mode === "concert" && state.concertArtist) body.targetArtist = state.concertArtist;
-  else if (state.mode === "band" && state.bandArtist) body.targetArtist = state.bandArtist;
+  // MODIFICA: Rimosso invio bandArtist poiché rimosso
 
   try {
     await fetch("/api/start_recognition", {
@@ -832,23 +891,25 @@ async function stopBackendRecognition() {
   } catch (err) { console.error(err); }
 }
 
+// Aggiorna lo sfondo radiale con l'ultima copertina trovata
 function updateBackground(url) {
+    // MODIFICA: Funzionalità rimossa. Manteniamo lo sfondo di default.
+    // Forziamo l'overlay dinamico a rimanere nascosto.
     const bgEl = document.getElementById("app-background");
     if (!bgEl) return;
-    if (url) {
-        const img = new Image();
-        img.src = url;
-        img.onload = () => {
-            bgEl.style.backgroundImage = `url('${url}')`;
-            bgEl.style.opacity = "1";
-        };
-    } else {
-        bgEl.style.opacity = "0";
-    }
+    
+    // Resetta eventuali stili precedenti e nasconde il layer
+    bgEl.style.opacity = "0";
+    bgEl.style.backgroundImage = "none";
 }
 
+//  FUNZIONALITà PRINCIPALE
+// Funzione di Polling: Richiede al server lo stato della playlist ogni X secondi.
+// Esegue un "update" intelligente tra i dati locali e quelli remoti per evitare
+// di sovrascrivere modifiche manuali.
 async function pollPlaylistOnce() {
   try {
+    // timestamp per evitare cache browser
     const res = await fetch("/api/get_playlist?t=" + Date.now());
     if (!res.ok) return;
     const data = await res.json();
@@ -863,6 +924,7 @@ async function pollPlaylistOnce() {
       const isDeleted = song.is_deleted;
 
       if (!existing) {
+        // Nuovo brano rilevato dal server!
         const track = {
           id, order: songs.length + 1,
           title: song.title || "Titolo sconosciuto",
@@ -878,12 +940,14 @@ async function pollPlaylistOnce() {
         };
         songs.push(track);
 
+        // Se è nuovo e non cancellato, aggiorniamo il log a schermo
         if (!isDeleted && id > lastMaxSongId) {
             currentSongId = track.id;
             setNow(track.title, track.composer);
             pushLog({ id: track.id, index: track.order, title: track.title, composer: track.composer, artist: track.artist, cover: track.cover });
         }
       } else {
+        // Brano già esistente: aggiorniamo i metadati se il server li ha raffinati
         if (song.composer && song.composer !== existing.composer) {
             existing.composer = song.composer;
             const rowEl = document.querySelector(`.log-row[data-id="${id}"] .col-composer`);
@@ -893,6 +957,7 @@ async function pollPlaylistOnce() {
         if (song.original_composer && song.original_composer !== existing.original_composer) {
             existing.original_composer = song.original_composer;
         }
+        // Aggiorniamo titoli solo se non sono stati confermati manualmente
         if (!existing.confirmed) {
             existing.title = song.title || existing.title;
             existing.artist = song.artist || existing.artist;
@@ -905,14 +970,17 @@ async function pollPlaylistOnce() {
     });
 
     lastMaxSongId = maxIdSeen;
+     
+    // Aggiornamento sfondo con l'ultima cover disponibile
     const activeSongs = songs.filter(s => !s.is_deleted);
     const lastSongWithCover = [...activeSongs].reverse().find(s => s.cover);
-    
+     
     if (lastSongWithCover && lastSongWithCover.cover !== currentCoverUrl) {
         currentCoverUrl = lastSongWithCover.cover;
         updateBackground(currentCoverUrl);
     }
 
+    // Se siamo nella vista Review, ridisegniamo la tabella
     if (updatedExisting && state.route === "review") renderReview();
   } catch (err) { console.error(err); }
 }
@@ -920,7 +988,7 @@ async function pollPlaylistOnce() {
 function startPlaylistPolling() {
   if (playlistPollInterval) return;
   pollPlaylistOnce();
-  playlistPollInterval = setInterval(pollPlaylistOnce, 2000);
+  playlistPollInterval = setInterval(pollPlaylistOnce, 2000); // 2 secondi
 }
 
 function stopPlaylistPolling() {
@@ -929,23 +997,26 @@ function stopPlaylistPolling() {
   playlistPollInterval = null;
 }
 
+// Avvio sessione: Attiva tutti i listener e timer
 async function sessionStart() {
   showView("#view-session");
   hydrateSessionHeader();
   const btnStart = $("#btn-session-start");
   const btnPause = $("#btn-session-pause");
   const btnStop = $("#btn-session-stop");
-  
+   
   if (btnStart) btnStart.disabled = true;
   if (btnPause) btnPause.disabled = false;
   if (btnStop) btnStop.disabled = false;
 
+  // Attiva l'animazione pulsante del LED
   const led = $(".led-rect");
   if(led) {
       led.classList.remove("led-paused", "led-fading-out");
       led.classList.add("led-active");
   }
 
+  // Se non è un ripristino post-crash, cancella (reset) i dati vecchi
   if (!explicitRestore) {
       try {
           await fetch("/api/reset_session", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) });
@@ -964,7 +1035,7 @@ async function sessionPause() {
   const btnStart = $("#btn-session-start");
   const btnPause = $("#btn-session-pause");
   const btnStop = $("#btn-session-stop");
-  
+   
   if (btnStart) btnStart.disabled = false;
   if (btnPause) btnPause.disabled = true;
   if (btnStop) btnStop.disabled = false;
@@ -977,11 +1048,12 @@ async function sessionPause() {
   stopPlaylistPolling();
 }
 
+// Stop sessione: Ferma tutto e porta alla vista di Revisione
 async function sessionStop() {
   const btnStart = $("#btn-session-start");
   const btnPause = $("#btn-session-pause");
   const btnStop = $("#btn-session-stop");
-  
+   
   if (btnStart) btnStart.disabled = false;
   if (btnPause) btnPause.disabled = true;
   if (btnStop) btnStop.disabled = true;
@@ -992,13 +1064,15 @@ async function sessionStop() {
   pauseSessionTimer();
   await stopBackendRecognition();
   stopPlaylistPolling();
-  await pollPlaylistOnce();
+  await pollPlaylistOnce(); // Ultimo fetch di sicurezza
   resetSessionTimer();
+   
   currentSongId = null;
   setNow("In ascolto", "—");
   currentCoverUrl = null;
   updateBackground(null);
   undoStack = [];
+   
   renderReview();
   showView("#view-review");
 }
@@ -1008,11 +1082,11 @@ async function sessionReset() {
   stopPlaylistPolling();
   pauseSessionTimer();
   resetSessionTimer();
-  
+   
   try {
     await fetch("/api/reset_session", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) });
   } catch (err) { console.error(err); }
-  
+   
   localStorage.removeItem("appMode");
   localStorage.removeItem("concertArtist");
   localStorage.removeItem("bandArtist");
@@ -1025,7 +1099,7 @@ async function sessionReset() {
   lastMaxSongId = 0;
   currentCoverUrl = null;
   updateBackground(null);
-  
+   
   state.orgRevenue = 0;
   state.orgRevenueConfirmed = false;
   explicitRestore = false;
@@ -1033,7 +1107,7 @@ async function sessionReset() {
   const btnStart = $("#btn-session-start");
   const btnPause = $("#btn-session-pause");
   const btnStop = $("#btn-session-stop");
-  
+   
   if (btnStart) btnStart.disabled = false;
   if (btnPause) btnPause.disabled = true;
   if (btnStop) btnStop.disabled = true;
@@ -1048,6 +1122,7 @@ async function sessionReset() {
   hydrateSessionHeader();
 }
 
+// Rendering della Tabella di Revisione (Page 4)
 function renderReview() {
   const container = $("#review-rows");
   const template = $("#review-row-template");
@@ -1059,6 +1134,7 @@ function renderReview() {
 
   container.innerHTML = "";
   const activeSongs = songs.filter(s => !s.is_deleted);
+   
   let allConfirmed = activeSongs.length > 0;
   if (activeSongs.length === 0) allConfirmed = false;
 
@@ -1066,21 +1142,24 @@ function renderReview() {
     if (typeof song.confirmed !== "boolean") song.confirmed = false;
     if (!song.confirmed) allConfirmed = false;
 
+    // Clona il template HTML per ogni riga
     const node = template.content.firstElementChild.cloneNode(true);
     node.querySelector(".review-index").textContent = visualIndex + 1;
-    
+     
     const inputComposer = node.querySelector('[data-field="composer"]');
     const inputTitle = node.querySelector('[data-field="title"]');
     inputComposer.value = song.composer || "";
     inputTitle.value = song.title || "";
-    
+     
     if (song.manual) node.classList.add("row--manual");
+    // Se confermato, blocca input e cambia stile
     if(song.confirmed) {
         inputComposer.readOnly = true;
         inputTitle.readOnly = true;
         node.classList.add("row--confirmed");
     }
 
+    // Listener per sbloccare la riga cliccando
     const unlockHandler = () => {
         if(song.confirmed) {
             song.confirmed = false;
@@ -1090,12 +1169,9 @@ function renderReview() {
     inputComposer.onclick = unlockHandler;
     inputTitle.onclick = unlockHandler;
 
-    // GESTIONE ENTER PER CONFERMARE LA RIGA
     const enterHandler = (e) => {
         if(e.key === "Enter") {
-            // Triggera il click sul bottone conferma della riga corrente
             node.querySelector(".btn-confirm").click();
-            // Rimuove il focus per evitare doppi invii
             e.target.blur();
         }
     };
@@ -1106,6 +1182,7 @@ function renderReview() {
     btn24.classList.remove("hidden");
     btn24.onclick = () => { openRoyaltiesView(song); };
 
+    // Azione Conferma
     node.querySelector(".btn-confirm").addEventListener("click", (e) => {
         e.preventDefault();
         pushUndoState();
@@ -1115,18 +1192,21 @@ function renderReview() {
         renderReview();
     });
 
+    // Azione Elimina
     node.querySelector(".btn-delete").addEventListener("click", async (e) => {
         e.preventDefault();
         if(await showConfirm("Sei sicuro?")) {
             pushUndoState();
             song.is_deleted = true;
             try {
+                // Notifica al backend la cancellazione (opzionale)
                 await fetch("/api/delete_song", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: song.id }) });
             } catch(err){console.error(err);}
             renderReview();
         }
     });
 
+    // Azione Aggiungi riga manuale
     node.querySelector(".btn-add").addEventListener("click", (e) => {
         e.preventDefault();
         pushUndoState();
@@ -1138,12 +1218,11 @@ function renderReview() {
 
     container.appendChild(node);
   });
-  
+   
+  // Abilitazione bottoni export solo se tutto è confermato
   const enableGlobalActions = (activeSongs.length > 0) && allConfirmed;
-  
   btnGenerate.disabled = !enableGlobalActions;
-  
-  // GESTIONE BOTTONI PAGAMENTO vs RIPARTIZIONI
+   
   if(state.role === 'org') {
       if(btnPayments) {
           btnPayments.classList.remove("hidden");
@@ -1154,7 +1233,6 @@ function renderReview() {
       if(btnPayments) btnPayments.classList.add("hidden");
       if(btnSplits) {
           btnSplits.classList.remove("hidden");
-          // Abilitato sempre o solo se confermati? Solitamente se confermati.
           btnSplits.disabled = !enableGlobalActions;
       }
   }
@@ -1163,6 +1241,7 @@ function renderReview() {
   syncReviewNotes();
 }
 
+// Vista Dettaglio Brano (Calcolo 24esimi)
 function openRoyaltiesView(song) {
     state.currentRoyaltySong = song;
     showView("#view-royalties");
@@ -1180,6 +1259,7 @@ function openRoyaltiesView(song) {
         }
     }
     
+    // Calcolo stimato quota: 10% del totale diviso per numero brani (Logica semplificata)
     if(boxQuota) {
         if(isOrg) {
             boxQuota.classList.remove("hidden");
@@ -1212,6 +1292,7 @@ function openRoyaltiesView(song) {
     }
     
     composers.forEach((comp, i) => {
+        // Distribuisci il resto al primo compositore
         const myShare = share + (i === 0 ? remainder : 0);
         let amountText = "";
         
@@ -1234,33 +1315,32 @@ function openRoyaltiesView(song) {
     });
 }
 
+// Inizializza pulsanti vista Pagamenti
 function initGlobalPayments() {
   const btnPayments = $("#btn-global-payments");
   const btnSplits = $("#btn-global-splits");
   const btnBack = $("#btn-back-from-payments");
   const btnHome = $("#btn-home-restart");
-  
+   
   if(btnPayments) {
     btnPayments.onclick = async () => {
         if(state.role !== 'org') return;
 
-        // 1. Controllo di sicurezza: c'è l'incasso?
         if (!state.orgRevenue || state.orgRevenue <= 0) {
             showCustomAlert("Attenzione: Incasso non inserito o pari a zero.");
             return;
         }
 
-        // 2. Chiediamo conferma esplicita (Punto di non ritorno)
         if (!await showConfirm("Confermi il borderò? Questa azione distribuirà le royalties ai compositori.")) {
             return;
         }
 
-        // 3. INVIO ROYALTIES (Spostato qui)
         try {
             const originalText = btnPayments.textContent;
             btnPayments.textContent = "Elaborazione...";
             btnPayments.disabled = true;
 
+            // Invia conferma pagamento al backend
             const res = await fetch("/api/finalize_revenue", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -1272,14 +1352,11 @@ function initGlobalPayments() {
                 showCustomAlert("✅ Royalties distribuite con successo!");
                 calculateAndShowPayments(true);
                 showView("#view-payments");
-                // Opzionale: disabilita il tasto per questa sessione di pagina
                 btnPayments.disabled = true; 
                 btnPayments.textContent = "Pagamento Completato";
             } else {
-                // Gestione messaggio "Già pagato"
                 if (data.message && data.message.includes("già stata pagata")) {
                     showCustomAlert("ℹ️ " + data.message);
-                    // Portalo comunque alla vista pagamenti per vedere il riepilogo
                     calculateAndShowPayments(true);
                     showView("#view-payments");
                 } else {
@@ -1295,22 +1372,20 @@ function initGlobalPayments() {
         }
     };
   }
-  
-  // NUOVO LISTENER PER LE RIPARTIZIONI UTENTE/COMPOSITORE
+   
   if(btnSplits) {
       btnSplits.onclick = () => {
-          calculateAndShowPayments(false); // false = sola visualizzazione
+          calculateAndShowPayments(false); 
           showView("#view-payments");
       };
   }
 
   if(btnBack) btnBack.onclick = () => showView("#view-review");
 
-  // LISTENER TASTO HOME (RESET COMPLETO)
   if(btnHome) {
       btnHome.onclick = async () => {
           if(await showConfirm("Tornare alla Home e terminare sessione?")) {
-              await sessionReset(); // Resetta DB, Timer, Stop Polling
+              await sessionReset(); 
               state.role = null;
               state.mode = null;
               state.user = null;
@@ -1322,33 +1397,30 @@ function initGlobalPayments() {
   }
 }
 
-// Parametro showPayActions controlla se mostrare i bottoni "Paga"
+// Calcolo ripartizione totale e grafico a torta
 function calculateAndShowPayments(showPayActions) {
   const listContainer = $("#global-payment-rows");
   const totalDisplay = $("#total-distributed-amount");
   const headerAction = $("#header-pay-action");
-  
+   
   if(!listContainer) return;
   listContainer.innerHTML = "";
-  
-  // Nascondi o mostra la colonna "Azione" nell'header
+   
   if(headerAction) {
       headerAction.style.display = showPayActions ? "block" : "none";
   }
 
   const activeSongs = songs.filter(s => !s.is_deleted);
-  
-  // LOGICA "TOTAL SPLITS" PER UTENTI/COMPOSITORI:
+   
   const isOrg = (state.role === 'org');
   let potPerSong = 0;
-  
+   
   if (isOrg) {
      potPerSong = (state.orgRevenue * 0.10) / (activeSongs.length || 1);
   } else {
-     // Modalità "Percentuale pura": ogni canzone contribuisce con un peso uniforme
      potPerSong = 1.0;
   }
-  
+   
   let composerTotals = {};
   let globalSum = 0;
 
@@ -1414,14 +1486,15 @@ function calculateAndShowPayments(showPayActions) {
          totalDisplay.textContent = formatMoney(globalSum);
          totalDisplay.parentNode.style.display = "flex";
       } else {
-         totalDisplay.textContent = "100%"; // Totale percentuale
+         totalDisplay.textContent = "100%"; 
          totalDisplay.parentNode.style.display = "flex";
       }
   }
-  
+   
   renderPaymentChart(chartLabels, chartData, chartColors, isOrg);
 }
 
+// Renderizza il grafico a ciambella usando Chart.js
 let paymentChartInstance = null;
 function renderPaymentChart(labels, data, colors, isCurrency) {
   const ctx = document.getElementById('paymentsChart');
@@ -1444,13 +1517,10 @@ function renderPaymentChart(labels, data, colors, isCurrency) {
                   label: function(context) {
                       let label = context.label || '';
                       if (label) { label += ': '; }
-                      
+                       
                       if (isCurrency) {
-                           // Formattazione Valuta per Organizzatore
                            label += new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' }).format(context.raw);
                       } else {
-                           // Formattazione Percentuale per altri ruoli
-                           // Calcola la somma totale del dataset per derivare la percentuale
                            let sum = context.chart._metasets[context.datasetIndex].total;
                            let val = context.raw;
                            let percentage = (val * 100 / sum).toFixed(1) + "%";
@@ -1465,6 +1535,7 @@ function renderPaymentChart(labels, data, colors, isCurrency) {
   });
 }
 
+// Aggiorna lo stato dei selettori (Card) nella pagina 2
 function syncWelcomeModeRadios() {
   document.querySelectorAll(".mode-card").forEach((card) => card.classList.remove("mode-card--selected", "active"));
   document.querySelectorAll(".artist-input-wrapper").forEach(w => w.classList.remove("visible"));
@@ -1475,7 +1546,7 @@ function syncWelcomeModeRadios() {
 
     if (state.mode === "band") {
       $("#bandArtistWrapper").classList.add("visible");
-      if($("#bandArtistInput")) $("#bandArtistInput").value = state.bandArtist || "";
+      // Rimossa gestione bandArtistInput
     } else if (state.mode === "concert") {
       $("#artistInputWrapper").classList.add("visible");
       if($("#artistInput")) $("#artistInput").value = state.concertArtist || "";
@@ -1483,14 +1554,16 @@ function syncWelcomeModeRadios() {
   }
 }
 
+// Inizializza logica pagina 2
 function initWelcome() {
   state.mode = null;
   applyTheme();
   syncWelcomeModeRadios();
-  
+   
   const grid = $("#welcome-grid");
   const statCard = $("#card-stats");
-  
+   
+  // Mostra card statistiche solo se compositore
   if (state.role === "composer") {
       statCard.classList.remove("hidden");
       grid.classList.add("mode-grid--composer");
@@ -1514,7 +1587,7 @@ function initWelcome() {
       }
     });
   });
-  
+   
   const statsBtn = $("#statsConfirmBtn");
   if(statsBtn) {
       statsBtn.onclick = (e) => {
@@ -1532,22 +1605,19 @@ function initWelcome() {
   const btnBackRoles = $("#btn-back-roles");
   if(btnBackRoles) {
       btnBackRoles.onclick = async () => {
-          // 1. Logout Backend
           try {
              await fetch("/api/logout", { method: "POST" });
           } catch(e) { console.error(e); }
 
-          // 2. Reset Totale Stato Frontend
           state.role = null; 
           state.mode = null; 
-          state.user = null; // IMPORTANTE: Resetta l'utente
+          state.user = null; 
           state.stage_name = "";
           
           explicitRestore = false;
           hoveredRole = null; 
           pendingRole = null;
 
-          // 3. Torna alla vista ruoli
           showView("#view-roles");
       };
   }
@@ -1571,31 +1641,26 @@ function initWelcome() {
     goToSession();
   };
 
+  // MODIFICA: confirmBand semplificato, non cerca più input
   const confirmBand = () => {
-    const name = $("#bandArtistInput") ? $("#bandArtistInput").value.trim() : "";
-    state.bandArtist = name;
     saveStateToLocal();
-    triggerBackendPrefetch(name);
+    triggerBackendPrefetch(null);
     goToSession();
   };
 
   $("#artistConfirmBtn").onclick = (e) => { e.preventDefault(); confirmArtist(); };
   $("#bandConfirmBtn").onclick = (e) => { e.preventDefault(); confirmBand(); };
 
-  // ENTER KEY LISTENER per i campi input in Page 2
   const artInput = $("#artistInput");
   if(artInput) {
       artInput.addEventListener("keyup", (e) => {
           if(e.key === "Enter") confirmArtist();
       });
   }
-  const bandInput = $("#bandArtistInput");
-  if(bandInput) {
-      bandInput.addEventListener("keyup", (e) => {
-          if(e.key === "Enter") confirmBand();
-      });
-  }
+  
+  // Rimosso listener per bandArtistInput
 
+  // Gestione pulsante "Recupera Sessione" (in caso di crash browser)
   const btnRestore = $("#btn-manual-restore");
   if(btnRestore) {
       btnRestore.onclick = async (e) => {
@@ -1628,7 +1693,7 @@ function initWelcome() {
             if (savedMode) {
                   state.mode = savedMode;
                   state.concertArtist = localStorage.getItem("concertArtist") || "";
-                  state.bandArtist = localStorage.getItem("bandArtist") || "";
+                  // bandArtist rimosso
             } else {
                   state.mode = "band";
             }
@@ -1647,6 +1712,7 @@ function initWelcome() {
   }
 }
 
+// Download Report (Excel/PDF/Raw)
 async function downloadExport(uiType) {
   let songsPayload = songs;
   if (uiType !== 'raw') {
@@ -1658,11 +1724,12 @@ async function downloadExport(uiType) {
   let backendFormat = "excel";
   if (uiType === 'pdf') backendFormat = "pdf_official";
   else if (uiType === 'raw') backendFormat = "pdf_raw";
-  
+   
   const payload = {
       songs: songsPayload,
       mode: state.mode || "session",
-      artist: (state.mode === 'concert' ? state.concertArtist : state.bandArtist) || "Sconosciuto",
+      // MODIFICA: Rimosso bandArtist, usa "Live Band" o concertArtist
+      artist: (state.mode === 'concert' ? state.concertArtist : "Live Band") || "Sconosciuto",
       format: backendFormat
   };
 
@@ -1678,6 +1745,7 @@ async function downloadExport(uiType) {
 
       if (!res.ok) throw new Error("Errore durante l'export");
 
+      // Creazione Blob e link fittizio per download automatico
       const blob = await res.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -1705,16 +1773,17 @@ async function downloadExport(uiType) {
   }
 }
 
+// Collega listener a tutti i bottoni della sessione
 function wireSessionButtons() {
   $("#btn-session-start").onclick = (e) => { e.preventDefault(); sessionStart(); };
-  
+   
   $("#btn-session-pause").onclick = (e) => {
       e.preventDefault();
       sessionPause();
       const led = $(".led-rect");
       if(led) led.classList.add("led-paused");
   };
-  
+   
   $("#btn-session-stop").onclick = async (e) => {
     e.preventDefault();
     const led = $(".led-rect");
@@ -1731,17 +1800,15 @@ function wireSessionButtons() {
     if(await showConfirm("Resettare tutto?")) sessionReset();
   };
 
-  // NUOVO TASTO BACK IN SESSIONE
   const btnSessionBack = $("#btn-session-back");
   if(btnSessionBack) {
       btnSessionBack.onclick = async () => {
-          // Opzionale: chiedi conferma se la sessione è attiva, oppure torna e basta
           showView("#view-welcome");
       };
   }
-  
+   
   $("#btn-undo").onclick = (e) => { e.preventDefault(); undoLast(); };
-  
+   
   const btnBackReview = $("#btn-back-review");
   if(btnBackReview) { btnBackReview.onclick = () => showView("#view-review"); }
 
@@ -1761,8 +1828,7 @@ function wireSessionButtons() {
   if(btnConfirmRev) {
       btnConfirmRev.onclick = confirmRevenue;
   }
-  
-  // Enter key su revenue input
+   
   const revInput = $("#session-revenue-input");
   if(revInput) {
       revInput.addEventListener("keyup", (e) => {
@@ -1772,13 +1838,13 @@ function wireSessionButtons() {
 
   $("#btn-session-notes").onclick = () => openNotesModal("session");
   $("#btn-review-notes").onclick = () => openNotesModal("review");
-  
+   
   $("#notes-cancel").onclick = () => closeNotesModal(false);
   $("#notes-save").onclick = () => closeNotesModal(true);
-  
+   
   const btnGenerate = $("#btn-generate");
   const exportModal = $("#export-modal");
-  
+   
   if (btnGenerate) {
       btnGenerate.onclick = (e) => {
           e.preventDefault();
@@ -1806,7 +1872,7 @@ function openNotesModal(ctx) {
   const ta = $("#notes-textarea");
   const save = $("#notes-save");
   if(!modal) return;
-  
+   
   ta.value = state.notes || "";
   if(ctx === "review") {
     ta.readOnly = true;
@@ -1831,7 +1897,6 @@ async function downloadHistorySession(sessionId) {
     if(!sessionId) return;
     showCustomAlert("Generazione Borderò in corso...");
     
-    // Creiamo un link invisibile per scaricare
     const link = document.createElement('a');
     link.href = `/api/download_history_report?session_id=${sessionId}`;
     link.target = '_blank';
@@ -1840,6 +1905,7 @@ async function downloadHistorySession(sessionId) {
     document.body.removeChild(link);
 }
 
+// Modale Conferma (Promise based)
 function showConfirm(msg) {
   return new Promise((resolve) => {
     const m = $("#confirm-modal");
@@ -1847,7 +1913,7 @@ function showConfirm(msg) {
     m.classList.remove("modal--hidden");
     const ok = $("#confirm-ok");
     const cancel = $("#confirm-cancel");
-    
+     
     function cleanup(res) {
        m.classList.add("modal--hidden");
        ok.removeEventListener("click", onOk);
@@ -1856,22 +1922,26 @@ function showConfirm(msg) {
     }
     function onOk() { cleanup(true); }
     function onCancel() { cleanup(false); }
-    
+     
     ok.addEventListener("click", onOk);
     cancel.addEventListener("click", onCancel);
   });
 }
 
-// ============================================================================
-// ANIMAZIONE PALCO (JS PHYSICS)
-// ============================================================================
+/* ANIMAZIONE "STAGE LIGHTS" (Physics Engine)
+   
+   Questa parte calcola frame-by-frame la posizione dei faretti SVG.
+   Usa un oscillatore sinusoidale smorzato per simulare il movimento fisico.
+ */
+
+// Stato dei faretti interattivi (Selezione Ruoli)
 const lightsState = [
-    // MODIFICA: rx aumentato a 200 per allargare il cono (angolo al vertice aumentato)
     { id: 'left', role: 'user', vertex: { x: 250, y: 150 }, baseY: 680, originalBaseX: 250, originalAmplitude: 150, currentAmp: 150, currentOp: 0.7, phase: 0, speed: 0.8, rx: 200 },
     { id: 'center', role: 'org', vertex: { x: 600, y: 150 }, baseY: 720, originalBaseX: 600, originalAmplitude: 180, currentAmp: 180, currentOp: 1.0, phase: 2, speed: 0.6, rx: 200 },
     { id: 'right', role: 'composer', vertex: { x: 950, y: 150 }, baseY: 680, originalBaseX: 950, originalAmplitude: 150, currentAmp: 150, currentOp: 0.7, phase: 4, speed: 0.75, rx: 200 }
 ];
 
+// Stato dei faretti globali (in overlay)
 const globalLightsState = [
     { id: 'gl-beam-tl', vertex: { x: 0, y: 0 }, baseY: 800, baseX: 500, amp: 120, phase: 0, speed: 0.52 },
     { id: 'gl-beam-tr', vertex: { x: 1920, y: 0 }, baseY: 800, baseX: 1420, amp: 120, phase: 2, speed: 0.46 },
@@ -1880,11 +1950,12 @@ const globalLightsState = [
 ];
 
 function animateStageLights() {
-    const time = Date.now() * 0.00195;
+    const time = Date.now() * 0.00195; // Fattore tempo per la velocità di oscillazione
     const isReviewMode = state.route === 'review';
     const isRegisterMode = state.route === 'register';
     const isProfileMode = state.route === 'profile';
 
+    // 1. Animazione Luci Interattive (Schermata Ruoli)
     lightsState.forEach(light => {
         const beam = document.getElementById(`beam-${light.id}`);
         const spot = document.getElementById(`spot-${light.id}`);
@@ -1893,22 +1964,26 @@ function animateStageLights() {
 
         if (!beam || !spot || !group) return;
 
+        // Logica di dimming: spegni gli altri se uno è selezionato
         let targetAmp = light.originalAmplitude;
         let targetOp = (light.id === 'center') ? 1.0 : 0.7;
         let targetRole = state.role || pendingRole || hoveredRole;
 
         if (targetRole) {
-            targetAmp = 0;
+            targetAmp = 0; // Ferma oscillazione se selezionato
             if (targetRole === light.role) { targetOp = (light.id === 'center') ? 1.0 : 0.7; }
             else { targetOp = 0.0; }
         }
 
         if (isRegisterMode || isProfileMode) { targetAmp = 0; targetOp = 1.0; }
 
+        // Interpolazione (Lerp) per transizioni fluide
         light.currentAmp = lerp(light.currentAmp, targetAmp, 0.05);
         light.currentOp = lerp(light.currentOp, targetOp, 0.05);
 
         group.style.opacity = light.currentOp.toFixed(3);
+        
+        // Calcolo oscillazione sinusoidale
         const sway = Math.sin(time * light.speed + light.phase);
         const offsetX = sway * light.currentAmp;
         
@@ -1919,6 +1994,7 @@ function animateStageLights() {
         spot.setAttribute('cx', currentX);
         spot.setAttribute('rx', currentRx);
 
+        // Disegna il path SVG (curva quadratica per il fondo del cono)
         const xLeft = currentX - currentRx;
         const xRight = currentX + currentRx;
         const curveDepth = 40;
@@ -1928,26 +2004,27 @@ function animateStageLights() {
         if(maskPath) maskPath.setAttribute('d', d);
     });
 
+    // 2. Animazione Luci Globali (Overlay sempre visibile in sessione)
     globalLightsState.forEach(gl => {
         const beam = document.getElementById(gl.id);
         if(!beam) return;
         let currentX;
-        // MODIFICA: Logica speciale per Profile Mode (Luci fisse angolate)
+        // Logica speciale posizionamento luci in base alla vista
         if (isProfileMode) {
-            // Angolo 30° da orizzontale (per le luci basse) -> ~1385 px offset su 800px altezza
-            // Angolo 60° da verticale (per le luci alte) -> ~1385 px offset su 800px altezza
-            
-            if (gl.id === 'gl-beam-tl') currentX = 1385;        // Top Left
-            else if (gl.id === 'gl-beam-tr') currentX = 1920 - 1385; // Top Right (535)
-            else if (gl.id === 'gl-beam-bl') currentX = 1385;   // Bottom Left
-            else if (gl.id === 'gl-beam-br') currentX = 1920 - 1385; // Bottom Right (535)
+            // Posizioni fisse angolate per il profilo
+            if (gl.id === 'gl-beam-tl') currentX = 1385;        
+            else if (gl.id === 'gl-beam-tr') currentX = 1920 - 1385; 
+            else if (gl.id === 'gl-beam-bl') currentX = 1385;    
+            else if (gl.id === 'gl-beam-br') currentX = 1920 - 1385; 
         }
         else if (isReviewMode) {
+            // Posizioni per la revisione
             if (gl.id === 'gl-beam-tl') currentX = 380;
             else if (gl.id === 'gl-beam-tr') currentX = 1540;
             else if (gl.id === 'gl-beam-bl') currentX = 600;
             else if (gl.id === 'gl-beam-br') currentX = 1320;
         } else {
+            // Oscillazione standard
             const sway = Math.sin(time * gl.speed + gl.phase);
             currentX = gl.baseX + (sway * gl.amp);
         }
@@ -1957,15 +2034,15 @@ function animateStageLights() {
         const d = `M${gl.vertex.x},${gl.vertex.y} L${xLeft},${gl.baseY} L${xRight},${gl.baseY} Z`;
         beam.setAttribute('d', d);
     });
+    // Loop
     requestAnimationFrame(animateStageLights);
 }
 
+// Avvio dell'applicazione al caricamento del DOM
 document.addEventListener("DOMContentLoaded", () => {
-  // Wire pulsanti e animazioni
   wireSessionButtons();
   animateStageLights();
 
-  // Inizializzazione standard
   initRoleSelection();
   initGlobalPayments();
   initRegistration();
