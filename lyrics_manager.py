@@ -19,7 +19,7 @@ class LyricsManager:
         self.genius_token = os.getenv("GENIUS_ACCESS_TOKEN")
         self.elevenlabs_key = os.getenv("ELEVENLABS_API_KEY")
 
-         # --- NUOVA LISTA USER-AGENTS (ROTANTE) ---
+         # Rotazione tra user agents per evitare blocchi IP da Genius.
         self.user_agents = [
             'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -34,15 +34,14 @@ class LyricsManager:
                 self.genius_token, 
                 verbose=False,
                 skip_non_songs=True,
-                excluded_terms=["(Remix)", "(Live)", "(Instrumental)", "(Mix)"], # Filtra roba inutile
+                excluded_terms=["(Remix)", "(Live)", "(Instrumental)", "(Mix)"], # Filtro versioni alternative
                 remove_section_headers=True,
                 retries=2,
                 timeout=10,
-                sleep_time=0.1 # Teniamo basso questo, gestiamo noi la pausa
+                sleep_time=0.1
             )
             
             # SELEZIONE RANDOM DELL'AGENTE
-            # Ogni volta che avvii la classe, sembrerai un utente diverso
             chosen_agent = random.choice(self.user_agents)
             print(f"🕵️ [Stealth] User-Agent attivo: {chosen_agent[:30]}...")
             
@@ -58,10 +57,10 @@ class LyricsManager:
         self.current_artist = None
         self.detected_language_code = None
         
-        # 2. PARALLELISMO CAUTO: Usiamo 2 worker (non 4)
-        # 2 thread sono il compromesso giusto: raddoppi la velocità ma sembri ancora "umano" (come due tab aperti)
+        # 2. Limitazione a 2 thread per evitare di sovraccaricare Genius e ridurre il rischio di ban IP.
         self.executor = ThreadPoolExecutor(max_workers=2)
 
+    # Costruzione contesto artista bias
     def update_artist_context(self, artist_name):
         if not artist_name or artist_name == self.current_artist:
             return
@@ -74,6 +73,7 @@ class LyricsManager:
         print(f"📖 [Lyrics] Analisi artista: {artist_name}...")
         self.executor.submit(self._async_lyrics_flow_smart, artist_name)
 
+    # Download testi asincrono
     def _async_lyrics_flow_smart(self, artist_name):
         start_time = time.time()
         try:
@@ -84,13 +84,13 @@ class LyricsManager:
             # Rimuoviamo duplicati o versioni strumentali PRIMA di chiamare Genius
             target_songs = []
             seen_titles = set()
-            for song in all_songs[:50]: # Alziamo leggermente il limite di analisi
+            for song in all_songs[:50]: # Analizziamo 50 canzoni
                 clean = song.lower().split(' - ')[0] # Prendi solo il titolo base
                 if clean not in seen_titles and "instrumental" not in clean and "karaoke" not in clean:
                     target_songs.append(song)
                     seen_titles.add(clean)
             
-            # Limitiamo a 30 brani "buoni" (spesso bastano per identificare l'autore)
+            # Limitiamo a 30 brani "buoni" (lunghezza tipica di un live)
             target_songs = target_songs[:30]
             
             spotify_time = time.time() - start_time
@@ -108,8 +108,7 @@ class LyricsManager:
                 try:
                     success = future.result()
                     if success: count += 1
-                    # Log meno invasivo
-                    if i % 5 == 0: print(f"       [{i}/{total}] ...processing...")
+                    if i % 5 == 0: print(f"       [{i}/{total}] ...processing...") # Log indica il progresso a gruppi di 5
                 except Exception: pass
             
             total_time = time.time() - start_time
@@ -118,6 +117,7 @@ class LyricsManager:
         except Exception as e:
             print(f"❌ [Lyrics] Errore Flow: {e}")
 
+    # Versione SEQUENZIALE più lenta ma più "umana" per fallback o artisti con molti brani.
     def _sync_lyrics_flow(self, artist_name):
         start_time = time.time()
         try:
@@ -154,8 +154,7 @@ class LyricsManager:
                     else:
                         print(f"       [{i}/{total}] ⏩ {song_title} (No testo)")
                     
-                    # SLEEP DINAMICO: Aspetta tra 2 e 5 secondi tra una chiamata e l'altra
-                    # Questo è fondamentale per evitare il ban IP.
+                    # SLEEP DINAMICO: Aspetta tra 2 e 5 secondi tra una chiamata e l'altra (per evitare ban IP)
                     sleep_duration = random.uniform(2.0, 5.0)
                     time.sleep(sleep_duration)
 
@@ -168,12 +167,11 @@ class LyricsManager:
         except Exception as e:
             print(f"❌ [Lyrics] Errore Flow: {e}")
 
+    # Download del singolo testo con approccio "smart" (multithreaded e con filtro pre-Genius)
     def _fetch_single_lyric_smart(self, title, artist):
         if not self.genius: return False
         
         # 4. PAUSA CASUALE "UMANA"
-        # Invece di fermare tutto, ogni thread aspetta un po' prima di partire.
-        # Random tra 1.0 e 3.0 secondi è molto più veloce di prima ma sicuro con lo User-Agent modificato.
         time.sleep(random.uniform(1.0, 3.5)) 
         
         try:
@@ -188,11 +186,11 @@ class LyricsManager:
             pass
         return False
     
+    # Download del singolo testo con approccio "safe" (sequenziale e con sleep più lungo)
     def _fetch_single_lyric_safe(self, title, artist):
         if not self.genius: return False
         try:
             clean_search_title = re.sub(r"\(.*?\)", "", title).strip()
-            # La chiamata qui sotto fa scraping HTML
             song = self.genius.search_song(clean_search_title, artist)
             if song:
                 norm_key = self._normalize_text(song.title)
@@ -203,6 +201,7 @@ class LyricsManager:
             pass
         return False
     
+    # Metodo per rilevare la lingua dominante dei titoli delle canzoni (per migliorare la trascrizione con ElevenLabs Scribe)
     def _detect_dominant_language(self, titles):
         if not titles: return None
         detected_langs = []
@@ -222,6 +221,7 @@ class LyricsManager:
             return iso_map.get(most_common[0][0])
         return None
 
+    # Metodo di fallback per cercare testi direttamente da Genius usando l'API dell'artista (utile se Spotify non restituisce risultati o per artisti con molti brani)
     def _fallback_genius_search(self, artist_name):
         try:
             artist = self.genius.search_artist(artist_name, max_songs=10, sort="popularity")
@@ -236,12 +236,14 @@ class LyricsManager:
         except: pass
 
     # --- ELEVENLABS SCRIBE ---
+    # Metodo principale per trascrivere l'audio e cercare la miglior corrispondenza nei testi scaricati
     def transcribe_and_match(self, audio_buffer):
         if not self.elevenlabs_key: return None
         transcribed_text = self._call_scribe_api(audio_buffer, lang_code=self.detected_language_code)
         if not transcribed_text or len(transcribed_text) < 5: return None
         return self._find_best_match(transcribed_text)
 
+    # Chiamata API Scribe
     def _call_scribe_api(self, audio_buffer, lang_code=None):
         url = "https://api.elevenlabs.io/v1/speech-to-text"
         headers = {"xi-api-key": self.elevenlabs_key}
@@ -259,6 +261,7 @@ class LyricsManager:
             print(f"❌ [Scribe] Connection Fail: {e}")
         return None
 
+    # Ricerca miglior corrispondenza tra la trascrizione e i testi scaricati
     def _find_best_match(self, transcript):
         if not self.lyrics_cache: return None
         transcript_clean = transcript.lower().strip()
@@ -282,6 +285,7 @@ class LyricsManager:
             return self._package_result(best_title_key, int(best_ratio * 100))
         return None
 
+    # Metodo per formattare il risultato finale con le informazioni del brano trovato
     def _package_result(self, title_key, score):
         real_title = self.titles_map[title_key]
         print(f"🧩 [Lyrics MATCH] Identificato: '{real_title}' (Confidence: {score}%)")
@@ -291,6 +295,7 @@ class LyricsManager:
             "album": "Sconosciuto", "external_metadata": {}, "contributors": {}, "cover": None
         }
 
+    # Normalizzazione titoli
     def _normalize_text(self, text):
         if not text: return ""
         text = re.sub(r"[\(\[].*?[\)\]]", "", text)
