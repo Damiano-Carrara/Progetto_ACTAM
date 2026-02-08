@@ -492,7 +492,7 @@ class SessionManager:
 
         try:
             sessions_ref = self.user_ref.collection('sessions')
-            query = sessions_ref.order_by('created_at', direction=firestore.Query.DESCENDING).limit(5)
+            query = sessions_ref.order_by('created_at', direction=firestore.Query.DESCENDING).limit(25)
             last_sessions = list(query.stream())
 
             if not last_sessions:

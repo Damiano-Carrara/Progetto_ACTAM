@@ -70,6 +70,7 @@ class AudioManager:
         self.target_artist_bias = None
         self.low_quality_mode = False
         self.upload_lock = threading.Lock()
+        self.context_lock = threading.Lock()
         
         self.context_ready = False 
         self.predicted_next_song = None
@@ -88,29 +89,30 @@ class AudioManager:
     def update_target_artist(self, artist_name):
         """
         Scarica il contesto completo: Setlist.fm + Spotify + Genius.
+        Thread-safe version.
         """
-        # Se è lo stesso artista e abbiamo già dati pronti, evitiamo di rifare tutto
-        # Normalizziamo le stringhe per sicurezza
-        curr_artist_norm = (self.target_artist_bias or "").strip().lower()
-        new_artist_norm = (artist_name or "").strip().lower()
+        # Acquisiamo il lock per evitare che 3 richieste simultanee passino tutte il controllo iniziale
+        with self.context_lock:
+            # Normalizziamo le stringhe per sicurezza
+            curr_artist_norm = (self.target_artist_bias or "").strip().lower()
+            new_artist_norm = (artist_name or "").strip().lower()
 
-        # Se l'artista richiesto è lo stesso che abbiamo già in memoria...
-        if new_artist_norm and new_artist_norm == curr_artist_norm:
-            # ...e se abbiamo effettivamente dei dati caricati (context_ready o cache popolata)
-            if self.context_ready or len(self.setlist_bot.cached_songs) > 0:
-                # Saltiamo il processo di download e preparazione, mantenendo il contesto già pronto
-                print(f"✅ [Context] Dati per '{artist_name}' già in memoria (da Prefetch). Skip download.")
-                return
+            # Se l'artista richiesto è lo stesso che abbiamo già in memoria...
+            if new_artist_norm and new_artist_norm == curr_artist_norm:
+                # ...e se abbiamo effettivamente dei dati caricati
+                if self.context_ready or len(self.setlist_bot.cached_songs) > 0:
+                    print(f"✅ [Context] Dati per '{artist_name}' già in memoria. Skip download.")
+                    return
 
-        # Aggiornamento immediato Bias e Reset stato
-        self.target_artist_bias = artist_name
-        self.context_ready = False 
-        self.predicted_next_song = None
-        
-        # Pulizia cache precedente (importante per evitare contaminazioni tra artisti)
-        self.setlist_bot.cached_songs = []
-        self.setlist_bot.concert_sequences = []
-        print(f"🧹 [Context] Cache precedente svuotata.")
+            # Aggiornamento immediato Bias e Reset stato
+            self.target_artist_bias = artist_name
+            self.context_ready = False 
+            self.predicted_next_song = None
+            
+            # Pulizia cache
+            self.setlist_bot.cached_songs = []
+            self.setlist_bot.concert_sequences = []
+            print(f"🧹 [Context] Cache precedente svuotata per nuovo artista.")
 
         if artist_name:
             def fetch_full_context():
