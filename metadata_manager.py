@@ -13,6 +13,7 @@ class MetadataManager:
         # Configurazione MusicBrainz
         musicbrainzngs.set_useragent("SIAE_Project_Univ", "0.5", "tuamail@esempio.com")
         
+        # Configurazione iTunes e Deezer
         self.itunes_url = "https://itunes.apple.com/search"
         self.deezer_search_url = "https://api.deezer.com/search"
         
@@ -25,10 +26,12 @@ class MetadataManager:
 
         print("📚 Metadata Manager (Aggregation Mode: ON) Pronto.")
 
+    # Normalizzazione stringhe
     def _clean_string(self, text):
         if not text: return ""
         return re.sub(r"[^a-zA-Z0-9\s]", "", text).lower().strip()
 
+    # Pulizia titolo per ricerca (rimuove solo versioni tecniche, non featuring o remix)
     def _clean_title(self, title):
         """
         Pulisce il titolo per la ricerca, rimuovendo solo le versioni tecniche.
@@ -40,6 +43,7 @@ class MetadataManager:
             "feat", "ft.", "karaoke", "official"
         ]
 
+        # Funzione per rimuovere solo le parti tra parentesi che contengono parole chiave di disturbo
         def clean_parens(match):
             content = match.group(1).lower()
             if any(k in content for k in junk_keywords):
@@ -51,6 +55,7 @@ class MetadataManager:
 
         return clean.strip()
 
+    # Aggiunta di nomi al set con pulizia e capitalizzazione
     def _add_to_set(self, source_set, names_str):
         """Helper per pulire e aggiungere nomi separati da virgola al set"""
         if not names_str: return
@@ -64,6 +69,7 @@ class MetadataManager:
                 # Capitalizza ogni parola
                 source_set.add(p.title())
 
+    # Controllo duplicati sui compositori con fuzzy matching
     def _fuzzy_clean_composers(self, composers_set):
         """
         Rimuove SOLO i duplicati simili (es. 'De Benedettis' vs 'De Benedittis').
@@ -79,7 +85,7 @@ class MetadataManager:
         for name in sorted_names:
             is_duplicate = False
             for existing in unique_names:
-                # Se la similarità è alta (> 0.85) o uno è contenuto nell'altro
+                # Se la similarità è alta (> 0.85) o uno è contenuto nell'altro lo consideriamo duplicato
                 ratio = SequenceMatcher(None, name.lower(), existing.lower()).ratio()
                 
                 if ratio > 0.85:
@@ -95,6 +101,7 @@ class MetadataManager:
 
         return unique_names
 
+    # Metodo principale per trovare i compositori, con strategia di ricerca multi-fonte e fallback intelligente
     def find_composer(self, title, detected_artist, isrc=None, upc=None, setlist_artist=None, raw_acr_meta=None):
         clean_title = self._clean_title(title)
         search_title = clean_title if len(clean_title) > 2 else title
@@ -108,7 +115,7 @@ class MetadataManager:
         if setlist_artist: artists_to_try.append(setlist_artist)
         if detected_artist and detected_artist != setlist_artist: artists_to_try.append(detected_artist)
 
-        # 1. SPOTIFY (Solo Cover)
+        # 1. SPOTIFY (Solo Album Cover)
         if self.spotify_bot:
             try:
                 hd_cover = self.spotify_bot.get_hd_cover(search_title, artists_to_try[0])
@@ -145,7 +152,7 @@ class MetadataManager:
                     break
 
         # 4. GENIUS (Fallback Condizionale)
-        # Se MusicBrainz ha trovato dati, SALTATIAMO Genius.
+        # Se MusicBrainz ha trovato dati, SALTATIAMO Genius. Questo perché di solito MusicBrainz risulta più affidabile
         if mb_found:
             print("   ✨ [MB] Risultati trovati, salto Genius per mantenere alta qualità.")
         else:
@@ -182,19 +189,17 @@ class MetadataManager:
 
         return final_composer_str, final_cover
 
-    # ---------------------------------------------------------
-    # MOTORI DI RICERCA
-    # ---------------------------------------------------------
+    # MOTORI DI RICERCA DEI SINGOLI PROVIDER
 
+    # Genius
     def _search_genius_composers(self, title, artist):
         try:
             if not self.genius_token: return None
             if self.genius is None:
-                # Aggiungi anche qui sleep_time e retries
                 self.genius = lyricsgenius.Genius(
                     self.genius_token, 
                     verbose=False,
-                    sleep_time=0.5,
+                    sleep_time=0.5, # Attesa per evitare rate limit
                     retries=3
                 ) 
             
@@ -215,8 +220,7 @@ class MetadataManager:
             res = song.to_dict()
             writers = res.get('writer_artists', [])
             
-            # --- STRICT MODE: SOLO AUTORI ---
-            # Ignoriamo completamente i produttori per evitare falsi positivi
+            # Ignoriamo i produttori e ci concentriamo solo sui compositori
             
             names = set()
             for w in writers: 
@@ -228,6 +232,7 @@ class MetadataManager:
         except Exception: pass
         return None
 
+    #iTunes
     def _search_itunes(self, title, artist):
         try:
             # 1. Tentativo SPECIFICO (Titolo + Artista Semplificato)
@@ -242,7 +247,7 @@ class MetadataManager:
             resp = requests.get(self.itunes_url, params=params, timeout=5)
             results = resp.json().get("results", []) if resp.status_code == 200 else []
 
-            # 2. Tentativo FALLBACK (Solo Titolo - Utile se l'artista è scritto strano)
+            # 2. Tentativo FALLBACK (Solo Titolo - Utile se l'artista è poco riconoscibile o omonimo)
             if not results:
                 params["term"] = title
                 resp = requests.get(self.itunes_url, params=params, timeout=5)
@@ -269,6 +274,7 @@ class MetadataManager:
         except: pass
         return None, None
 
+    # Deezer
     def _search_deezer(self, title, artist):
         try:
             query = f"{title} {artist}"
@@ -307,6 +313,7 @@ class MetadataManager:
         except: pass
         return None, None
 
+    # MusicBrainz
     def _strategy_musicbrainz(self, title, artist):
         try:
             query = f'recording:"{title}" AND artist:"{artist}"'
@@ -324,6 +331,7 @@ class MetadataManager:
         except: pass
         return None
 
+    # Ricerca diretta via ISRC (se disponibile, è il metodo più preciso)
     def _search_mb_by_isrc(self, isrc):
         try:
             res = musicbrainzngs.get_recordings_by_isrc(isrc, includes=["work-rels", "artist-rels"])
@@ -331,6 +339,7 @@ class MetadataManager:
                 return self._extract_comp(res["isrc"]["recording-list"][0])
         except: return None
 
+    # Estrazione compositori da MB con gestione relazioni complesse
     def _get_comp(self, rid):
         try:
             time.sleep(0.5)
@@ -338,6 +347,7 @@ class MetadataManager:
             return self._extract_comp(rec["recording"])
         except: return None
 
+    # Estrazione compositori da una work di MB, con fallback su relazioni più profonde
     def _extract_comp(self, data):
         comps = set()
         if "artist-relation-list" in data:

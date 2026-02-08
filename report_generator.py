@@ -12,6 +12,7 @@ class ReportGenerator:
     def __init__(self):
         print("📊 Report Generator Inizializzato")
 
+    # Formattazione compositore
     def _format_composer(self, comp_text):
         """
         Formatta il compositore per il report.
@@ -236,14 +237,14 @@ class ReportGenerator:
 
                 # 1. CASO INSERIMENTO MANUALE (VERDE)
                 if is_manual:
-                    row_color = colors.HexColor("#008f00") # Verde
-                    display_id = "INSERIMENTO<br/>MANUALE" # Niente numero ID
+                    row_color = colors.HexColor("#008f00")
+                    display_id = "INSERIMENTO<br/>MANUALE"
                     # Per manuale non esistono dati "originali" diversi da quelli inseriti
                     d_title = song.get("title", "")
                     d_comp = song.get("composer", "")
                     d_art = song.get("artist", "")
 
-                # 2. CASO RIMOSSA (ROSSO)
+                # 2. CASO RIMOZIONE (ROSSO)
                 elif is_deleted:
                     row_color = colors.red
                     display_id = f"{song_id_num}<br/>RIMOSSA"
@@ -260,8 +261,7 @@ class ReportGenerator:
                     orig_comp_raw = song.get("original_composer") or song.get("composer", "")
                     # nota: il confronto lo facciamo sui dati raw se possibile, o stringhe pulite
                     
-                    # Logica semplificata: se i campi correnti sono diversi dagli originali salvati
-                    # (Session manager salva original_title alla creazione)
+                    # Se i campi correnti sono diversi dagli originali salvati
                     modified = False
                     if song.get("original_title") and song.get("original_title") != song.get("title"):
                         modified = True

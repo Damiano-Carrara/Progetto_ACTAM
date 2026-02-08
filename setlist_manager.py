@@ -1,7 +1,7 @@
 import requests
 import os
 import json
-import re  # <--- IMPORTANTE: Aggiunto questo import
+import re
 from difflib import SequenceMatcher
 from collections import Counter
 
@@ -13,10 +13,11 @@ class SetlistManager:
             "x-api-key": self.api_key,
             "Accept": "application/json"
         }
-        # Ora salviamo sia l'insieme piatto (per la whitelist) sia le sequenze ordinate
+        # Salviamo sia l'insieme piatto (per la whitelist) sia le sequenze ordinate
         self.cached_songs = []       # Lista semplice per i controlli rapidi
         self.concert_sequences = []  # Lista di liste (ogni lista è un concerto ordinato)
 
+    # Recupera la lista delle canzoni più probabili per un artista, basandosi sulle scalette recenti.
     def get_likely_songs(self, artist_name):
         """
         Scarica le scalette e prepara sia la cache piatta che le sequenze per la predizione.
@@ -48,6 +49,7 @@ class SetlistManager:
             
         return []
 
+    # Predice la prossima canzone basandosi su cosa viene suonato di solito DOPO la canzone corrente nei concerti memorizzati.
     def predict_next(self, current_title):
         """
         Data la canzone corrente, guarda nello storico cosa viene suonato di solito DOPO.
@@ -63,7 +65,7 @@ class SetlistManager:
         for concert in self.concert_sequences:
             for i, song in enumerate(concert):
                 # Se trova la canzone corrente e NON è l'ultima del concerto
-                # (Usiamo ratio > 0.9 per essere sicuri che sia proprio lei)
+                # (Usiamo ratio > 0.9 per essere sicuri di non rilevare falsi positivi)
                 if SequenceMatcher(None, current_clean, song.lower()).ratio() > 0.9:
                     if i + 1 < len(concert):
                         next_song = concert[i + 1]
@@ -82,6 +84,7 @@ class SetlistManager:
         
         return None
 
+    # Tiene conto dell'ordine delle canzoni
     def _fetch_last_setlists_ordered(self, mbid):
         """
         Versione avanzata che restituisce anche l'ordine delle canzoni.
@@ -92,7 +95,7 @@ class SetlistManager:
             if res.status_code == 200:
                 data = res.json()
                 unique_songs = set()
-                sequences = [] # Lista di liste
+                sequences = []
                 
                 setlists = data.get("setlist", [])
                 valid_found = 0
@@ -121,6 +124,7 @@ class SetlistManager:
             print(f"❌ Errore download setlist: {e}")
         return set(), []
 
+    # Cerca i candidati per l'artista basandosi sul nome (con ricerca fuzzy) e restituisce i primi 3 risultati più rilevanti.
     def _search_artist_candidates(self, name):
         url = f"{self.base_url}/search/artists"
         params = {"artistName": name, "sort": "relevance"}
@@ -131,7 +135,7 @@ class SetlistManager:
         except: pass
         return []
 
-     # === SOSTITUISCI IL METODO check_is_likely CON QUESTO ===
+    # Controlla se un titolo è "probabilmente" presente nelle scalette memorizzate, usando una logica più intelligente che tiene conto di parole comuni da ignorare e di fuzzy matching.
     def check_is_likely(self, title):
         if not self.cached_songs: return False
         
@@ -139,8 +143,6 @@ class SetlistManager:
         raw_clean_input = re.sub(r"[^a-zA-Z0-9\s]", "", title).lower().strip()
         
         # 2. Pulizia avanzata (rimozione "Live", "Remaster", ecc.)
-        #    Questo trasforma "Let It Be (Live)" in "Let It Be", 
-        #    MA lascia "Let It Be Me" come "Let It Be Me".
         smart_clean_input = self._clean_noise_words(raw_clean_input)
         
         if not smart_clean_input: return False
@@ -148,12 +150,10 @@ class SetlistManager:
         for likely in self.cached_songs:
             # Puliamo anche il titolo della scaletta per sicurezza
             raw_clean_likely = re.sub(r"[^a-zA-Z0-9\s]", "", likely).lower().strip()
-            # Di solito nelle scalette non c'è "Live", ma per sicurezza:
+            # Di solito nelle scalette non c'è "Live", ma per sicurezza lo rimuoviamo:
             clean_likely = self._clean_noise_words(raw_clean_likely) 
 
             # --- CASO 1: Match Esatto (Dopo la pulizia) ---
-            # Se l'input era "Let It Be (Live)" -> diventa "Let It Be" -> MATCH
-            # Se l'input era "Let It Be Me" -> rimane "Let It Be Me" -> NO MATCH
             if smart_clean_input == clean_likely:
                 return True
                 
@@ -172,19 +172,18 @@ class SetlistManager:
                 # Cerca parola intera esatta nel testo originale pulito
                 pattern = r"\b" + re.escape(clean_likely) + r"\b"
                 if re.search(pattern, raw_clean_input): 
-                    # Attenzione: qui è rischioso, ma se vuoi mantenere la logica precedente:
                     # Verifica che non sia parte di una frase molto più lunga
                     return True
 
         return False
     
-    # === AGGIUNGI QUESTO METODO HELPER ===
+    # Metodo per rimuovere parole comuni che non influenzano l'identità della canzone, come "live", "remaster", ecc.
     def _clean_noise_words(self, text):
         """
         Rimuove parole comuni che non cambiano l'identità della canzone
         ma solo la versione (live, remaster, ecc.).
         """
-        # Lista di parole da ignorare (puoi estenderla)
+        # Lista di parole da ignorare
         stop_words = [
             "live", "remaster", "remastered", "mix", "version", 
             "edit", "feat", "ft", "studio", "session", "acoustic", 

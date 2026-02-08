@@ -9,6 +9,7 @@ from spotify_manager import SpotifyManager
 from difflib import SequenceMatcher
 from werkzeug.security import generate_password_hash, check_password_hash
 
+# Collegamento a Firestore
 try:
     from firebase_admin import firestore
 except ImportError:
@@ -28,6 +29,7 @@ class SessionManager:
         self.session_ref = None
         self.user_ref = None
 
+        # Mappa alias compositori
         self.composer_map = {}
 
         if self.db:
@@ -37,6 +39,7 @@ class SessionManager:
         else:
             print("⚠️ Session Manager in modalità OFFLINE.")
 
+    # Creazione sessione Firestore
     def _start_new_firestore_session(self):
         """Crea un nuovo documento sessione su Firestore per l'utente CORRENTE."""
         if not self.db: return
@@ -51,7 +54,7 @@ class SessionManager:
                 'created_at': firestore.SERVER_TIMESTAMP,
                 'status': 'live',
                 'device': 'python_backend',
-                'song_count': 0  # Inizializziamo a 0
+                'song_count': 0  # Inizializziamo contatore canzoni a 0
             }, merge=True)
             
             # 2. AGGIORNAMENTO STATS UTENTE: Incrementa contatore sessioni totali
@@ -66,7 +69,8 @@ class SessionManager:
         except Exception as e:
             print(f"❌ Errore creazione sessione Firestore: {e}")
 
-    # --- METODI AUTH ---
+    # METODI DI GESTIONE UTENTE E AUTENTICAZIONE
+    # Registrazione
     def register_user(self, user_data):
         """Registra utente con inizializzazione statistiche."""
         if not self.db: return {"success": False, "error": "Database offline"}
@@ -113,6 +117,7 @@ class SessionManager:
         except Exception as e:
             return {"success": False, "error": str(e)}
 
+    #Login
     def login_user(self, identifier, password, required_role):
         """Login che aggiorna l'utente corrente e crea una nuova sessione."""
         if not self.db: 
@@ -151,6 +156,7 @@ class SessionManager:
         
         return {"success": True, "user": user_data}
     
+    #Logout
     def logout_user(self):
         """Resetta l'utente corrente a quello di default (Ospite)."""
         self.user_id = "demo_user_01"
@@ -159,7 +165,7 @@ class SessionManager:
         print("👋 Logout effettuato. Tornato a demo_user_01.")
         return {"success": True}
 
-    # --- NUOVI METODI PER PROFILO UTENTE ---
+    # Aggiornamento dati utente
     def update_user_data(self, old_username, new_data):
         """Aggiorna username e/o password."""
         if not self.db: return {"success": False, "error": "DB Offline"}
@@ -174,7 +180,7 @@ class SessionManager:
         new_username = new_data.get("new_username")
         new_password = new_data.get("new_password")
 
-        # Se cambia username, dobbiamo creare nuovo doc, copiare dati e cancellare vecchio (Firestore limitation)
+        # Se cambia username, dobbiamo creare nuovo doc, copiare dati e cancellare vecchio (limitazione di Firebase)
         # Ma per semplicità, se cambia username, verifichiamo prima che non esista
         if new_username and new_username != old_username:
             if users_ref.document(new_username).get().exists:
@@ -189,17 +195,8 @@ class SessionManager:
             # Crea nuovo
             try:
                 users_ref.document(new_username).set(old_data)
-                
-                # IMPORTANTE: Migrare anche le sottocollezioni 'sessions' è complicato.
-                # Per ora, in questo MVP, se cambi username perdi lo storico o lo lasciamo lì orfano.
-                # Una soluzione semplice è vietare il cambio username se ci sono dati, 
-                # oppure per ora permettiamo solo cambio password se non vogliamo complicare troppo il codice.
-                # IMPLEMENTAZIONE PARZIALE: Aggiorniamo solo la password se l'username è lo stesso,
-                # Se l'username cambia, facciamo la migrazione semplice (senza sessioni per ora per evitare timeout).
-                
-                # Cancellazione vecchio doc
-                user_doc_ref.delete()
-                
+                # NOTA: al momento in caso di cambio username perdiamo lo storico sessioni e stats personali, perché sono legati al vecchio username.
+                user_doc_ref.delete()                
                 self.user_id = new_username
                 return {"success": True, "new_username": new_username}
             except Exception as e:
@@ -216,6 +213,7 @@ class SessionManager:
         
         return {"success": True, "message": "Nessuna modifica richiesta"}
 
+    # Cancellazione account
     def delete_full_account(self, username):
         """Cancella l'utente e tenta di pulire le sue sessioni."""
         if not self.db: return {"success": False, "error": "DB Offline"}
@@ -243,6 +241,7 @@ class SessionManager:
             return {"success": False, "error": str(e)}
 
     # --- GESTIONE DATI SU DB ---
+    # Salvataggio canzone
     def _save_song_to_db(self, song):
         if not self.session_ref: return
         try:
@@ -252,6 +251,7 @@ class SessionManager:
         except Exception as e:
             print(f"❌ Errore scrittura Firestore: {e}")
 
+    # Aggiornamento singolo campo (es. composer dopo arricchimento)
     def _update_single_field(self, song_id, field, value):
         if not self.session_ref: return
         try:
@@ -260,6 +260,7 @@ class SessionManager:
         except Exception as e:
             print(f"❌ Errore update campo '{field}': {e}")
 
+    # Normalizzazione stringhe per confronto
     def _normalize_string(self, text):
         if not text: return ""
         text = re.sub(r"(?i)\b(amazon\s+music|apple\s+music|spotify|deezer|youtube|vevo)\b.*", "", text)
@@ -271,6 +272,7 @@ class SessionManager:
         clean = re.sub(r"[^a-zA-Z0-9\s]", "", text) 
         return clean.strip().lower()
 
+    # Confronto fuzzy tra canzoni per evitare duplicati simili
     def _are_songs_equivalent(self, new_s, existing_s):
         if existing_s.get('is_deleted', False): return False
         tit_new = self._normalize_string(new_s['title'])
@@ -289,6 +291,7 @@ class SessionManager:
                 return True
         return False
 
+    # Aggiungi canzone 
     def add_song(self, song_data, target_artist=None):
         with self.lock:
             if song_data.get('status') != 'success':
@@ -316,9 +319,7 @@ class SessionManager:
                     if target_artist:
                         t_norm = self._normalize_string(target_artist)
                         a_norm = self._normalize_string(artist)
-                        # CASO 1: L'artista rilevato è GIÀ il target (o molto simile)
-                        # Dobbiamo segnare il bias come risolto per evitare che
-                        # la logica successiva di popolarità lo sovrascriva.
+                        # CASO 1: L'artista rilevato è GIÀ il target (o molto simile) -> La logica basata su popolarità non entra in gioco
                         if t_norm in a_norm or a_norm in t_norm:
                             print(f"🎯 [Bias] Artista target '{target_artist}' confermato. Skip popolarità.")
                             bias_resolved = True
@@ -341,6 +342,7 @@ class SessionManager:
                                         song_data['cover'] = new_cov
                                     bias_resolved = True
                     
+                    # CASO 3: Se non abbiamo risolto il bias con i controlli precedenti, applichiamo la logica di popolarità per cercare una versione migliore ed evitare cover di artisti minori
                     if not bias_resolved:
                         better_version = self.spotify_bot.get_most_popular_version(title, artist)
                         if better_version:
@@ -355,7 +357,8 @@ class SessionManager:
                 except Exception as e:
                     print(f"⚠️ Errore Smart Fix Cascata: {e}")
 
-            for existing_song in self.playlist[-15:]:
+            # Controllo duplicati contro ultime 30 canzoni (per performance) e cache
+            for existing_song in self.playlist[-30:]:
                 if self._are_songs_equivalent(candidate_song, existing_song):
                     return {"added": False, "reason": "Duplicate", "song": existing_song}
             
@@ -394,7 +397,7 @@ class SessionManager:
             self.playlist.append(new_entry)
             self._save_song_to_db(new_entry)
 
-            # --- NUOVO: Aggiorna statistiche utente ---
+            # Aggiornamentoi statistiche personali dell'utente (totale canzoni, top tracks personali)
             self._update_user_personal_stats(title, artist)
 
             if status_enrichment == "Pending":
@@ -403,11 +406,13 @@ class SessionManager:
             print(f"✅ Aggiunto: {title} - {artist}")
             return {"added": True, "song": new_entry}
 
+    # Arricchimento dati in background (compositori ed album cover)
     def _background_enrichment(self, entry, target_artist):
         attempts = 0
         found_composer = "Sconosciuto"
         final_cover = entry.get('cover')
         
+        # Tentativi multipli per gestire eventuali errori temporanei di rete o API
         while attempts < 3:
             try:
                 comp_result, cover_fallback = self.meta_bot.find_composer(
@@ -422,6 +427,7 @@ class SessionManager:
                 attempts += 1
                 time.sleep(1)
 
+        # Aggiorniamo la canzone in playlist e DB SOLO se abbiamo trovato un compositore valido o una cover migliore, per evitare di sovrascrivere dati buoni con "Sconosciuto" in caso di errori temporanei
         with self.lock:
             target_song = next((s for s in self.playlist if s['id'] == entry['id']), None)
             if target_song:
@@ -443,6 +449,7 @@ class SessionManager:
                 if found_composer != "Sconosciuto":
                     self._update_global_stats(found_composer, target_song['title'])
 
+    # --- GESTIONE STATISTICHE COMPOSITORI E PROFILI UTENTE ---
     def get_composer_stats(self, stage_name):
         if not self.db: return {"error": "DB Offline"}
         
@@ -453,7 +460,7 @@ class SessionManager:
         if not doc.exists:
             return {
                 "total_plays": 0,
-                "total_revenue": 0.0, # Default a 0
+                "total_revenue": 0.0,
                 "top_tracks": [],
                 "history": {},
                 "display_name": stage_name
@@ -472,13 +479,13 @@ class SessionManager:
 
         return {
             "total_plays": data.get("total_plays", 0),
-            # QUI: Restituiamo il valore reale dal DB, non una stima calcolata
             "total_revenue": data.get("total_revenue", 0.0), 
             "top_tracks": top_5,
             "history": history,
             "display_name": data.get("display_name", stage_name)
         }
     
+    # Recupero sessione precedente (ultima con canzoni valide) (per crash o chiusure errate)
     def recover_last_session(self):
         if not self.db or self.user_id == "demo_user_01":
             return {"success": False, "message": "Funzione non disponibile per ospiti o offline."}
@@ -524,9 +531,11 @@ class SessionManager:
             print(f"❌ Errore recupero sessione: {e}")
             return {"success": False, "message": str(e)}
     
+    # Recupero playlist corrente (per interfaccia o API)
     def get_playlist(self):
         return self.playlist
 
+    # Pulizia sessione (reset completo, ad esempio dopo logout o per iniziare da zero)
     def clear_session(self):
         with self.lock:
             self.playlist = []
@@ -534,6 +543,7 @@ class SessionManager:
             self._start_new_firestore_session()
             return True
 
+    # Aggiornamento statistiche globali compositori (incremento plays, top tracks, storico)
     def _update_global_stats(self, composer_raw, title):
         if not self.db or not composer_raw or composer_raw in ["Sconosciuto", "Pending", "⏳ Ricerca..."]:
             return
@@ -546,9 +556,7 @@ class SessionManager:
         batch = self.db.batch()
         
         for comp in composers:
-            # --- MODIFICA FONDAMENTALE ---
-            # Prima: comp_id = self._normalize_string(comp).replace(" ", "_")
-            # Adesso: Usiamo la risoluzione alias per unificare i profili
+            # Risoluzione alias per gestire nomi d'arte
             comp_id = self._resolve_composer_id(comp)
             
             if not comp_id: continue
@@ -559,15 +567,10 @@ class SessionManager:
             stats_update = {
                 'total_plays': firestore.Increment(1),
                 'last_updated': firestore.SERVER_TIMESTAMP,
-                # Salviamo l'ultimo nome rilevato in un campo a parte per debug/info,
-                # senza sovrascrivere il 'display_name' ufficiale (es. Tropico)
                 'last_detected_name': comp 
             }
             
-            # Se il documento non esiste (nuovo autore), impostiamo anche il display_name.
-            # Nota: batch.set con merge=True non permette logica condizionale facile, 
-            # ma rimuovendo 'display_name' dall'update evitiamo di "rovinare" i profili esistenti.
-            
+            # Se il documento non esiste (nuovo autore), impostiamo anche il display_name.            
             batch.set(comp_ref, stats_update, merge=True)
 
             # Aggiornamento Top Tracks (sotto l'ID unificato)
@@ -590,6 +593,7 @@ class SessionManager:
         except Exception as e:
             print(f"❌ Errore aggiornamento stats: {e}")
     
+    # Aggiornamento statistiche personali utente (totale canzoni, top tracks personali)
     def _update_user_personal_stats(self, title, artist):
         """Aggiorna le statistiche aggregate personali dell'utente."""
         if not self.db or self.user_id == "demo_user_01": return
@@ -606,7 +610,7 @@ class SessionManager:
             if self.session_ref:
                 batch.update(self.session_ref, {'song_count': firestore.Increment(1)})
 
-            # 3. Aggiorna Top Tracks Personali (Collection: users/{uid}/stats_tracks/{track_id})
+            # 3. Aggiorna Top Tracks Personali
             track_id = self._normalize_string(f"{title} - {artist}").replace(" ", "_")
             track_stats_ref = self.user_ref.collection('stats_tracks').document(track_id)
             
@@ -621,6 +625,7 @@ class SessionManager:
         except Exception as e:
             print(f"⚠️ Errore aggiornamento stats personali: {e}")
     
+    # Rimuovi canzone (soft delete, per mantenere integrità storica e stats)
     def delete_song(self, song_id):
         with self.lock:
             try:
@@ -634,6 +639,7 @@ class SessionManager:
                 return False
             except ValueError: return False
 
+    # Recupero statistiche profilo utente (totale sessioni, totale canzoni, top artist, top tracks)
     def get_user_profile_stats(self):
         """Recupera stats, calcolando le sessioni valide dinamicamente."""
         if not self.db or not self.user_ref: 
@@ -646,14 +652,8 @@ class SessionManager:
             stats = user_doc.get('stats', {})
             
             total_songs = stats.get('total_songs', 0)
-
-            # --- CORREZIONE CONTEGGIO SESSIONI ---
-            # Invece di usare il contatore incrementale (che include quelle vuote),
-            # contiamo quante sessioni valide ci sono nello storico recente o facciamo una query count
-            # Per semplicità e coerenza con la lista, usiamo la lunghezza della history valida
             valid_history = self.get_user_session_history()
             total_sessions_valid = len(valid_history)
-            # -------------------------------------
             
             # Recupera Top Tracks
             top_tracks = []
@@ -666,7 +666,7 @@ class SessionManager:
             top_artist = top_tracks[0]['artist'] if top_tracks else "N/D"
 
             return {
-                "total_sessions": total_sessions_valid, # Usa il numero calcolato pulito
+                "total_sessions": total_sessions_valid,
                 "total_songs": total_songs,
                 "top_artist": top_artist,
                 "top_tracks": top_tracks
@@ -675,6 +675,7 @@ class SessionManager:
             print(f"❌ Errore stats: {e}")
             return {}
 
+    # Recupero storico sessioni utente (solo quelle con canzoni valide)
     def get_user_session_history(self):
         """Recupera le ultime sessioni IGNORANDO quelle vuote (song_count=0)."""
         if not self.db or not self.user_ref: return []
@@ -691,10 +692,9 @@ class SessionManager:
                 data = s.to_dict()
                 s_count = data.get('song_count', 0)
                 
-                # --- FILTRO: Se la sessione è vuota, la saltiamo ---
+                # Se la sessione è vuota, la saltiamo
                 if s_count == 0:
                     continue
-                # ---------------------------------------------------
 
                 created = data.get('created_at')
                 date_str = "Data sconosciuta"
@@ -720,6 +720,7 @@ class SessionManager:
             return []
         
 
+    # Recupero canzoni di una sessione passata specifica (per visualizzazione dettagliata o ripristino)
     def get_past_session_songs(self, session_id):
         """Recupera i brani di una sessione specifica archiviata."""
         if not self.db or not self.user_ref: return []
@@ -740,7 +741,7 @@ class SessionManager:
             print(f"❌ Errore recupero sessione passata: {e}")
             return []
         
-    # --- AGGIUNGI QUESTO NUOVO METODO ---
+    # Finalizzazione sessione e distribuzione revenue ai compositori
     def finalize_session_revenue(self, total_org_revenue):
         if not self.db or total_org_revenue <= 0:
             return {"success": False, "message": "Dati non validi o DB offline"}
@@ -748,17 +749,17 @@ class SessionManager:
         if not self.session_ref:
             return {"success": False, "message": "Nessuna sessione attiva trovata"}
 
-        # --- 1. CONTROLLO ANTI-DUPLICAZIONE ---
+        # Controllo anti-duplicazione per evitare revenue in eccesso
         # Leggiamo lo stato attuale della sessione dal DB
         session_snap = self.session_ref.get()
         if session_snap.exists:
             session_data = session_snap.to_dict()
-            # Se è già segnata come 'paid', blocchiamo tutto!
+            # Se è già segnata come 'paid', blocchiamo la finalizzazione
             if session_data.get('revenue_status') == 'paid':
                 print(f"🛑 Tentativo di doppio pagamento bloccato per sessione {self.session_ref.id}")
                 return {"success": False, "message": "Questa sessione è già stata pagata/liquidata."}
 
-        # --- 2. LOGICA STANDARD ---
+        # Logica standard di distribuzione revenue
         valid_songs = [s for s in self.playlist if not s.get('is_deleted', False)]
         if not valid_songs:
             return {"success": False, "message": "Nessun brano valido"}
@@ -794,11 +795,9 @@ class SessionManager:
                         'last_updated': firestore.SERVER_TIMESTAMP
                     }, merge=True)
 
-            # --- 3. BLOCCO DELLA SESSIONE ---
-            # Marciamo la sessione come 'paid' nello stesso batch atomico.
-            # Se la distribuzione fallisce, fallisce anche questo mark (e viceversa).
+            # Segniamo la sessione come 'paid' per evitare future modifiche o doppie finalizzazioni
             batch.update(self.session_ref, {
-                'revenue_status': 'paid',           # IL FLAG DI SICUREZZA
+                'revenue_status': 'paid',     
                 'final_revenue_amount': total_org_revenue,
                 'closed_at': firestore.SERVER_TIMESTAMP
             })
@@ -810,6 +809,7 @@ class SessionManager:
             print(f"❌ Errore finalizzazione: {e}")
             return {"success": False, "message": str(e)}
         
+   # Aggiornamento mappa alias compositori
     def _refresh_composer_map(self):
         """
         Scarica gli utenti 'composer' e crea le associazioni:
@@ -851,7 +851,7 @@ class SessionManager:
                     key_real = self._normalize_string(full_name_raw).replace(" ", "_") # Aggiunto replace per sicurezza
                     self.composer_map[key_real] = target_id
                     
-                    # DEBUG: Stampiamo per vedere se sta funzionando
+                    # DEBUG: Stampiamo risultato per controllo
                     print(f"   🔗 Alias creato: '{key_real}' -> '{target_id}'")
 
             print(f"✅ Mappa Alias pronta: {len(self.composer_map)} voci.")
@@ -859,15 +859,15 @@ class SessionManager:
         except Exception as e:
             print(f"⚠️ Errore refresh mappa: {e}")
 
-    # Helper per risolvere l'ID
+    # Funzione helper per risolvere l'ID
     def _resolve_composer_id(self, raw_name):
         # Pulisce la stringa in arrivo dai metadati (es. "Davide Petrella")
         clean_key = self._normalize_string(raw_name).replace(" ", "_")
-        
-        # Cerca nella mappa. Se trova "davide_petrella", restituisce "tropico".
+        # Cerca nella mappa alias. Se trova "davide_petrella", restituisce "tropico".
         # Se non trova nulla, restituisce "davide_petrella" (creando un nuovo profilo slegato).
         return self.composer_map.get(clean_key, clean_key)
     
+    # Funzione di migrazione dati legacy (da alias a profili principali)
     def migrate_legacy_data(self):
         """
         Sposta i dati dai profili 'alias' (es. davide_petrella) 

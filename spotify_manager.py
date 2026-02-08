@@ -22,6 +22,7 @@ class SpotifyManager:
         else:
             print("⚠️ [Spotify] Credenziali mancanti nel .env")
 
+    # Scarica canzoni più famose e ultimo album
     def get_artist_complete_data(self, artist_name):
         """
         Scarica un pacchetto completo di canzoni probabili:
@@ -42,20 +43,18 @@ class SpotifyManager:
                 return []
             
             artist_id = items[0]['id']
-            # print(f"     ✅ Trovato ID: {items[0]['name']}")
 
-            # 2. Prendi le Top 10 Tracks (Le Hit)
+            # 2. Prendi le Top 10 Tracks
             top_tracks = self.sp.artist_top_tracks(artist_id, country='IT')
             for track in top_tracks['tracks']:
                 # Pulisce titoli tipo "Nome (feat. X)" -> "nome"
                 clean_name = track['name'].split('(')[0].strip().lower()
                 collected_songs.add(clean_name)
             
-            # 3. Prendi l'ultimo Album (Le Novità del tour)
+            # 3. Prendi l'ultimo Album
             albums = self.sp.artist_albums(artist_id, album_type='album', limit=1)
             if albums['items']:
                 latest_album = albums['items'][0]
-                # print(f"     💿 Ultimo Album: {latest_album['name']}")
                 album_tracks = self.sp.album_tracks(latest_album['id'])
                 for track in album_tracks['items']:
                     clean_name = track['name'].split('(')[0].strip().lower()
@@ -69,19 +68,18 @@ class SpotifyManager:
             print(f"❌ Errore Spotify: {e}")
             return []
 
+    # Ricerca album cover
     def get_hd_cover(self, title, artist):
         """
         Cerca cover HD pulendo il titolo da sporcizia (Live, Remaster, ecc.)
         """
         if not self.sp: return None
         
-        # === FIX: PULIZIA TITOLO ===
-        # Rimuove tutto ciò che è tra parentesi e le diciture tecniche
+        # Pulizia titolo
         clean_title = re.sub(r"[\(\[].*?[\)\]]", "", title)
         clean_title = re.sub(r"(?i)\b(feat\.|ft\.|remix|edit|version|live|remastered|remaster)\b.*", "", clean_title)
-        clean_title = re.sub(r"\s-\s.*", "", clean_title) # Toglie code tipo " - 2011 Mix"
+        clean_title = re.sub(r"\s-\s.*", "", clean_title)
         clean_title = clean_title.strip()
-        # ===========================
 
         # Se la pulizia ha svuotato troppo la stringa, usa l'originale per sicurezza
         search_title = clean_title if len(clean_title) > 1 else title
@@ -97,6 +95,7 @@ class SpotifyManager:
         
         return None
     
+    # Ricerca per popolarità di canzoni con titolo simile, per evitare cover indesiderate
     def get_most_popular_version(self, title, current_artist):
         """
         Cerca su Spotify se esiste una versione molto più famosa del brano rilevato.
@@ -119,17 +118,13 @@ class SpotifyManager:
         if len(clean_search_title) < 2: return None
 
         try:
-            # 1. Cerchiamo la versione MIGLIORE/PIÙ FAMOSA in assoluto
-            # Aumentiamo il limit a 10 per essere sicuri di pescare l'originale se è un po' giù
+            # 1. Cerchiamo la versione MIGLIORE/PIÙ FAMOSA in assoluto tra i primi 10 risultati
             results = self.sp.search(q=f"track:{clean_search_title}", type='track', limit=10)
             tracks = results['tracks']['items']
             
             if not tracks: return None
 
-            # === [MODIFICA: FILTRO RIGOROSO SUL TITOLO] ===
-            # Prima di guardare la popolarità, scartiamo i titoli che non c'entrano niente.
-            # Es. Cerco "Rock and Roll" -> Scarto "Rock and Roll All Nite" (KISS)
-            
+            # Filtro rigoroso sul titolo per evitare falsi positivi
             valid_tracks = []
             for t in tracks:
                 found_clean = clean_spotify_title(t['name'])
@@ -142,14 +137,13 @@ class SpotifyManager:
 
             # Ora prendiamo il più popolare solo tra quelli VALIDI
             best_match = max(valid_tracks, key=lambda x: x['popularity'])
-            # ===============================================
             
             best_artist = best_match['artists'][0]['name']
             best_popularity = best_match['popularity']
             
-            # 2. Recuperiamo la popolarità della versione CORRENTE (Rilevata)
+            # 2. Recuperiamo la popolarità della canzone CORRENTE (Rilevata)
             current_popularity = 0
-            comparison_mode = "Artist vs Track" # Default fallback
+            comparison_mode = "Artist vs Track" # Default fallback su popolarità artista
             
             try:
                 # TENTATIVO A: Cerchiamo esattamente la traccia dell'artista rilevato (Track vs Track)
@@ -200,6 +194,7 @@ class SpotifyManager:
         
         return None
     
+    # Ricerca di una versione specifica del brano
     def search_specific_version(self, title, target_artist):
         """
         Cerca se esiste una versione specifica del brano fatta dall'artista target.
@@ -219,20 +214,19 @@ class SpotifyManager:
         query = f"track:{clean_search} artist:{target_artist}"
         
         try:
-            # Alziamo il limit a 5 per evitare che il primo risultato sia una "Karaoke Version"
+            # Valutiamo i primi 5 risultati
             results = self.sp.search(q=query, type='track', limit=5)
             items = results['tracks']['items']
             
             if not items: return None
 
             for track in items:
-                # 2. Pulizia titolo TROVATO su Spotify (Cruciale per i Beatles!)
+                # 2. Pulizia titolo TROVATO su Spotify
                 found_name = track['name']
                 
                 # Rimuove tutto ciò che è tra parentesi
                 found_clean = re.sub(r"[\(\[].*?[\)\]]", "", found_name)
                 # Rimuove trattini seguiti da 'Remaster', 'Live', '2009', ecc.
-                # Es: "Twist and Shout - Remastered 2009" -> "Twist and Shout"
                 found_clean = re.sub(r"\s-\s.*", "", found_clean) 
                 found_clean = found_clean.strip().lower()
 
@@ -245,12 +239,11 @@ class SpotifyManager:
                 if similarity > 0.85:
                     is_match = True
                 elif (clean_search in found_clean) or (found_clean in clean_search):
-                    # Controllo lunghezza per evitare match parziali stupidi (es "One" in "One Vision")
+                    # Controllo lunghezza per evitare match parziali non rilevanti (es "One" in "One Vision")
                     if abs(len(clean_search) - len(found_clean)) < 5:
                         is_match = True
                 
                 if is_match:
-                    # Abbiamo trovato la versione del Target Artist!
                     canonical_artist = track['artists'][0]['name']
                     cover = None
                     if track['album']['images']:
