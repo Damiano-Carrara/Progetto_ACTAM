@@ -69,7 +69,7 @@ Utilizzando un motore di riconoscimento ibrido (Audio + Testo), KYMA riconosce c
 
 **1. Clona la repository**
 ```bash
-git clone [https://github.com/your-username/Progetto_ACTAM.git kyma](https://github.com/your-username/Progetto_ACTAM.git kyma)
+git clone https://github.com/Damiano-Carrara/Progetto_ACTAM.git kyma
 cd kyma
 ```
 
