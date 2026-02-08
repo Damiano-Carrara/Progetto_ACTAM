@@ -1,7 +1,7 @@
 # KYMA: Sistema di riconoscimento musicale e compilazione automatica di borderò
 ### Progetto di gruppo per il corso di Advanced Coding Tools and Methodologies, A.A. 2025/2026
 
-**Componenti del gruppo:** [Inserire qui i nomi]
+**Componenti del gruppo:** Bo Lorenzo, Bocchi Arianna, Carrara Damiano, Guidi Alberto Javier
 
 ---
 
